@@ -52,6 +52,13 @@ Content column: 760px (reading pages), 860px (tables/admin).
   phosphor-lit + labeled + faint connective trace, metric toggle (intelligence/coding),
   mono attribution line ("data: Artificial Analysis"). Pure math lives in client-safe
   `lib/pareto.ts` — client components must NEVER import `lib/analytics` (it pulls the DB).
+- **Bar-list pattern** (TaskCostExplorer, ValueBars, EloBars, EntityBars): name row
+  (mono 11px, org muted) + right-aligned mono value, 3px track (`--grat-soft`) with
+  phosphor/grat-strong fill. Winner/frontier = phosphor. Caption line states
+  assumptions (e.g. token budgets from `lib/costs.ts` TASK_ARCHETYPES).
+- **Ops deck** (admin): PipelineFunnel (stage bars + conversion %), LlmBudget (gauge,
+  amber ≥60% / alert ≥90%, 14d columns), JobTimeline (7px status blocks: ok phosphor
+  0.45, error alert, running amber), SourceVolume (100×16 sparkline polylines).
 
 ## Patterns
 
