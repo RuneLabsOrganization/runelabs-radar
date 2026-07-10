@@ -11,3 +11,5 @@ dist/
 *.tsbuildinfo
 next-env.d.ts
 .devserver.log
+*.jpeg
+.playwright-mcp/
