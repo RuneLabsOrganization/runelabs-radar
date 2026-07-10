@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom" xmlns:media="http://search.yahoo.com/mrss/">
+  <category term="LocalLLaMA" label="r/LocalLLaMA"/>
+  <updated>2026-07-09T14:00:00+00:00</updated>
+  <id>/r/LocalLLaMA/top/.rss?t=day&amp;limit=25</id>
+  <title>top scoring links : LocalLLaMA</title>
+  <entry>
+    <author>
+      <name>/u/rag_wrangler</name>
+      <uri>https://www.reddit.com/user/rag_wrangler</uri>
+    </author>
+    <category term="LocalLLaMA" label="r/LocalLLaMA"/>
+    <content type="html">&lt;!-- SC_OFF --&gt;&lt;div class="md"&gt;&lt;p&gt;Ran 500 questions against both. Qwen4 wins on retrieval faithfulness.&lt;/p&gt;&lt;/div&gt;&lt;!-- SC_ON --&gt;</content>
+    <id>t3_1lwabc</id>
+    <link href="https://www.reddit.com/r/LocalLLaMA/comments/1lwabc/qwen4_72b_beats_gpt5_on_my_local_rag_benchmark/"/>
+    <updated>2026-07-09T12:00:00+00:00</updated>
+    <title>Qwen4-72B beats GPT-5 on my local RAG benchmark</title>
+  </entry>
+  <entry>
+    <author>
+      <name>/u/quantcurious</name>
+      <uri>https://www.reddit.com/user/quantcurious</uri>
+    </author>
+    <category term="LocalLLaMA" label="r/LocalLLaMA"/>
+    <id>t3_1lwdef</id>
+    <link href="https://www.reddit.com/r/LocalLLaMA/comments/1lwdef/minimax_m2_gguf_quants_are_up/"/>
+    <updated>2026-07-09T09:30:00+00:00</updated>
+    <title>MiniMax M2 GGUF quants are up</title>
+  </entry>
+</feed>

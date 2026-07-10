@@ -1,0 +1,47 @@
+
+> runelabs-radar@0.1.0 dev
+> next dev
+
+ ⚠ Warning: Next.js inferred your workspace root, but it may not be correct.
+ We detected multiple lockfiles and selected the directory of C:\Users\Specter\package-lock.json as the root directory.
+ To silence this warning, set `outputFileTracingRoot` in your Next.js config, or consider removing one of the lockfiles if it's not needed.
+   See https://nextjs.org/docs/app/api-reference/config/next-config-js/output#caveats for more information.
+ Detected additional lockfiles: 
+   * C:\Users\Specter\AIHub\package-lock.json
+
+   ▲ Next.js 15.5.20
+   - Local:        http://localhost:3000
+   - Network:      http://192.168.56.1:3000
+   - Environments: .env
+
+ ✓ Starting...
+ ✓ Ready in 1789ms
+ ○ Compiling / ...
+ ✓ Compiled / in 2s (751 modules)
+ GET / 307 in 2305ms
+ ✓ Compiled /login in 237ms (758 modules)
+ GET /login 200 in 326ms
+ ✓ Compiled /api/auth/login in 149ms (766 modules)
+ POST /api/auth/login 401 in 363ms
+ POST /api/auth/login 200 in 73ms
+ GET / 200 in 192ms
+ ✓ Compiled /domain/[slug] in 170ms (768 modules)
+ GET /domain/coding 200 in 697ms
+ ✓ Compiled /board in 185ms (776 modules)
+ GET /board 200 in 371ms
+ ✓ Compiled /brief in 199ms (782 modules)
+ GET /brief 200 in 328ms
+ ✓ Compiled /admin in 345ms (796 modules)
+ GET /admin 200 in 506ms
+ ✓ Compiled /api/votes in 484ms (798 modules)
+ POST /api/votes 200 in 588ms
+ POST /api/votes 401 in 17ms
+ ✓ Compiled /api/verdicts in 172ms (800 modules)
+ POST /api/verdicts 200 in 213ms
+ ✓ Compiled /api/seen in 169ms (802 modules)
+ POST /api/seen 200 in 211ms
+ GET / 200 in 155ms
+ GET /board 200 in 91ms
+ GET / 200 in 82ms
+ GET / 200 in 82ms
+ GET / 200 in 77ms

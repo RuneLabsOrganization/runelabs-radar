@@ -126,20 +126,21 @@ describe('hn adapter', () => {
 });
 
 describe('reddit adapter', () => {
-  it('maps top posts, builds permalink urls, sends a User-Agent', async () => {
-    const fn = stubFetch(fixture('reddit.json'));
+  it('fetches the .rss endpoint with a browser UA and maps Atom entries', async () => {
+    const fn = stubFetch(fixture('reddit-rss.xml'));
     const out = await adapters.reddit.fetchItems(makeSource('reddit', { subreddit: 'LocalLLaMA' }));
-    expect(String(fn.mock.calls[0][0])).toBe('https://www.reddit.com/r/LocalLLaMA/top.json?t=day&limit=25');
+    expect(String(fn.mock.calls[0][0])).toBe('https://www.reddit.com/r/LocalLLaMA/top/.rss?t=day&limit=25');
     const init = fn.mock.calls[0][1];
-    expect((init?.headers as Record<string, string>)['User-Agent']).toBe('runelabs-radar/1.0');
+    expect((init?.headers as Record<string, string>)['User-Agent']).toContain('Mozilla/5.0');
     expect(out).toHaveLength(2);
     expect(out[0].url).toBe(
       'https://www.reddit.com/r/LocalLLaMA/comments/1lwabc/qwen4_72b_beats_gpt5_on_my_local_rag_benchmark/',
     );
     expect(out[0].title).toBe('Qwen4-72B beats GPT-5 on my local RAG benchmark');
     expect(out[0].excerpt).toContain('Ran 500 questions against both.');
-    expect(out[0].publishedAt).toEqual(new Date(1783555200 * 1000));
-    // empty selftext -> null excerpt
+    expect(out[0].excerpt).not.toContain('<');
+    expect(out[0].publishedAt).toEqual(new Date('2026-07-09T12:00:00+00:00'));
+    // entry without content -> null excerpt
     expect(out[1].excerpt).toBeNull();
   });
 });
