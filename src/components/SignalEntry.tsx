@@ -18,6 +18,7 @@ export default function SignalEntry({
   myVote,
   isNew = false,
   highlightDomain,
+  readOnly = false,
 }: {
   story: Story;
   itemCount: number;
@@ -28,6 +29,7 @@ export default function SignalEntry({
   myVote: 1 | -1 | 0;
   isNew?: boolean;
   highlightDomain?: Domain;
+  readOnly?: boolean;
 }) {
   const scores = parseDomainScores(story.domainScores);
   const href = safeHttpUrl(firstUrl);
@@ -85,7 +87,7 @@ export default function SignalEntry({
             )}
             <SectorTicks scores={scores} highlight={highlightDomain} />
             <span className="ml-auto">
-              <VoteButtons storyId={story.id} up={up} down={down} myVote={myVote} />
+              <VoteButtons storyId={story.id} up={up} down={down} myVote={myVote} readOnly={readOnly} />
             </span>
           </div>
         </div>

@@ -7,14 +7,27 @@ interface VerdictEditorProps {
   entryId: number;
   verdict: string | null;
   author: string | null;
+  /** false renders read-only text (anonymous visitors in public mode). */
+  canEdit?: boolean;
 }
 
-export default function VerdictEditor({ entryId, verdict, author }: VerdictEditorProps) {
+export default function VerdictEditor({ entryId, verdict, author, canEdit = true }: VerdictEditorProps) {
   const router = useRouter();
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  if (!canEdit) {
+    return verdict ? (
+      <span>
+        {verdict}
+        {author && <span className="muted"> — {author}</span>}
+      </span>
+    ) : (
+      <span className="muted">—</span>
+    );
+  }
 
   function startEditing() {
     setText(verdict ?? '');

@@ -1,6 +1,6 @@
 import { and, desc, eq, gte, inArray } from 'drizzle-orm';
 import { getDb } from './db';
-import { insights, items, stories } from './db/schema';
+import { benchmarkSnapshots, insights, items, stories } from './db/schema';
 import { DOMAINS, DOMAIN_MEMBERSHIP_THRESHOLD, type Domain } from './domains';
 import { parseDomainScores } from '@/components/DomainChips';
 
@@ -212,6 +212,53 @@ export interface Insight {
   detail: string;
   direction: 'up' | 'down' | 'watch';
   domain?: Domain;
+}
+
+export { paretoFrontier } from './pareto';
+export type { AaModel } from './pareto';
+import type { AaModel } from './pareto';
+
+/**
+ * Models from the latest Artificial Analysis snapshot (stored compact by the
+ * board sync). Sorted by intelligence, capped to keep the scatter readable.
+ */
+export function aaModels(limit = 60): { fetchedAt: string; models: AaModel[] } | null {
+  const db = getDb();
+  const snap = db
+    .select()
+    .from(benchmarkSnapshots)
+    .where(eq(benchmarkSnapshots.source, 'artificial-analysis'))
+    .orderBy(desc(benchmarkSnapshots.fetchedAt), desc(benchmarkSnapshots.id))
+    .limit(1)
+    .get();
+  if (!snap) return null;
+  try {
+    const parsed = JSON.parse(snap.raw) as { compact?: boolean; models?: unknown };
+    if (!parsed.compact || !Array.isArray(parsed.models)) return null;
+    const models = (parsed.models as Record<string, unknown>[])
+      .filter(
+        (m): m is Record<string, unknown> =>
+          typeof m.name === 'string' &&
+          typeof m.intelligence === 'number' &&
+          typeof m.price === 'number' &&
+          (m.price as number) > 0,
+      )
+      .map((m) => ({
+        name: m.name as string,
+        org: typeof m.org === 'string' ? m.org : null,
+        intelligence: m.intelligence as number,
+        coding: typeof m.coding === 'number' ? m.coding : null,
+        price: m.price as number,
+        speed: typeof m.speed === 'number' ? m.speed : null,
+        released: typeof m.released === 'string' ? m.released : null,
+      }))
+      .sort((a, b) => b.intelligence - a.intelligence)
+      .slice(0, limit);
+    if (models.length === 0) return null;
+    return { fetchedAt: snap.fetchedAt.toISOString().slice(0, 10), models };
+  } catch {
+    return null;
+  }
 }
 
 /** Latest analyst notes (written by the daily brief job). */

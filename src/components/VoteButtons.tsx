@@ -10,14 +10,25 @@ export default function VoteButtons({
   up,
   down,
   myVote,
+  readOnly = false,
 }: {
   storyId: number;
   up: number;
   down: number;
   myVote: 1 | -1 | 0;
+  readOnly?: boolean;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
+
+  if (readOnly) {
+    return (
+      <span className="mono inline-flex items-center gap-2.5 text-[11px]" style={{ color: 'var(--ink-4)' }}>
+        <span>&#9650;&#8202;{up}</span>
+        <span>&#9660;{down > 0 ? ` ${down}` : ''}</span>
+      </span>
+    );
+  }
 
   async function vote(value: 1 | -1) {
     if (busy) return;

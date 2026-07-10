@@ -24,4 +24,8 @@ export const config = {
   get aaApiKey(): string {
     return process.env.AA_API_KEY ?? '';
   },
+  /** PUBLIC_MODE=true lets anonymous visitors read the hub (no votes/verdicts/admin). */
+  get publicMode(): boolean {
+    return process.env.PUBLIC_MODE === 'true';
+  },
 };

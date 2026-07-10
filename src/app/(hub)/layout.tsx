@@ -1,12 +1,12 @@
 import Link from 'next/link';
-import { requireUser } from '@/lib/auth/user';
+import { requireViewer } from '@/lib/auth/user';
 import { getStaleness, lastOkAt } from '@/lib/jobs';
 import { timeAgo } from '@/lib/feed';
 import NavLinks from '@/components/NavLinks';
 import LogoutButton from '@/components/LogoutButton';
 
 export default async function HubLayout({ children }: { children: React.ReactNode }) {
-  const user = await requireUser();
+  const user = await requireViewer();
   const { ingestStale, curateStale } = getStaleness();
   const stale = ingestStale || curateStale;
   const lastSweep = lastOkAt('ingest');
@@ -28,7 +28,7 @@ export default async function HubLayout({ children }: { children: React.ReactNod
             <span aria-hidden className="inline-block h-[10px] w-[3px]" style={{ background: 'var(--phosphor)' }} />
             RUNELABS RADAR
           </Link>
-          <NavLinks isAdmin={user.role === 'admin'} />
+          <NavLinks isAdmin={user?.role === 'admin'} />
           <div className="mono ml-auto flex items-center gap-4 text-[10.5px] tracking-[0.08em] uppercase">
             <span
               className="hidden items-center gap-1.5 sm:flex"
@@ -42,8 +42,19 @@ export default async function HubLayout({ children }: { children: React.ReactNod
               />
               sweep {lastSweep ? timeAgo(lastSweep) : '—'}
             </span>
-            <span className="hidden text-[var(--ink-4)] md:inline">{user.name}</span>
-            <LogoutButton />
+            {user ? (
+              <>
+                <span className="hidden text-[var(--ink-4)] md:inline">{user.name}</span>
+                <LogoutButton />
+              </>
+            ) : (
+              <Link
+                href="/login"
+                className="text-[var(--ink-3)] transition-colors hover:text-[var(--ink-2)]"
+              >
+                sign in
+              </Link>
+            )}
           </div>
         </div>
       </header>

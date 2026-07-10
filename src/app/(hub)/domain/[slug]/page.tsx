@@ -1,6 +1,6 @@
 import { notFound } from 'next/navigation';
 import { and, desc, eq, gt, inArray } from 'drizzle-orm';
-import { requireUser } from '@/lib/auth/user';
+import { requireViewer } from '@/lib/auth/user';
 import { getDb } from '@/lib/db';
 import { items, sources, stories, votes } from '@/lib/db/schema';
 import {
@@ -24,7 +24,7 @@ export default async function DomainPage({ params }: { params: Promise<{ slug: s
   const { slug } = await params;
   if (!isDomain(slug)) notFound();
 
-  const user = await requireUser();
+  const user = await requireViewer();
   const db = getDb();
 
   // Same 72h scope as the briefing, re-scored through this sector's lens.
@@ -38,7 +38,7 @@ export default async function DomainPage({ params }: { params: Promise<{ slug: s
     .limit(100)
     .all();
 
-  const anchor = visitAnchor(user);
+  const anchor = user ? visitAnchor(user) : null;
   const all = curated.map((story) => {
     const scores = parseDomainScores(story.domainScores);
     return {
@@ -96,7 +96,7 @@ export default async function DomainPage({ params }: { params: Promise<{ slug: s
     const agg = voteAgg.get(row.storyId) ?? { up: 0, down: 0, mine: 0 as const };
     if (row.value === 1) agg.up += 1;
     else if (row.value === -1) agg.down += 1;
-    if (row.userId === user.id && (row.value === 1 || row.value === -1)) agg.mine = row.value;
+    if (user && row.userId === user.id && (row.value === 1 || row.value === -1)) agg.mine = row.value;
     voteAgg.set(row.storyId, agg);
   }
 
@@ -142,6 +142,7 @@ export default async function DomainPage({ params }: { params: Promise<{ slug: s
                 myVote={vt.mine}
                 isNew={c.isNew}
                 highlightDomain={slug}
+                readOnly={!user}
               />
             );
           })}

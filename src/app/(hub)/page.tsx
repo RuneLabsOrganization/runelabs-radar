@@ -1,5 +1,5 @@
 import { and, count, desc, eq, gt, inArray } from 'drizzle-orm';
-import { requireUser } from '@/lib/auth/user';
+import { requireViewer } from '@/lib/auth/user';
 import { getDb } from '@/lib/db';
 import { items, sources, stories, votes } from '@/lib/db/schema';
 import { DOMAINS, DOMAIN_MEMBERSHIP_THRESHOLD } from '@/lib/domains';
@@ -73,7 +73,7 @@ function dateLine(d: Date): string {
 }
 
 export default async function BriefingPage() {
-  const user = await requireUser();
+  const user = await requireViewer();
   const db = getDb();
   const now = Date.now();
 
@@ -102,10 +102,10 @@ export default async function BriefingPage() {
   const itemAgg = itemAggByStory([...curated, ...rawRecent].map((s) => s.id));
   const voteAgg = voteAggByStory(
     curated.map((s) => s.id),
-    user.id,
+    user?.id ?? -1, // anonymous viewers match no votes
   );
 
-  const anchor = visitAnchor(user);
+  const anchor = user ? visitAnchor(user) : null;
   const contacts = curated.map((story) => {
     const scores = parseDomainScores(story.domainScores);
     return {
@@ -139,7 +139,7 @@ export default async function BriefingPage() {
 
   return (
     <div className="mx-auto max-w-[860px] px-6 py-7">
-      <MarkSeen />
+      {user && <MarkSeen />}
 
       <div className="readout">
         {dateLine(new Date())} &middot; {contacts.length} contacts on scope
@@ -193,6 +193,7 @@ export default async function BriefingPage() {
                 down={vt.down}
                 myVote={vt.mine}
                 isNew={c.isNew}
+                readOnly={!user}
               />
             );
           })}

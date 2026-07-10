@@ -1,8 +1,10 @@
 import { desc, gte } from 'drizzle-orm';
 import type { ReactNode } from 'react';
+import ModelScatter from '@/components/ModelScatter';
 import VerdictEditor from '@/components/VerdictEditor';
 import SectionHeader from '@/components/SectionHeader';
-import { requireUser } from '@/lib/auth/user';
+import { aaModels } from '@/lib/analytics';
+import { requireViewer } from '@/lib/auth/user';
 import { getDb } from '@/lib/db';
 import { boardEntries, boardHistory } from '@/lib/db/schema';
 import { DOMAIN_COLORS, DOMAIN_LABELS, DOMAINS, isDomain } from '@/lib/domains';
@@ -22,8 +24,9 @@ function domainLabel(domain: string): string {
 }
 
 export default async function BoardPage() {
-  await requireUser();
+  const user = await requireViewer();
   const db = getDb();
+  const aa = aaModels();
 
   const entries = db
     .select()
@@ -50,6 +53,13 @@ export default async function BoardPage() {
     <div className="mx-auto max-w-[860px] px-6 py-7">
       <div className="readout">cost-benefit board &middot; weekly sync, human-approved</div>
       <h1 className="mt-1 text-[17px] font-semibold tracking-[-0.01em]">Best Right Now</h1>
+
+      {aa && aa.models.length > 0 && (
+        <>
+          <SectionHeader label="The market — quality vs price" />
+          <ModelScatter models={aa.models} fetchedAt={aa.fetchedAt} />
+        </>
+      )}
 
       {entries.length === 0 && (
         <p className="mono mt-6 text-[12px]" style={{ color: 'var(--ink-4)' }}>
@@ -95,6 +105,7 @@ export default async function BoardPage() {
                         entryId={entry.id}
                         verdict={entry.runelabsVerdict}
                         author={entry.verdictAuthor}
+                        canEdit={!!user}
                       />
                     </td>
                   </tr>

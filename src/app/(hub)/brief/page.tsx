@@ -1,6 +1,6 @@
 import { desc, eq } from 'drizzle-orm';
 import Link from 'next/link';
-import { requireUser } from '@/lib/auth/user';
+import { requireViewer } from '@/lib/auth/user';
 import { getDb } from '@/lib/db';
 import { briefs } from '@/lib/db/schema';
 import { renderMarkdown } from '@/lib/markdown';
@@ -24,7 +24,7 @@ export default async function BriefPage({
 }: {
   searchParams: Promise<{ date?: string | string[] }>;
 }) {
-  await requireUser();
+  await requireViewer();
   const params = await searchParams;
   const rawDate = Array.isArray(params.date) ? params.date[0] : params.date;
   const date = rawDate && /^\d{4}-\d{2}-\d{2}$/.test(rawDate) ? rawDate : null;

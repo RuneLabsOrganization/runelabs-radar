@@ -1,13 +1,16 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { useTestDb } from './helpers/db';
 import type { Db } from '@/lib/db';
-import { items, sources, stories } from '@/lib/db/schema';
+import { benchmarkSnapshots, items, sources, stories } from '@/lib/db/schema';
 import {
+  aaModels,
   dailyDomainCounts,
   domainMomentum,
   echoStats,
+  paretoFrontier,
   topEntities,
 } from '@/lib/analytics';
+import { compactAaSnapshot } from '@/lib/board/sync';
 import { sanitizeEntities } from '@/lib/curate/curate';
 import { sanitizeInsights } from '@/lib/brief/brief';
 
@@ -111,6 +114,71 @@ describe('analytics', () => {
     const echoes = echoStats();
     expect(echoes.multiSource).toBe(1);
     expect(echoes.strongest).toEqual({ title: 'multi-source story', sources: 3 });
+  });
+});
+
+describe('artificial analysis data', () => {
+  const AA_RAW = JSON.stringify({
+    status: 200,
+    data: [
+      {
+        name: 'GPT-5.5',
+        release_date: '2026-04-23',
+        model_creator: { name: 'OpenAI' },
+        evaluations: { artificial_analysis_intelligence_index: 35.4, artificial_analysis_coding_index: 56.5 },
+        pricing: { price_1m_blended_3_to_1: 11.25, price_1m_input_tokens: 5, price_1m_output_tokens: 30 },
+        median_output_tokens_per_second: 59.3,
+      },
+      {
+        name: 'MiniMax M2',
+        release_date: '2025-12-01',
+        model_creator: { name: 'MiniMax' },
+        evaluations: { artificial_analysis_intelligence_index: 30.1, artificial_analysis_coding_index: null },
+        pricing: { price_1m_blended_3_to_1: 0.53 },
+        median_output_tokens_per_second: 92.1,
+      },
+      { name: 'no-metrics-model', evaluations: {}, pricing: {} },
+      { evaluations: { artificial_analysis_intelligence_index: 50 } }, // nameless → dropped
+    ],
+  });
+
+  it('compactAaSnapshot keeps only needed fields and drops nameless rows', () => {
+    const compact = JSON.parse(compactAaSnapshot(AA_RAW)) as { compact: boolean; models: unknown[] };
+    expect(compact.compact).toBe(true);
+    expect(compact.models).toHaveLength(3);
+    expect(compact.models[0]).toMatchObject({ name: 'GPT-5.5', org: 'OpenAI', intelligence: 35.4, price: 11.25 });
+  });
+
+  it('compactAaSnapshot falls back to a slice on unparseable input', () => {
+    expect(compactAaSnapshot('not json at all')).toBe('not json at all');
+  });
+
+  it('aaModels reads the latest compact snapshot, filters unpriced models, sorts by intelligence', () => {
+    const db = useTestDb();
+    db.insert(benchmarkSnapshots)
+      .values({ source: 'artificial-analysis', raw: compactAaSnapshot(AA_RAW), fetchedAt: new Date() })
+      .run();
+    const res = aaModels();
+    expect(res).not.toBeNull();
+    expect(res!.models).toHaveLength(2); // no-metrics-model dropped
+    expect(res!.models[0].name).toBe('GPT-5.5');
+    expect(res!.models[1]).toMatchObject({ name: 'MiniMax M2', coding: null, speed: 92.1 });
+  });
+
+  it('aaModels returns null without a snapshot', () => {
+    useTestDb();
+    expect(aaModels()).toBeNull();
+  });
+
+  it('paretoFrontier marks cheaper-and-better points only', () => {
+    // (price, quality): B dominates C (cheaper AND better); A is priciest but best; D cheapest.
+    const pts = [
+      { x: 10, y: 90 }, // A frontier (best quality)
+      { x: 1, y: 70 },  // B frontier
+      { x: 2, y: 60 },  // C dominated by B
+      { x: 0.1, y: 20 } // D frontier (cheapest)
+    ];
+    expect(paretoFrontier(pts)).toEqual([true, true, false, true]);
   });
 });
 

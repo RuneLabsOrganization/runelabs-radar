@@ -36,6 +36,77 @@ function storeSnapshot(source: string, raw: string): void {
     .run();
 }
 
+interface AaApiModel {
+  name?: unknown;
+  release_date?: unknown;
+  model_creator?: { name?: unknown };
+  evaluations?: {
+    artificial_analysis_intelligence_index?: unknown;
+    artificial_analysis_coding_index?: unknown;
+  };
+  pricing?: {
+    price_1m_blended_3_to_1?: unknown;
+    price_1m_input_tokens?: unknown;
+    price_1m_output_tokens?: unknown;
+  };
+  median_output_tokens_per_second?: unknown;
+}
+
+function num(v: unknown): number | null {
+  return typeof v === 'number' && Number.isFinite(v) ? v : null;
+}
+
+/**
+ * The raw AA response exceeds the snapshot size cap; keep only the fields the
+ * scatter and the proposal prompt need. Exported for tests. Unparseable input
+ * falls back to a raw slice.
+ */
+export function compactAaSnapshot(raw: string): string {
+  try {
+    const parsed = JSON.parse(raw) as { data?: unknown };
+    if (!Array.isArray(parsed.data)) return raw.slice(0, SNAPSHOT_MAX_CHARS);
+    const models = (parsed.data as AaApiModel[])
+      .map((m) => ({
+        name: typeof m.name === 'string' ? m.name : null,
+        org: typeof m.model_creator?.name === 'string' ? m.model_creator.name : null,
+        released: typeof m.release_date === 'string' ? m.release_date : null,
+        intelligence: num(m.evaluations?.artificial_analysis_intelligence_index),
+        coding: num(m.evaluations?.artificial_analysis_coding_index),
+        price: num(m.pricing?.price_1m_blended_3_to_1),
+        priceIn: num(m.pricing?.price_1m_input_tokens),
+        priceOut: num(m.pricing?.price_1m_output_tokens),
+        speed: num(m.median_output_tokens_per_second),
+      }))
+      .filter((m) => m.name !== null);
+    return JSON.stringify({ compact: true, models });
+  } catch {
+    return raw.slice(0, SNAPSHOT_MAX_CHARS);
+  }
+}
+
+/** Renders a compact AA snapshot as prompt-friendly lines (top models by intelligence). */
+function aaPromptLines(compactRaw: string, limit = 40): string | null {
+  try {
+    const parsed = JSON.parse(compactRaw) as { compact?: boolean; models?: unknown };
+    if (!parsed.compact || !Array.isArray(parsed.models)) return null;
+    const models = (parsed.models as Record<string, unknown>[])
+      .filter((m) => typeof m.intelligence === 'number' && typeof m.price === 'number')
+      .sort((a, b) => (b.intelligence as number) - (a.intelligence as number))
+      .slice(0, limit);
+    if (models.length === 0) return null;
+    return models
+      .map(
+        (m) =>
+          `- ${m.name as string} (${(m.org as string) ?? '?'}): intelligence ${m.intelligence}, ` +
+          `coding ${m.coding ?? 'n/a'}, $${m.price}/1M blended, ${m.speed ?? '?'} tok/s` +
+          (m.released ? `, released ${m.released as string}` : ''),
+      )
+      .join('\n');
+  } catch {
+    return null;
+  }
+}
+
 function asOptString(v: unknown): string | null {
   return typeof v === 'string' && v.trim() !== '' ? v.trim() : null;
 }
@@ -140,7 +211,7 @@ export async function runBoardSync(): Promise<{ snapshots: number; proposals: nu
   if (config.aaApiKey) {
     try {
       const raw = await fetchText(AA_URL, { 'x-api-key': config.aaApiKey });
-      storeSnapshot('artificial-analysis', raw);
+      storeSnapshot('artificial-analysis', compactAaSnapshot(raw));
       snapshots++;
     } catch (e) {
       console.error('[board] Artificial Analysis fetch failed:', e);
@@ -159,7 +230,10 @@ export async function runBoardSync(): Promise<{ snapshots: number; proposals: nu
   const hasBenchmarks = latestBySource.size > 0;
   const perSource = Math.floor(PROMPT_SNAPSHOT_BUDGET / Math.max(1, latestBySource.size));
   const snapshotText = Array.from(latestBySource.entries())
-    .map(([source, raw]) => `--- ${source} ---\n${raw.slice(0, perSource)}`)
+    .map(([source, raw]) => {
+      const pretty = source === 'artificial-analysis' ? aaPromptLines(raw) : null;
+      return `--- ${source} ---\n${pretty ?? raw.slice(0, perSource)}`;
+    })
     .join('\n\n');
 
   const weekAgo = new Date(Date.now() - 7 * 864e5);
