@@ -2,29 +2,30 @@ import { notFound } from 'next/navigation';
 import { and, desc, eq, gt, inArray } from 'drizzle-orm';
 import { requireUser } from '@/lib/auth/user';
 import { getDb } from '@/lib/db';
-import { items, stories, votes } from '@/lib/db/schema';
+import { items, sources, stories, votes } from '@/lib/db/schema';
 import {
+  DOMAINS,
   DOMAIN_COLORS,
   DOMAIN_LABELS,
   DOMAIN_MEMBERSHIP_THRESHOLD,
   isDomain,
 } from '@/lib/domains';
+import { splitFeed } from '@/lib/feed';
+import { visitAnchor } from '@/lib/visits';
 import { parseDomainScores } from '@/components/DomainChips';
-import StoryCard from '@/components/StoryCard';
+import ScanRow from '@/components/ScanRow';
+import SectionHeader from '@/components/SectionHeader';
+import SectorStrip, { type SectorStat } from '@/components/SectorStrip';
+import SignalEntry from '@/components/SignalEntry';
 
-export default async function DomainPage({
-  params,
-}: {
-  params: Promise<{ slug: string }>;
-}) {
+export default async function DomainPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
   if (!isDomain(slug)) notFound();
 
   const user = await requireUser();
   const db = getDb();
 
-  // Same base list as Today: curated stories of the last 72h (top 60 by topScore),
-  // then filtered to this domain and re-sorted by the domain's own score.
+  // Same 72h scope as the briefing, re-scored through this sector's lens.
   const curated = db
     .select()
     .from(stories)
@@ -32,30 +33,55 @@ export default async function DomainPage({
       and(eq(stories.status, 'curated'), gt(stories.createdAt, new Date(Date.now() - 72 * 36e5))),
     )
     .orderBy(desc(stories.topScore))
-    .limit(60)
+    .limit(100)
     .all();
 
-  const scored = curated
-    .map((story) => ({ story, score: parseDomainScores(story.domainScores)?.[slug] ?? 0 }))
-    .filter((s) => s.score >= DOMAIN_MEMBERSHIP_THRESHOLD)
-    .sort((a, b) => b.score - a.score);
+  const anchor = visitAnchor(user);
+  const all = curated.map((story) => {
+    const scores = parseDomainScores(story.domainScores);
+    return {
+      story,
+      scores,
+      score: scores?.[slug] ?? 0,
+      createdAt: story.createdAt,
+      isNew: anchor ? story.createdAt > anchor : false,
+    };
+  });
 
-  const ids = scored.map((s) => s.story.id);
+  const stats: SectorStat[] = DOMAINS.map((domain) => {
+    let n = 0;
+    let fresh = 0;
+    for (const c of all) {
+      if ((c.scores?.[domain] ?? 0) >= DOMAIN_MEMBERSHIP_THRESHOLD) {
+        n += 1;
+        if (c.isNew) fresh += 1;
+      }
+    }
+    return { domain, count: n, fresh };
+  });
+
+  const member = all.filter((c) => c.score >= DOMAIN_MEMBERSHIP_THRESHOLD);
+  const { top, scan, lowCount } = splitFeed(member);
+  const ids = member.map((c) => c.story.id);
 
   const itemRows = ids.length
     ? db
-        .select({ storyId: items.storyId, url: items.url })
+        .select({ storyId: items.storyId, url: items.url, sourceName: sources.name })
         .from(items)
+        .innerJoin(sources, eq(items.sourceId, sources.id))
         .where(inArray(items.storyId, ids))
         .orderBy(items.id)
         .all()
     : [];
-  const itemAgg = new Map<number, { count: number; firstUrl: string | null }>();
+  const itemAgg = new Map<number, { count: number; firstUrl: string | null; sourceName: string | null }>();
   for (const row of itemRows) {
     if (row.storyId == null) continue;
-    const agg = itemAgg.get(row.storyId) ?? { count: 0, firstUrl: null };
+    const agg = itemAgg.get(row.storyId) ?? { count: 0, firstUrl: null, sourceName: null };
     agg.count += 1;
-    if (agg.firstUrl === null) agg.firstUrl = row.url;
+    if (agg.firstUrl === null) {
+      agg.firstUrl = row.url;
+      agg.sourceName = row.sourceName;
+    }
     itemAgg.set(row.storyId, agg);
   }
 
@@ -71,48 +97,72 @@ export default async function DomainPage({
     voteAgg.set(row.storyId, agg);
   }
 
-  return (
-    <div className="mx-auto max-w-[980px] px-6 py-6">
-      <div className="flex items-center gap-2.5">
-        <span
-          aria-hidden
-          className="inline-block h-3 w-3 rounded-full"
-          style={{ background: DOMAIN_COLORS[slug] }}
-        />
-        <h1 className="text-lg font-bold">{DOMAIN_LABELS[slug]}</h1>
-      </div>
-      <p className="muted mt-0.5 text-[12px]">
-        Curated stories from the last 72h scoring&nbsp;
-        <span style={{ color: DOMAIN_COLORS[slug] }}>
-          {DOMAIN_MEMBERSHIP_THRESHOLD}+
-        </span>
-        &nbsp;for {DOMAIN_LABELS[slug]}, highest first.
-      </p>
+  const fresh = member.filter((c) => c.isNew).length;
 
-      <div className="mt-5 flex flex-col gap-3">
-        {scored.length === 0 ? (
-          <div className="card muted text-[13px]">
-            No {DOMAIN_LABELS[slug]} stories in the last 72 hours.
-          </div>
-        ) : (
-          scored.map(({ story }) => {
-            const it = itemAgg.get(story.id) ?? { count: 0, firstUrl: null };
-            const vt = voteAgg.get(story.id) ?? { up: 0, down: 0, mine: 0 as const };
+  return (
+    <div className="mx-auto max-w-[760px] px-6 py-7">
+      <div className="readout">
+        sector scan &middot; {member.length} contacts
+        {fresh > 0 && <span style={{ color: 'var(--phosphor)' }}> &middot; {fresh} new</span>}
+      </div>
+      <h1 className="mt-1 flex items-center gap-2.5 text-[17px] font-semibold tracking-[-0.01em]">
+        <span aria-hidden className="inline-block h-[14px] w-[3px]" style={{ background: DOMAIN_COLORS[slug] }} />
+        {DOMAIN_LABELS[slug]}
+      </h1>
+
+      <div className="mt-4">
+        <SectorStrip stats={stats} active={slug} />
+      </div>
+
+      <SectionHeader label="Top signals" count={top.length} tone="phosphor" />
+      {top.length === 0 ? (
+        <p className="mono py-4 text-[12px]" style={{ color: 'var(--ink-4)' }}>
+          No strong {DOMAIN_LABELS[slug]} signals in the last 72h.
+        </p>
+      ) : (
+        <div>
+          {top.map((c) => {
+            const it = itemAgg.get(c.story.id) ?? { count: 0, firstUrl: null, sourceName: null };
+            const vt = voteAgg.get(c.story.id) ?? { up: 0, down: 0, mine: 0 as const };
             return (
-              <StoryCard
-                key={story.id}
-                story={story}
+              <SignalEntry
+                key={c.story.id}
+                story={c.story}
                 itemCount={it.count}
                 firstUrl={it.firstUrl}
+                sourceName={it.sourceName}
                 up={vt.up}
                 down={vt.down}
                 myVote={vt.mine}
+                isNew={c.isNew}
                 highlightDomain={slug}
               />
             );
-          })
-        )}
-      </div>
+          })}
+        </div>
+      )}
+
+      {scan.length > 0 && (
+        <>
+          <SectionHeader label="Scan log" count={scan.length} />
+          <ul>
+            {scan.map((c) => (
+              <ScanRow
+                key={c.story.id}
+                story={c.story}
+                firstUrl={itemAgg.get(c.story.id)?.firstUrl ?? null}
+                score={c.score}
+                domain={slug}
+                isNew={c.isNew}
+              />
+            ))}
+          </ul>
+        </>
+      )}
+
+      {lowCount > 0 && (
+        <p className="readout mt-9">{lowCount} low-signal contacts below the scan threshold</p>
+      )}
     </div>
   );
 }

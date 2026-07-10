@@ -1,24 +1,65 @@
 @import 'tailwindcss';
 
-:root {
-  --bg: #0b0e14;
-  --panel: #121722;
-  --panel-2: #171d2b;
-  --border: #232b3d;
-  --text: #e8ebf3;
-  --muted: #8b93a7;
-  --accent: #7c5cff;
-  --accent-soft: rgba(124, 92, 255, 0.14);
-  --up: #3fb67d;
-  --down: #e05252;
-  --warn: #e0a935;
+/* ── Runelabs Radar — scope console ─────────────────────────────
+   The product is a radar for AI news; the interface is the
+   operator's scope. CRT glass surfaces, graticule hairlines,
+   one phosphor trace for signal. Color means signal — never
+   decoration. */
 
-  --d-coding: #5b9dff;
-  --d-copy: #ffb454;
-  --d-image: #ff6ec7;
-  --d-video: #b48bff;
-  --d-ads: #3fd2c7;
-  --d-agentic: #9ccc3d;
+:root {
+  /* scope glass — surface elevation */
+  --scope-0: #0a0e13;
+  --scope-1: #0e141b;
+  --scope-2: #131a23;
+  --scope-inset: #070a0f;
+
+  /* graticule — border progression */
+  --grat-soft: rgba(151, 180, 205, 0.07);
+  --grat: rgba(151, 180, 205, 0.13);
+  --grat-strong: rgba(151, 180, 205, 0.26);
+
+  /* ink — text hierarchy */
+  --ink: #e3eaf0;
+  --ink-2: #a6b4c2;
+  --ink-3: #758594;
+  --ink-4: #4d5b69;
+
+  /* phosphor — the signal */
+  --phosphor: #57d9a3;
+  --phosphor-dim: rgba(87, 217, 163, 0.13);
+  --amber: #d9a13f;
+  --amber-dim: rgba(217, 161, 63, 0.12);
+  --alert: #d96b5c;
+
+  /* sector ticks — identification, not decoration */
+  --sector-coding: #6f9fd6;
+  --sector-copy: #c8a55e;
+  --sector-image: #c583ab;
+  --sector-video: #9d88cb;
+  --sector-ads: #5fb8ac;
+  --sector-agentic: #94ad61;
+
+  --font-readout:
+    ui-monospace, 'Cascadia Mono', 'SF Mono', Menlo, Consolas, monospace;
+
+  /* aliases — surfaces written against the earlier token names */
+  --bg: var(--scope-0);
+  --panel: var(--scope-1);
+  --panel-2: var(--scope-2);
+  --border: var(--grat);
+  --text: var(--ink);
+  --muted: var(--ink-3);
+  --accent: var(--phosphor);
+  --accent-soft: var(--phosphor-dim);
+  --up: var(--phosphor);
+  --down: var(--alert);
+  --warn: var(--amber);
+  --d-coding: var(--sector-coding);
+  --d-copy: var(--sector-copy);
+  --d-image: var(--sector-image);
+  --d-video: var(--sector-video);
+  --d-ads: var(--sector-ads);
+  --d-agentic: var(--sector-agentic);
 }
 
 html {
@@ -26,8 +67,8 @@ html {
 }
 
 body {
-  background: var(--bg);
-  color: var(--text);
+  background: var(--scope-0);
+  color: var(--ink);
   font-family:
     ui-sans-serif,
     system-ui,
@@ -37,7 +78,7 @@ body {
     'Helvetica Neue',
     sans-serif;
   font-size: 14px;
-  line-height: 1.5;
+  line-height: 1.55;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -45,12 +86,53 @@ a {
   color: inherit;
 }
 
-/* Shared component classes — use these across all pages for consistency */
+::selection {
+  background: var(--phosphor-dim);
+}
 
+/* readouts — instrument labels */
+.readout {
+  font-family: var(--font-readout);
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-4);
+}
+
+.mono {
+  font-family: var(--font-readout);
+}
+
+/* quiet inline vote controls */
+.vote-btn {
+  background: none;
+  border: none;
+  padding: 0 2px;
+  cursor: pointer;
+  color: var(--ink-4);
+  font: inherit;
+  transition: color 120ms ease;
+}
+.vote-btn:hover {
+  color: var(--ink-2);
+}
+.vote-btn[aria-pressed='true'] {
+  color: var(--phosphor);
+}
+.vote-btn.down[aria-pressed='true'] {
+  color: var(--alert);
+}
+.vote-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* shared component skins */
 .card {
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 8px;
+  background: var(--scope-1);
+  border: 1px solid var(--grat-soft);
+  border-radius: 6px;
   padding: 14px 16px;
 }
 
@@ -58,40 +140,52 @@ a {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  background: var(--panel-2);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  color: var(--text);
-  padding: 5px 12px;
-  font-size: 13px;
+  background: transparent;
+  border: 1px solid var(--grat);
+  border-radius: 4px;
+  color: var(--ink-2);
+  padding: 4px 11px;
+  font-size: 12.5px;
   cursor: pointer;
-  transition: border-color 120ms ease, background 120ms ease;
+  transition:
+    border-color 120ms ease,
+    color 120ms ease,
+    background 120ms ease;
 }
 
 .btn:hover {
-  border-color: var(--accent);
+  border-color: var(--grat-strong);
+  color: var(--ink);
+}
+
+.btn:focus-visible {
+  outline: none;
+  border-color: var(--phosphor);
 }
 
 .btn-primary {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fff;
+  background: var(--phosphor-dim);
+  border-color: transparent;
+  color: var(--phosphor);
+  font-weight: 600;
 }
 
 .btn-primary:hover {
-  filter: brightness(1.1);
+  background: rgba(87, 217, 163, 0.22);
+  border-color: transparent;
+  color: var(--phosphor);
 }
 
 .btn-danger:hover {
-  border-color: var(--down);
-  color: var(--down);
+  border-color: var(--alert);
+  color: var(--alert);
 }
 
 .input {
-  background: var(--panel-2);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  color: var(--text);
+  background: var(--scope-inset);
+  border: 1px solid var(--grat);
+  border-radius: 4px;
+  color: var(--ink);
   padding: 6px 10px;
   font-size: 13px;
   width: 100%;
@@ -99,19 +193,25 @@ a {
 
 .input:focus {
   outline: none;
-  border-color: var(--accent);
+  border-color: var(--phosphor);
+}
+
+.input::placeholder {
+  color: var(--ink-4);
 }
 
 .badge {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  border-radius: 999px;
-  padding: 1px 8px;
-  font-size: 11px;
-  font-weight: 600;
-  border: 1px solid var(--border);
-  color: var(--muted);
+  gap: 5px;
+  border-radius: 3px;
+  padding: 1px 7px;
+  font-family: var(--font-readout);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border: 1px solid var(--grat);
+  color: var(--ink-3);
 }
 
 .table {
@@ -122,28 +222,33 @@ a {
 
 .table th {
   text-align: left;
-  color: var(--muted);
+  font-family: var(--font-readout);
+  font-size: 10px;
   font-weight: 500;
-  font-size: 12px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-4);
   padding: 6px 10px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--grat);
 }
 
 .table td {
   padding: 8px 10px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--grat-soft);
   vertical-align: top;
+  color: var(--ink-2);
 }
 
 .muted {
-  color: var(--muted);
+  color: var(--ink-3);
 }
 
 .section-title {
-  font-size: 12px;
-  font-weight: 600;
+  font-family: var(--font-readout);
+  font-size: 10.5px;
+  font-weight: 500;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--muted);
+  letter-spacing: 0.12em;
+  color: var(--ink-4);
   margin-bottom: 8px;
 }

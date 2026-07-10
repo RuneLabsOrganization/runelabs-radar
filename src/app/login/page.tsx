@@ -27,7 +27,11 @@ export default function LoginPage() {
         router.refresh();
         return;
       }
-      setError(res.status === 401 ? 'Invalid name or password.' : 'Login failed. Try again.');
+      if (res.status === 429) {
+        setError('Too many attempts — try again later.');
+      } else {
+        setError(res.status === 401 ? 'Invalid name or password.' : 'Login failed. Try again.');
+      }
     } catch {
       setError('Login failed. Try again.');
     }
@@ -36,18 +40,19 @@ export default function LoginPage() {
 
   return (
     <main className="flex min-h-screen items-center justify-center px-6">
-      <form onSubmit={onSubmit} className="card w-full max-w-[340px]">
-        <h1 className="text-[15px] font-bold tracking-tight">
-          Runelabs <span style={{ color: 'var(--accent)' }}>Radar</span>
-        </h1>
-        <p className="muted mt-1 text-[12px]">Sign in with your team account.</p>
+      <form onSubmit={onSubmit} className="card w-full max-w-[340px] !p-6">
+        <div className="mono flex items-center gap-2 text-[11.5px] font-semibold tracking-[0.16em] text-[var(--ink)]">
+          <span aria-hidden className="inline-block h-[10px] w-[3px]" style={{ background: 'var(--phosphor)' }} />
+          RUNELABS RADAR
+        </div>
+        <p className="readout mt-2">operator access</p>
 
-        <label htmlFor="login-name" className="muted mt-4 block text-[12px]">
+        <label htmlFor="login-name" className="readout mt-6 block">
           Name
         </label>
         <input
           id="login-name"
-          className="input mt-1"
+          className="input mt-1.5"
           value={name}
           onChange={(e) => setName(e.target.value)}
           autoComplete="username"
@@ -55,13 +60,13 @@ export default function LoginPage() {
           required
         />
 
-        <label htmlFor="login-password" className="muted mt-3 block text-[12px]">
+        <label htmlFor="login-password" className="readout mt-4 block">
           Password
         </label>
         <input
           id="login-password"
           type="password"
-          className="input mt-1"
+          className="input mt-1.5"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           autoComplete="current-password"
@@ -69,7 +74,7 @@ export default function LoginPage() {
         />
 
         {error && (
-          <p className="mt-3 text-[12px]" style={{ color: 'var(--down)' }} role="alert">
+          <p className="mt-3 text-[12px]" style={{ color: 'var(--alert)' }} role="alert">
             {error}
           </p>
         )}
@@ -77,7 +82,7 @@ export default function LoginPage() {
         <button
           type="submit"
           disabled={busy}
-          className="btn btn-primary mt-4 w-full justify-center disabled:opacity-60"
+          className="btn btn-primary mt-5 w-full justify-center disabled:opacity-60"
         >
           {busy ? 'Signing in…' : 'Sign in'}
         </button>

@@ -57,7 +57,7 @@ async function runRecorded<T extends Record<string, unknown>>(
   }
 }
 
-export function hoursSinceLastOk(job: JobName): number | null {
+export function lastOkAt(job: JobName): Date | null {
   const db = getDb();
   const row = db
     .select()
@@ -66,8 +66,12 @@ export function hoursSinceLastOk(job: JobName): number | null {
     .orderBy(desc(jobRuns.finishedAt))
     .limit(1)
     .get();
-  if (!row?.finishedAt) return null;
-  return (Date.now() - row.finishedAt.getTime()) / 36e5;
+  return row?.finishedAt ?? null;
+}
+
+export function hoursSinceLastOk(job: JobName): number | null {
+  const at = lastOkAt(job);
+  return at ? (Date.now() - at.getTime()) / 36e5 : null;
 }
 
 /** Never-ran jobs are not "stale" (fresh install); staleness starts after first success. */

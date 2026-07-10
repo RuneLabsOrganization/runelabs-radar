@@ -56,7 +56,12 @@ export default async function AdminPage() {
   }));
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+    <div className="mx-auto flex max-w-[860px] flex-col gap-8 px-6 py-7">
+      <div>
+        <div className="readout">operator console &middot; sources, sweeps, proposals</div>
+        <h1 className="mt-1 text-[17px] font-semibold tracking-[-0.01em]">Admin</h1>
+      </div>
+
       <section>
         <h2 className="section-title">Pending proposals</h2>
         {pending.length === 0 ? (

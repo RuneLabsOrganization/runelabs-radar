@@ -37,17 +37,16 @@ export default function VoteButtons({
   }
 
   return (
-    <div className="flex flex-col items-stretch gap-1">
+    <span className="mono inline-flex items-center gap-2.5 text-[11px]">
       <button
         type="button"
         aria-label="Upvote"
         aria-pressed={myVote === 1}
         disabled={busy}
         onClick={() => vote(1)}
-        className="btn justify-center px-2 py-0.5 text-[12px] disabled:cursor-not-allowed disabled:opacity-50"
-        style={myVote === 1 ? { borderColor: 'var(--up)', color: 'var(--up)' } : undefined}
+        className="vote-btn"
       >
-        &#9650; {up}
+        &#9650;&#8202;{up}
       </button>
       <button
         type="button"
@@ -55,11 +54,10 @@ export default function VoteButtons({
         aria-pressed={myVote === -1}
         disabled={busy}
         onClick={() => vote(-1)}
-        className="btn justify-center px-2 py-0.5 text-[12px] disabled:cursor-not-allowed disabled:opacity-50"
-        style={myVote === -1 ? { borderColor: 'var(--down)', color: 'var(--down)' } : undefined}
+        className="vote-btn down"
       >
-        &#9660; {down}
+        &#9660;{down > 0 ? ` ${down}` : ''}
       </button>
-    </div>
+    </span>
   );
 }

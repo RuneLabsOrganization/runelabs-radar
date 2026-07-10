@@ -1,6 +1,7 @@
 import { desc, gte } from 'drizzle-orm';
 import type { ReactNode } from 'react';
 import VerdictEditor from '@/components/VerdictEditor';
+import SectionHeader from '@/components/SectionHeader';
 import { requireUser } from '@/lib/auth/user';
 import { getDb } from '@/lib/db';
 import { boardEntries, boardHistory } from '@/lib/db/schema';
@@ -9,7 +10,7 @@ import { DOMAIN_COLORS, DOMAIN_LABELS, DOMAINS, isDomain } from '@/lib/domains';
 type BoardEntry = typeof boardEntries.$inferSelect;
 
 function cell(value: string | null): ReactNode {
-  return value ? value : <span className="muted">—</span>;
+  return value ? value : <span style={{ color: 'var(--ink-4)' }}>—</span>;
 }
 
 function fmtDate(d: Date): string {
@@ -46,57 +47,49 @@ export default async function BoardPage() {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-      <h1 style={{ fontSize: 16, fontWeight: 600 }}>Best Right Now</h1>
+    <div className="mx-auto max-w-[860px] px-6 py-7">
+      <div className="readout">cost-benefit board &middot; weekly sync, human-approved</div>
+      <h1 className="mt-1 text-[17px] font-semibold tracking-[-0.01em]">Best Right Now</h1>
 
       {entries.length === 0 && (
-        <div className="card">
-          <p className="muted">
-            No board entries yet. The weekly board job drafts proposals; approved ones land here.
-          </p>
-        </div>
+        <p className="mono mt-6 text-[12px]" style={{ color: 'var(--ink-4)' }}>
+          No board entries yet — the weekly board job drafts proposals; approved ones land here.
+        </p>
       )}
 
       {DOMAINS.map((domain) => {
         const rows = byDomain.get(domain);
         if (!rows || rows.length === 0) return null;
         return (
-          <section key={domain} className="card">
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-              <span
-                aria-hidden
-                style={{
-                  width: 8,
-                  height: 8,
-                  borderRadius: 999,
-                  background: DOMAIN_COLORS[domain],
-                  display: 'inline-block',
-                  flexShrink: 0,
-                }}
-              />
-              <h2 className="section-title" style={{ marginBottom: 0 }}>
+          <section key={domain}>
+            <div className="mt-9 mb-2 flex items-center gap-3">
+              <span className="readout inline-flex items-center gap-2" style={{ color: 'var(--ink-3)' }}>
+                <span aria-hidden className="inline-block h-[10px] w-[2px]" style={{ background: DOMAIN_COLORS[domain] }} />
                 {DOMAIN_LABELS[domain]}
-              </h2>
+              </span>
+              <span aria-hidden className="h-px flex-1" style={{ background: 'var(--grat-soft)' }} />
             </div>
             <table className="table">
               <thead>
                 <tr>
-                  <th>Task</th>
-                  <th>Best overall</th>
-                  <th>Best value</th>
-                  <th>Cheapest viable</th>
-                  <th>Cost note</th>
+                  <th className="w-[16%]">Task</th>
+                  <th className="w-[15%]">Best overall</th>
+                  <th className="w-[15%]">Best value</th>
+                  <th className="w-[15%]">Cheapest viable</th>
+                  <th className="w-[19%]">Cost note</th>
                   <th>Runelabs verdict</th>
                 </tr>
               </thead>
               <tbody>
                 {rows.map((entry) => (
                   <tr key={entry.id}>
-                    <td style={{ fontWeight: 600 }}>{entry.task}</td>
-                    <td>{cell(entry.bestOverall)}</td>
+                    <td className="mono text-[11.5px]" style={{ color: 'var(--ink-3)' }}>
+                      {entry.task}
+                    </td>
+                    <td style={{ color: 'var(--ink)' }}>{cell(entry.bestOverall)}</td>
                     <td>{cell(entry.bestValue)}</td>
                     <td>{cell(entry.cheapestViable)}</td>
-                    <td>{cell(entry.costNote)}</td>
+                    <td className="text-[12.5px]">{cell(entry.costNote)}</td>
                     <td>
                       <VerdictEditor
                         entryId={entry.id}
@@ -112,24 +105,31 @@ export default async function BoardPage() {
         );
       })}
 
-      <section className="card">
-        <h2 className="section-title">Changed recently</h2>
-        {history.length === 0 ? (
-          <p className="muted">No board changes in the last 14 days.</p>
-        ) : (
-          <ul style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 13 }}>
-            {history.map((h) => (
-              <li key={h.id}>
-                <span className="muted">{fmtDate(h.appliedAt)}</span>{' '}
-                <span style={{ fontWeight: 600 }}>
-                  {domainLabel(h.domain)} / {h.task}
-                </span>{' '}
-                <span>{h.change}</span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+      <SectionHeader label="Changed recently" count={history.length} />
+      {history.length === 0 ? (
+        <p className="mono text-[12px]" style={{ color: 'var(--ink-4)' }}>
+          No board changes in the last 14 days.
+        </p>
+      ) : (
+        <ul className="flex flex-col">
+          {history.map((h) => (
+            <li
+              key={h.id}
+              className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 border-b border-[var(--grat-soft)] py-[7px] text-[13px] last:border-b-0"
+            >
+              <span className="mono shrink-0 text-[10.5px]" style={{ color: 'var(--ink-4)' }}>
+                {fmtDate(h.appliedAt)}
+              </span>
+              <span className="mono shrink-0 text-[11px]" style={{ color: 'var(--ink-3)' }}>
+                {domainLabel(h.domain)} / {h.task}
+              </span>
+              <span className="min-w-0" style={{ color: 'var(--ink-2)' }}>
+                {h.change}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

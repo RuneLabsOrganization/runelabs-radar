@@ -1,126 +1,53 @@
 import Link from 'next/link';
-import { and, eq, gt } from 'drizzle-orm';
 import { requireUser } from '@/lib/auth/user';
-import { getDb } from '@/lib/db';
-import { stories } from '@/lib/db/schema';
-import { getStaleness } from '@/lib/jobs';
-import {
-  DOMAINS,
-  DOMAIN_COLORS,
-  DOMAIN_LABELS,
-  DOMAIN_MEMBERSHIP_THRESHOLD,
-  type Domain,
-} from '@/lib/domains';
-import { parseDomainScores } from '@/components/DomainChips';
+import { getStaleness, lastOkAt } from '@/lib/jobs';
+import { timeAgo } from '@/lib/feed';
+import NavLinks from '@/components/NavLinks';
 import LogoutButton from '@/components/LogoutButton';
-
-const navLinkClass =
-  'flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-[var(--panel-2)]';
-
-/** Curated stories newer than the user's last visit, counted per domain. */
-function unreadByDomain(lastSeenAt: Date | null): Record<Domain, number> {
-  const db = getDb();
-  const rows = db
-    .select({ domainScores: stories.domainScores })
-    .from(stories)
-    .where(
-      and(eq(stories.status, 'curated'), gt(stories.createdAt, lastSeenAt ?? new Date(0))),
-    )
-    .all();
-  const unread = Object.fromEntries(DOMAINS.map((d) => [d, 0])) as Record<Domain, number>;
-  for (const row of rows) {
-    const scores = parseDomainScores(row.domainScores);
-    if (!scores) continue;
-    for (const d of DOMAINS) {
-      if ((scores[d] ?? 0) >= DOMAIN_MEMBERSHIP_THRESHOLD) unread[d] += 1;
-    }
-  }
-  return unread;
-}
 
 export default async function HubLayout({ children }: { children: React.ReactNode }) {
   const user = await requireUser();
   const { ingestStale, curateStale } = getStaleness();
-  const unread = unreadByDomain(user.lastSeenAt);
-
-  const warnings = [
-    ...(ingestStale ? ["Ingestion hasn't run in over 2h"] : []),
-    ...(curateStale ? ["Curation hasn't run in over 3h"] : []),
-  ];
+  const stale = ingestStale || curateStale;
+  const lastSweep = lastOkAt('ingest');
+  const sweepTitle = stale
+    ? [
+        ...(ingestStale ? ['ingest has not succeeded in over 2h'] : []),
+        ...(curateStale ? ['curation has not succeeded in over 3h'] : []),
+      ].join('; ')
+    : 'all sweeps nominal';
 
   return (
     <div className="min-h-screen">
-      <aside
-        className="fixed inset-y-0 left-0 z-10 flex w-[200px] flex-col border-r px-3 py-4"
-        style={{ background: 'var(--panel)', borderColor: 'var(--border)' }}
-      >
-        <Link href="/" className="px-2 text-[15px] font-bold tracking-tight">
-          Runelabs <span style={{ color: 'var(--accent)' }}>Radar</span>
-        </Link>
-
-        <nav className="mt-5 flex flex-col gap-0.5 text-[13px]">
-          <Link href="/" className={navLinkClass}>
-            Today
+      <header className="sticky top-0 z-20 border-b border-[var(--grat)] bg-[rgba(10,14,19,0.88)] backdrop-blur">
+        <div className="mx-auto flex h-12 max-w-[860px] items-center gap-7 px-6">
+          <Link
+            href="/"
+            className="mono flex shrink-0 items-center gap-2 text-[11.5px] font-semibold tracking-[0.16em] text-[var(--ink)]"
+          >
+            <span aria-hidden className="inline-block h-[10px] w-[3px]" style={{ background: 'var(--phosphor)' }} />
+            RUNELABS RADAR
           </Link>
-
-          <div className="section-title mt-4 px-2">Domains</div>
-          {DOMAINS.map((d) => (
-            <Link key={d} href={`/domain/${d}`} className={navLinkClass}>
+          <NavLinks isAdmin={user.role === 'admin'} />
+          <div className="mono ml-auto flex items-center gap-4 text-[10.5px] tracking-[0.08em] uppercase">
+            <span
+              className="hidden items-center gap-1.5 sm:flex"
+              style={{ color: stale ? 'var(--amber)' : 'var(--ink-4)' }}
+              title={sweepTitle}
+            >
               <span
                 aria-hidden
-                className="inline-block h-2 w-2 shrink-0 rounded-full"
-                style={{ background: DOMAIN_COLORS[d] }}
+                className="inline-block h-[6px] w-[6px] rounded-full"
+                style={{ background: stale ? 'var(--amber)' : 'var(--phosphor)' }}
               />
-              <span className="min-w-0 flex-1 truncate">{DOMAIN_LABELS[d]}</span>
-              {unread[d] > 0 && (
-                <span
-                  className="badge"
-                  style={{ borderColor: 'var(--accent)', color: 'var(--accent)' }}
-                >
-                  {unread[d]}
-                </span>
-              )}
-            </Link>
-          ))}
-
-          <div className="section-title mt-4 px-2">Radar</div>
-          <Link href="/board" className={navLinkClass}>
-            Board
-          </Link>
-          <Link href="/brief" className={navLinkClass}>
-            Brief
-          </Link>
-          {user.role === 'admin' && (
-            <Link href="/admin" className={navLinkClass}>
-              Admin
-            </Link>
-          )}
-        </nav>
-
-        <div className="mt-auto border-t pt-3" style={{ borderColor: 'var(--border)' }}>
-          <div className="px-2 pb-2 text-[12px]">
-            {user.name}
-            {user.role === 'admin' && <span className="muted"> &middot; admin</span>}
+              sweep {lastSweep ? timeAgo(lastSweep) : '—'}
+            </span>
+            <span className="hidden text-[var(--ink-4)] md:inline">{user.name}</span>
+            <LogoutButton />
           </div>
-          <LogoutButton />
         </div>
-      </aside>
-
-      <div className="ml-[200px]">
-        {warnings.length > 0 && (
-          <div
-            className="border-b px-6 py-2 text-[13px] font-medium"
-            style={{
-              color: 'var(--warn)',
-              background: 'rgba(224, 169, 53, 0.1)',
-              borderColor: 'var(--border)',
-            }}
-          >
-            {warnings.join(' · ')}
-          </div>
-        )}
-        <main>{children}</main>
-      </div>
+      </header>
+      <main>{children}</main>
     </div>
   );
 }

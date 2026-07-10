@@ -25,9 +25,9 @@ export default function LogoutButton() {
       type="button"
       onClick={logout}
       disabled={busy}
-      className="btn btn-danger w-full justify-center text-[12px] disabled:opacity-50"
+      className="vote-btn mono text-[10.5px] tracking-[0.1em] uppercase"
     >
-      {busy ? 'Logging out…' : 'Log out'}
+      {busy ? '…' : 'exit'}
     </button>
   );
 }
