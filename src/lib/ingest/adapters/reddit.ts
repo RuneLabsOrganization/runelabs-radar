@@ -11,9 +11,10 @@ interface RedditConfig {
 const BROWSER_UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36';
 
-// Reddit rate-limits unauthenticated requests to roughly one per ~10s per IP —
-// back-to-back subreddit fetches within one ingest run get 429s without this.
-const MIN_INTERVAL_MS = 12_000;
+// Reddit rate-limits unauthenticated requests to roughly one per minute per IP —
+// closely spaced subreddit fetches within one ingest run get 429s without this.
+// The worker runs every 30 min, so a ~1 min gap between subreddits is harmless.
+const MIN_INTERVAL_MS = 61_000;
 let queue: Promise<unknown> = Promise.resolve();
 let lastFetchAt = 0;
 
