@@ -1,0 +1,209 @@
+import { describe, it, expect, beforeEach, vi, type Mock } from 'vitest';
+import { eq } from 'drizzle-orm';
+import { useTestDb } from './helpers/db';
+import { chatJSON, LlmError } from '@/lib/llm/minimax';
+import { runCurate, buildCurationPrompts } from '@/lib/curate/curate';
+import { items, sources, stories, users, votes } from '@/lib/db/schema';
+import type { Db } from '@/lib/db';
+
+vi.mock('@/lib/llm/minimax', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/llm/minimax')>();
+  return { ...actual, chatJSON: vi.fn() };
+});
+
+const mockChat = chatJSON as unknown as Mock;
+
+describe('buildCurationPrompts', () => {
+  it('includes Runelabs context, domains and the strict JSON shape in the system prompt', () => {
+    const { system } = buildCurationPrompts({ title: 'T' }, [], []);
+    expect(system).toContain('Runelabs');
+    expect(system).toContain('vibecoding');
+    for (const d of ['coding', 'copy', 'image', 'video', 'ads', 'agentic']) {
+      expect(system).toContain(`"${d}":N`);
+    }
+    expect(system).toContain('"domain_scores"');
+    expect(system).toContain('"tldr"');
+    expect(system).toContain('"why_it_matters"');
+    expect(system).toContain('0-100');
+  });
+
+  it('caps member items at 5 and votes at 10, rendering [UP]/[DOWN] lines', () => {
+    const memberItems = Array.from({ length: 7 }, (_, i) => ({
+      title: `Member ${i}`,
+      excerpt: i === 0 ? 'First excerpt' : null,
+    }));
+    const recentVotes = Array.from({ length: 12 }, (_, i) => ({
+      value: i % 2 === 0 ? 1 : -1,
+      storyTitle: `Voted ${i}`,
+    }));
+
+    const { user } = buildCurationPrompts({ title: 'Story headline' }, memberItems, recentVotes);
+
+    expect(user).toContain('Story headline');
+    expect(user).toContain('Member 0 — First excerpt');
+    expect(user).toContain('Member 4');
+    expect(user).not.toContain('Member 5');
+    expect(user).toContain('[UP] Voted 0');
+    expect(user).toContain('[DOWN] Voted 1');
+    expect(user).toContain('Voted 9');
+    expect(user).not.toContain('Voted 10');
+    expect(user).not.toContain('Voted 11');
+  });
+});
+
+describe('runCurate', () => {
+  let db: Db;
+
+  beforeEach(() => {
+    db = useTestDb();
+    mockChat.mockReset();
+  });
+
+  function insertStory(title: string, createdAt = new Date()) {
+    return db.insert(stories).values({ title, status: 'raw', createdAt }).returning().get();
+  }
+
+  it('happy path: updates scores, tldr, why-it-matters, topScore and status', async () => {
+    const story = insertStory('OpenAI launches GPT-5.2 with agentic tools');
+    const sourceId = db
+      .insert(sources)
+      .values({ type: 'rss', name: 'Test Source' })
+      .returning({ id: sources.id })
+      .get().id;
+    db.insert(items)
+      .values({
+        sourceId,
+        url: 'https://a.example/1',
+        title: 'OpenAI launches GPT-5.2 with agentic tools',
+        excerpt: 'A new frontier model.',
+        fetchedAt: new Date(),
+        storyId: story.id,
+      })
+      .run();
+    const userId = db
+      .insert(users)
+      .values({ name: 'alice', passwordHash: 'x' })
+      .returning({ id: users.id })
+      .get().id;
+    db.insert(votes).values({ userId, storyId: story.id, value: 1 }).run();
+
+    const scores = { coding: 92, copy: 10, image: 0, video: 0, ads: 5, agentic: 77 };
+    mockChat.mockResolvedValueOnce({
+      domain_scores: scores,
+      tldr: 'GPT-5.2 is out.',
+      why_it_matters: 'Evaluate it for agentic coding pipelines.',
+    });
+
+    const res = await runCurate();
+    expect(res).toEqual({ clustered: 0, curated: 1, failed: 0 });
+    expect(mockChat).toHaveBeenCalledTimes(1);
+
+    // prompts carried the story, member item and vote calibration line
+    const [systemArg, userArg] = mockChat.mock.calls[0] as [string, string];
+    expect(systemArg).toContain('Runelabs');
+    expect(userArg).toContain('OpenAI launches GPT-5.2 with agentic tools');
+    expect(userArg).toContain('A new frontier model.');
+    expect(userArg).toContain('[UP] OpenAI launches GPT-5.2 with agentic tools');
+
+    const updated = db.select().from(stories).where(eq(stories.id, story.id)).get()!;
+    expect(updated.status).toBe('curated');
+    expect(updated.tldr).toBe('GPT-5.2 is out.');
+    expect(updated.whyItMatters).toBe('Evaluate it for agentic coding pipelines.');
+    expect(updated.topScore).toBe(92);
+    expect(JSON.parse(updated.domainScores!)).toEqual(scores);
+  });
+
+  it('clamps scores to 0-100 integers and defaults missing domains to 0', async () => {
+    const story = insertStory('Model with weird scores');
+    mockChat.mockResolvedValueOnce({
+      domain_scores: { coding: 150, copy: -20, image: 55.6 },
+      tldr: 't',
+      why_it_matters: 'w',
+    });
+
+    const res = await runCurate();
+    expect(res).toEqual({ clustered: 0, curated: 1, failed: 0 });
+
+    const updated = db.select().from(stories).where(eq(stories.id, story.id)).get()!;
+    expect(JSON.parse(updated.domainScores!)).toEqual({
+      coding: 100,
+      copy: 0,
+      image: 56,
+      video: 0,
+      ads: 0,
+      agentic: 0,
+    });
+    expect(updated.topScore).toBe(100);
+  });
+
+  it('retryable LlmError leaves the story raw, counts failed, continues the batch', async () => {
+    const older = insertStory('Older story', new Date(Date.now() - 2 * 60 * 60 * 1000));
+    const newer = insertStory('Newer story', new Date(Date.now() - 1 * 60 * 60 * 1000));
+
+    mockChat
+      .mockRejectedValueOnce(new LlmError('MiniMax HTTP 500', true))
+      .mockResolvedValueOnce({
+        domain_scores: { coding: 10, copy: 10, image: 10, video: 10, ads: 10, agentic: 60 },
+        tldr: 'ok',
+        why_it_matters: 'ok',
+      });
+
+    const res = await runCurate();
+    expect(res).toEqual({ clustered: 0, curated: 1, failed: 1 });
+    expect(mockChat).toHaveBeenCalledTimes(2);
+
+    const olderRow = db.select().from(stories).where(eq(stories.id, older.id)).get()!;
+    expect(olderRow.status).toBe('raw');
+    expect(olderRow.tldr).toBeNull();
+
+    const newerRow = db.select().from(stories).where(eq(stories.id, newer.id)).get()!;
+    expect(newerRow.status).toBe('curated');
+    expect(newerRow.topScore).toBe(60);
+  });
+
+  it('non-retryable LlmError aborts the remaining batch', async () => {
+    insertStory('Story one', new Date(Date.now() - 3 * 60 * 60 * 1000));
+    insertStory('Story two', new Date(Date.now() - 2 * 60 * 60 * 1000));
+    insertStory('Story three', new Date(Date.now() - 1 * 60 * 60 * 1000));
+
+    mockChat.mockRejectedValue(new LlmError('Daily LLM call cap reached (500)', false));
+
+    const res = await runCurate();
+    expect(res).toEqual({ clustered: 0, curated: 0, failed: 1 });
+    expect(mockChat).toHaveBeenCalledTimes(1);
+
+    const all = db.select().from(stories).all();
+    expect(all).toHaveLength(3);
+    expect(all.every((s) => s.status === 'raw')).toBe(true);
+  });
+
+  it('clusters unassigned items before curating', async () => {
+    const sourceId = db
+      .insert(sources)
+      .values({ type: 'rss', name: 'Test Source' })
+      .returning({ id: sources.id })
+      .get().id;
+    db.insert(items)
+      .values({
+        sourceId,
+        url: 'https://b.example/1',
+        title: 'Mistral releases new open weights model',
+        fetchedAt: new Date(),
+        publishedAt: new Date(),
+      })
+      .run();
+
+    mockChat.mockResolvedValue({
+      domain_scores: { coding: 50, copy: 0, image: 0, video: 0, ads: 0, agentic: 40 },
+      tldr: 't',
+      why_it_matters: 'w',
+    });
+
+    const res = await runCurate();
+    expect(res).toEqual({ clustered: 1, curated: 1, failed: 0 });
+
+    const story = db.select().from(stories).all()[0];
+    expect(story.title).toBe('Mistral releases new open weights model');
+    expect(story.status).toBe('curated');
+  });
+});

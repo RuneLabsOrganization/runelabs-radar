@@ -1,0 +1,42 @@
+{
+  "kind": "Listing",
+  "data": {
+    "after": "t3_1lwdef",
+    "dist": 2,
+    "modhash": "",
+    "geo_filter": "",
+    "children": [
+      {
+        "kind": "t3",
+        "data": {
+          "subreddit": "LocalLLaMA",
+          "title": "Qwen4-72B beats GPT-5 on my local RAG benchmark",
+          "selftext": "Ran 500 questions against both. Setup: llama.cpp server, Q5_K_M quant, 2x3090.\n\nQwen4-72B: 87.4% correct. GPT-5: 85.1%. Full results table in the comments.",
+          "author": "localfirst_dev",
+          "permalink": "/r/LocalLLaMA/comments/1lwabc/qwen4_72b_beats_gpt5_on_my_local_rag_benchmark/",
+          "url": "https://www.reddit.com/r/LocalLLaMA/comments/1lwabc/qwen4_72b_beats_gpt5_on_my_local_rag_benchmark/",
+          "created_utc": 1783555200,
+          "ups": 950,
+          "num_comments": 143,
+          "is_self": true
+        }
+      },
+      {
+        "kind": "t3",
+        "data": {
+          "subreddit": "LocalLLaMA",
+          "title": "Flux 2.1 LoRA training now works on 12GB cards",
+          "selftext": "",
+          "author": "gpu_poor",
+          "permalink": "/r/LocalLLaMA/comments/1lwdef/flux_21_lora_training_now_works_on_12gb_cards/",
+          "url": "https://github.com/kohya-ss/sd-scripts/releases/tag/v3.1.0",
+          "created_utc": 1783512000,
+          "ups": 610,
+          "num_comments": 88,
+          "is_self": false
+        }
+      }
+    ],
+    "before": null
+  }
+}

@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <link href="http://arxiv.org/api/query?search_query%3Dcat%3Acs.AI%20OR%20cat%3Acs.CL%26id_list%3D%26start%3D0%26max_results%3D40" rel="self" type="application/atom+xml"/>
+  <title type="html">ArXiv Query: search_query=cat:cs.AI OR cat:cs.CL&amp;id_list=&amp;start=0&amp;max_results=40</title>
+  <id>http://arxiv.org/api/cHxbiOdZaP56ODnBPIenZhzg5f8</id>
+  <updated>2026-07-09T00:00:00-04:00</updated>
+  <opensearch:totalResults xmlns:opensearch="http://a9.com/-/spec/opensearch/1.1/">4821</opensearch:totalResults>
+  <opensearch:startIndex xmlns:opensearch="http://a9.com/-/spec/opensearch/1.1/">0</opensearch:startIndex>
+  <opensearch:itemsPerPage xmlns:opensearch="http://a9.com/-/spec/opensearch/1.1/">40</opensearch:itemsPerPage>
+  <entry>
+    <id>http://arxiv.org/abs/2607.04512v1</id>
+    <updated>2026-07-08T17:59:12Z</updated>
+    <published>2026-07-08T17:59:12Z</published>
+    <title>Self-Correcting Code Agents via Execution-Grounded
+  Reinforcement Learning</title>
+    <summary>  Large language model agents that write code still struggle to recover from
+their own mistakes. We introduce EGRL, an execution-grounded reinforcement
+learning recipe that trains agents on their own repair traces, improving
+SWE-bench Verified resolution rates by 11 points without inference overhead.
+</summary>
+    <author><name>Wei Zhang</name></author>
+    <author><name>Priya Natarajan</name></author>
+    <arxiv:primary_category xmlns:arxiv="http://arxiv.org/schemas/atom" term="cs.AI" scheme="http://arxiv.org/schemas/atom"/>
+    <category term="cs.AI" scheme="http://arxiv.org/schemas/atom"/>
+    <category term="cs.CL" scheme="http://arxiv.org/schemas/atom"/>
+    <link href="http://arxiv.org/abs/2607.04512v1" rel="alternate" type="text/html"/>
+    <link title="pdf" href="http://arxiv.org/pdf/2607.04512v1" rel="related" type="application/pdf"/>
+  </entry>
+  <entry>
+    <id>http://arxiv.org/abs/2607.04388v1</id>
+    <updated>2026-07-08T14:21:47Z</updated>
+    <published>2026-07-08T14:21:47Z</published>
+    <title>Benchmarking Text-to-Video Consistency with Story-Level
+  Evaluation</title>
+    <summary>  We present StoryEval, a benchmark measuring temporal and character
+consistency in minute-long generated videos across 12 leading models.
+</summary>
+    <author><name>Ana Sofia Duarte</name></author>
+    <arxiv:primary_category xmlns:arxiv="http://arxiv.org/schemas/atom" term="cs.CL" scheme="http://arxiv.org/schemas/atom"/>
+    <category term="cs.CL" scheme="http://arxiv.org/schemas/atom"/>
+    <link href="http://arxiv.org/abs/2607.04388v1" rel="alternate" type="text/html"/>
+    <link title="pdf" href="http://arxiv.org/pdf/2607.04388v1" rel="related" type="application/pdf"/>
+  </entry>
+</feed>

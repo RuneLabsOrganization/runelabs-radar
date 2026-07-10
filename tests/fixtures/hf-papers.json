@@ -1,0 +1,30 @@
+[
+  {
+    "paper": {
+      "id": "2607.04512",
+      "title": "Self-Correcting Code Agents via Execution-Grounded Reinforcement Learning",
+      "summary": "Large language model agents that write code still struggle to recover from their own mistakes. We introduce EGRL, an execution-grounded reinforcement learning recipe that trains agents on their own repair traces.",
+      "publishedAt": "2026-07-08T17:59:12.000Z",
+      "upvotes": 44,
+      "authors": [{ "name": "Wei Zhang" }, { "name": "Priya Natarajan" }]
+    },
+    "publishedAt": "2026-07-09T01:00:00.000Z",
+    "title": "Self-Correcting Code Agents via Execution-Grounded Reinforcement Learning",
+    "numComments": 5,
+    "submittedBy": { "fullname": "AK", "name": "akhaliq" }
+  },
+  {
+    "paper": {
+      "id": "2607.04388",
+      "title": "Benchmarking Text-to-Video Consistency with Story-Level Evaluation",
+      "summary": "We present StoryEval, a benchmark measuring temporal and character consistency in minute-long generated videos across 12 leading models.",
+      "publishedAt": "2026-07-08T14:21:47.000Z",
+      "upvotes": 27,
+      "authors": [{ "name": "Ana Sofia Duarte" }]
+    },
+    "publishedAt": "2026-07-09T01:00:00.000Z",
+    "title": "Benchmarking Text-to-Video Consistency with Story-Level Evaluation",
+    "numComments": 2,
+    "submittedBy": { "fullname": "AK", "name": "akhaliq" }
+  }
+]

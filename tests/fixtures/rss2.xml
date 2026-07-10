@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>OpenAI News</title>
+    <link>https://openai.com/news</link>
+    <description>The latest updates from OpenAI</description>
+    <language>en</language>
+    <atom:link href="https://openai.com/news/rss.xml" rel="self" type="application/rss+xml"/>
+    <item>
+      <title>Introducing GPT-5.3</title>
+      <link>https://openai.com/index/introducing-gpt-5-3/</link>
+      <guid isPermaLink="false">openai-gpt-5-3</guid>
+      <description><![CDATA[<p>Our most capable model yet, with <strong>stronger reasoning</strong> and 40% lower latency across coding &amp; agentic tasks.</p>]]></description>
+      <pubDate>Wed, 08 Jul 2026 16:00:00 GMT</pubDate>
+    </item>
+    <item>
+      <title>Sora 3 available in the API</title>
+      <link>https://openai.com/index/sora-3-api/</link>
+      <guid isPermaLink="false">openai-sora-3-api</guid>
+      <description><![CDATA[Sora 3 brings 60-second 1080p video generation to the API, priced per second of output.]]></description>
+      <pubDate>Tue, 07 Jul 2026 12:30:00 GMT</pubDate>
+    </item>
+    <item>
+      <title>New embeddings pricing</title>
+      <link>https://openai.com/index/embeddings-pricing-2026/</link>
+      <guid isPermaLink="false">openai-embeddings-pricing</guid>
+      <description>We are cutting embeddings prices by 60% effective immediately.</description>
+      <pubDate>Mon, 06 Jul 2026 09:00:00 GMT</pubDate>
+    </item>
+  </channel>
+</rss>

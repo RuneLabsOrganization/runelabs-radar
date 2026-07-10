@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>Simon Willison's Weblog</title>
+  <link rel="alternate" href="https://simonwillison.net/"/>
+  <link rel="self" href="https://simonwillison.net/atom/everything/"/>
+  <id>https://simonwillison.net/</id>
+  <updated>2026-07-09T18:42:00Z</updated>
+  <entry>
+    <title type="html">Running MiniMax-M2 locally with llama.cpp</title>
+    <link rel="alternate" type="text/html" href="https://simonwillison.net/2026/Jul/9/minimax-m2-local/"/>
+    <id>https://simonwillison.net/2026/Jul/9/minimax-m2-local/#atom-everything</id>
+    <updated>2026-07-09T18:42:00Z</updated>
+    <published>2026-07-09T18:42:00Z</published>
+    <summary type="html">&lt;p&gt;Notes on quantizing &lt;em&gt;MiniMax-M2&lt;/em&gt; to 4 bits and serving it on a single 4090.&lt;/p&gt;</summary>
+    <author><name>Simon Willison</name></author>
+  </entry>
+  <entry>
+    <title>Prompt injection in agentic browsers, revisited</title>
+    <link rel="self" href="https://simonwillison.net/atom/entry-2-self/"/>
+    <link rel="alternate" type="text/html" href="https://simonwillison.net/2026/Jul/8/prompt-injection-agentic-browsers/"/>
+    <id>https://simonwillison.net/2026/Jul/8/prompt-injection-agentic-browsers/#atom-everything</id>
+    <updated>2026-07-08T09:15:00Z</updated>
+    <content type="html">&lt;p&gt;A survey of how the new wave of agentic browsers handle untrusted page content.&lt;/p&gt;</content>
+    <author><name>Simon Willison</name></author>
+  </entry>
+</feed>

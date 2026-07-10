@@ -1,0 +1,46 @@
+{
+  "hits": [
+    {
+      "objectID": "44501234",
+      "title": "DeepSeek-V4 tops SWE-bench Verified at a tenth of the cost",
+      "url": "https://deepseek.com/blog/deepseek-v4",
+      "author": "tosh",
+      "points": 512,
+      "num_comments": 231,
+      "story_text": null,
+      "created_at": "2026-07-09T14:03:11Z",
+      "created_at_i": 1783346591,
+      "_tags": ["story", "author_tosh", "story_44501234"]
+    },
+    {
+      "objectID": "44500981",
+      "title": "Show HN: I built an open-source Sora alternative that runs on one GPU",
+      "url": null,
+      "author": "vidmaker",
+      "points": 187,
+      "num_comments": 64,
+      "story_text": "Repo and benchmarks inside. Trained on fully licensed footage.",
+      "created_at": "2026-07-09T11:47:52Z",
+      "created_at_i": 1783338472,
+      "_tags": ["story", "show_hn", "author_vidmaker", "story_44500981"]
+    },
+    {
+      "objectID": "44499870",
+      "title": "Claude's computer use now books entire trips end-to-end",
+      "url": "https://www.anthropic.com/news/computer-use-trips",
+      "author": "minimaxir",
+      "points": 341,
+      "num_comments": 198,
+      "story_text": null,
+      "created_at": "2026-07-08T22:15:33Z",
+      "created_at_i": 1783289733,
+      "_tags": ["story", "author_minimaxir", "story_44499870"]
+    }
+  ],
+  "nbHits": 3,
+  "page": 0,
+  "nbPages": 1,
+  "hitsPerPage": 30,
+  "query": "AI OR LLM OR GPT OR Claude OR Gemini",
+  "params": "query=AI%20OR%20LLM&tags=story&numericFilters=points%3E%3D50&hitsPerPage=30"
+}
