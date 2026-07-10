@@ -7,8 +7,6 @@ import { SEED_BOARD_TASKS } from '../db/seed-data';
 import { chatJSON } from '../llm/minimax';
 
 const AA_URL = 'https://artificialanalysis.ai/api/v2/data/llms/models';
-const AIDER_URL =
-  'https://raw.githubusercontent.com/Aider-AI/aider/main/aider/website/_data/polyglot_leaderboard.yml';
 const SNAPSHOT_MAX_CHARS = 100_000;
 const PROMPT_SNAPSHOT_BUDGET = 8_000;
 const FETCH_TIMEOUT_MS = 20_000;
@@ -75,6 +73,10 @@ async function proposeForDomain(
     'the best overall model/tool, the best value pick, and the cheapest still-viable option, with a ' +
     'one-line cost note. Favor practical cost-effectiveness over hype, and only change a ' +
     'recommendation when the evidence supports it.\n' +
+    `Today is ${new Date().toISOString().slice(0, 10)}. RECENCY IS CRITICAL: benchmark snapshots ` +
+    'can lag badly — the news stories are the freshness signal. Recommendations must be ' +
+    'current-generation models available today; when a snapshot conflicts with newer news, trust ' +
+    'the news, and never recommend a model the news shows has been superseded.\n' +
     'Respond ONLY with a JSON object of this exact shape:\n' +
     '{"proposals":[{"task":"...","bestOverall":"...","bestValue":"...","cheapestViable":"...","costNote":"...","rationale":"..."}]}\n' +
     'Rules: "task" MUST be exactly one of the allowed tasks the user lists; at most one proposal ' +
@@ -126,9 +128,10 @@ async function proposeForDomain(
 }
 
 /**
- * Weekly board sync: pull benchmark snapshots (Artificial Analysis + aider
- * leaderboard, each best-effort), then draft pending board proposals per
- * domain from snapshots + the week's top stories + the current board.
+ * Weekly board sync: pull the Artificial Analysis snapshot (when AA_API_KEY is
+ * set; best-effort), then draft pending board proposals per domain from
+ * snapshots + the week's top stories + the current board. Static leaderboard
+ * files proved stale (frozen model lists) and are deliberately not fetched.
  */
 export async function runBoardSync(): Promise<{ snapshots: number; proposals: number }> {
   const db = getDb();
@@ -143,14 +146,6 @@ export async function runBoardSync(): Promise<{ snapshots: number; proposals: nu
       console.error('[board] Artificial Analysis fetch failed:', e);
     }
   }
-  try {
-    const raw = await fetchText(AIDER_URL);
-    storeSnapshot('aider-polyglot', raw);
-    snapshots++;
-  } catch (e) {
-    console.error('[board] aider leaderboard fetch failed:', e);
-  }
-
   // Latest snapshot per source (includes earlier weeks when this run's fetches failed).
   const allSnaps = db
     .select()
@@ -173,7 +168,7 @@ export async function runBoardSync(): Promise<{ snapshots: number; proposals: nu
     .from(stories)
     .where(and(eq(stories.status, 'curated'), gte(stories.createdAt, weekAgo)))
     .orderBy(desc(stories.topScore))
-    .limit(15)
+    .limit(25)
     .all();
   const storiesText =
     topStories.map((s) => `- ${s.title}${s.tldr ? ` — ${s.tldr}` : ''}`).join('\n') ||
