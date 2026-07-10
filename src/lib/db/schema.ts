@@ -6,6 +6,9 @@ export const users = sqliteTable('users', {
   passwordHash: text('password_hash').notNull(),
   role: text('role', { enum: ['admin', 'member'] }).notNull().default('member'),
   lastSeenAt: integer('last_seen_at', { mode: 'timestamp' }),
+  // Previous visit's timestamp: the stable anchor for "since your last visit"
+  // while lastSeenAt acts as a heartbeat during the current visit.
+  prevSeenAt: integer('prev_seen_at', { mode: 'timestamp' }),
 });
 
 export const sources = sqliteTable('sources', {

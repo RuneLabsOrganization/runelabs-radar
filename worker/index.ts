@@ -1,9 +1,12 @@
 import cron from 'node-cron';
+import { loadDotEnv } from '../src/lib/env';
 import { withJobRun } from '../src/lib/jobs';
 import { runIngest } from '../src/lib/ingest/ingest';
 import { runCurate } from '../src/lib/curate/curate';
 import { runBoardSync } from '../src/lib/board/sync';
 import { runBrief } from '../src/lib/brief/brief';
+
+loadDotEnv();
 
 console.log('[worker] Runelabs Radar worker starting');
 

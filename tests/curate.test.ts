@@ -136,9 +136,11 @@ describe('runCurate', () => {
     expect(updated.topScore).toBe(100);
   });
 
-  it('retryable LlmError leaves the story raw, counts failed, continues the batch', async () => {
+  it('retryable LlmError leaves the story raw, counts failed, continues the batch (newest first, 72h window)', async () => {
     const older = insertStory('Older story', new Date(Date.now() - 2 * 60 * 60 * 1000));
     const newer = insertStory('Newer story', new Date(Date.now() - 1 * 60 * 60 * 1000));
+    // outside the 72h display window — must never be sent to the LLM
+    const ancient = insertStory('Ancient backfill story', new Date(Date.now() - 80 * 60 * 60 * 1000));
 
     mockChat
       .mockRejectedValueOnce(new LlmError('MiniMax HTTP 500', true))
@@ -152,13 +154,17 @@ describe('runCurate', () => {
     expect(res).toEqual({ clustered: 0, curated: 1, failed: 1 });
     expect(mockChat).toHaveBeenCalledTimes(2);
 
-    const olderRow = db.select().from(stories).where(eq(stories.id, older.id)).get()!;
-    expect(olderRow.status).toBe('raw');
-    expect(olderRow.tldr).toBeNull();
-
+    // newest-first: the failing first call hit the newer story
     const newerRow = db.select().from(stories).where(eq(stories.id, newer.id)).get()!;
-    expect(newerRow.status).toBe('curated');
-    expect(newerRow.topScore).toBe(60);
+    expect(newerRow.status).toBe('raw');
+    expect(newerRow.tldr).toBeNull();
+
+    const olderRow = db.select().from(stories).where(eq(stories.id, older.id)).get()!;
+    expect(olderRow.status).toBe('curated');
+    expect(olderRow.topScore).toBe(60);
+
+    const ancientRow = db.select().from(stories).where(eq(stories.id, ancient.id)).get()!;
+    expect(ancientRow.status).toBe('raw');
   });
 
   it('non-retryable LlmError aborts the remaining batch', async () => {

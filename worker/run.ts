@@ -1,4 +1,7 @@
+import { loadDotEnv } from '../src/lib/env';
 import { withJobRun, type JobName } from '../src/lib/jobs';
+
+loadDotEnv();
 import { runIngest } from '../src/lib/ingest/ingest';
 import { runCurate } from '../src/lib/curate/curate';
 import { runBoardSync } from '../src/lib/board/sync';

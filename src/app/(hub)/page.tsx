@@ -1,8 +1,11 @@
 import { and, desc, eq, gt, inArray } from 'drizzle-orm';
 import { requireUser } from '@/lib/auth/user';
 import { getDb } from '@/lib/db';
-import { items, stories, users, votes } from '@/lib/db/schema';
+import { items, stories, votes } from '@/lib/db/schema';
+import { safeHttpUrl } from '@/lib/safe-url';
+import { visitAnchor } from '@/lib/visits';
 import StoryCard, { timeAgo, type Story } from '@/components/StoryCard';
+import MarkSeen from '@/components/MarkSeen';
 
 type ItemAgg = { count: number; firstUrl: string | null };
 type VoteAgg = { up: number; down: number; mine: 1 | -1 | 0 };
@@ -98,15 +101,16 @@ export default async function TodayPage() {
     user.id,
   );
 
-  const lastSeen = user.lastSeenAt;
-  const fresh = lastSeen ? curated.filter((s) => s.createdAt > lastSeen) : curated;
-  const seen = lastSeen ? curated.filter((s) => s.createdAt <= lastSeen) : [];
-
-  // Page data is computed — record this visit now.
-  db.update(users).set({ lastSeenAt: new Date() }).where(eq(users.id, user.id)).run();
+  // Stable per-visit anchor: MarkSeen advances lastSeenAt via POST /api/seen,
+  // so router.refresh() after a vote re-renders against the same anchor and
+  // the divider doesn't collapse mid-visit.
+  const anchor = visitAnchor(user);
+  const fresh = anchor ? curated.filter((s) => s.createdAt > anchor) : curated;
+  const seen = anchor ? curated.filter((s) => s.createdAt <= anchor) : [];
 
   return (
     <div className="mx-auto max-w-[980px] px-6 py-6">
+      <MarkSeen />
       <h1 className="text-lg font-bold">Today</h1>
       <p className="muted mt-0.5 text-[12px]">
         Curated stories from the last 72h, ranked by top domain score.
@@ -142,7 +146,7 @@ export default async function TodayPage() {
         {raw.length > 0 && (
           <ul className="mt-3 flex flex-col gap-1.5">
             {raw.map((story) => {
-              const firstUrl = itemAgg.get(story.id)?.firstUrl ?? null;
+              const firstUrl = safeHttpUrl(itemAgg.get(story.id)?.firstUrl);
               return (
                 <li key={story.id} className="text-[13px]">
                   {firstUrl ? (

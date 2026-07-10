@@ -1,4 +1,4 @@
-import { asc, desc, eq, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, sql } from 'drizzle-orm';
 import { getDb } from '../db';
 import { items, stories, votes } from '../db/schema';
 import { chatJSON, LlmError } from '../llm/minimax';
@@ -7,6 +7,12 @@ import { clusterNewItems } from './cluster';
 
 /** Max 'raw' stories sent to MiniMax per run. */
 const CURATE_BATCH_LIMIT = 50;
+/**
+ * Only stories still inside the display window get LLM budget — the feed (72h),
+ * brief (24h) and board sync (7d) never read anything older, so scoring a story
+ * past 72h is wasted spend (feed backfill can be years deep on first ingest).
+ */
+const CURATE_WINDOW_MS = 72 * 36e5;
 const MAX_MEMBER_ITEMS = 5;
 const MAX_CALIBRATION_VOTES = 10;
 const MAX_EXCERPT_CHARS = 300;
@@ -105,9 +111,9 @@ function clampScore(n: unknown): number {
 
 /**
  * Curation job: clusters new items into stories, then scores/summarizes up to
- * 50 oldest 'raw' stories with one MiniMax call each. LLM failures leave the
- * story 'raw' (still visible in the feed); a non-retryable error (daily cap,
- * missing config) aborts the remaining batch.
+ * 50 of the newest 'raw' stories inside the 72h display window with one MiniMax
+ * call each. LLM failures leave the story 'raw' (still visible in the feed);
+ * a non-retryable error (daily cap, missing config) aborts the remaining batch.
  */
 export async function runCurate(): Promise<{ clustered: number; curated: number; failed: number }> {
   const { newStories, merged } = await clusterNewItems();
@@ -117,8 +123,10 @@ export async function runCurate(): Promise<{ clustered: number; curated: number;
   const rawStories = db
     .select()
     .from(stories)
-    .where(eq(stories.status, 'raw'))
-    .orderBy(asc(stories.createdAt), asc(stories.id))
+    .where(
+      and(eq(stories.status, 'raw'), gte(stories.createdAt, new Date(Date.now() - CURATE_WINDOW_MS))),
+    )
+    .orderBy(desc(stories.createdAt), desc(stories.id))
     .limit(CURATE_BATCH_LIMIT)
     .all();
 

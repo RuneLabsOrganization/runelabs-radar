@@ -4,8 +4,29 @@ import { jobRuns } from './db/schema';
 
 export type JobName = 'ingest' | 'curate' | 'board' | 'brief';
 
-/** Runs fn inside a recorded job run. Returns fn's stats, or null when it threw. */
+// In-process overlap guard: a slow run (e.g. curate during a MiniMax incident)
+// must not overlap the next cron tick — overlapping curates would double-score
+// the same raw stories and double-burn the daily LLM cap.
+const running = new Set<JobName>();
+
+/** Runs fn inside a recorded job run. Returns fn's stats, or null when it threw or the job was already running. */
 export async function withJobRun<T extends Record<string, unknown>>(
+  job: JobName,
+  fn: () => Promise<T>,
+): Promise<T | null> {
+  if (running.has(job)) {
+    console.warn(`[job:${job}] skipped — previous run still in progress`);
+    return null;
+  }
+  running.add(job);
+  try {
+    return await runRecorded(job, fn);
+  } finally {
+    running.delete(job);
+  }
+}
+
+async function runRecorded<T extends Record<string, unknown>>(
   job: JobName,
   fn: () => Promise<T>,
 ): Promise<T | null> {

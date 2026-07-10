@@ -1,0 +1,16 @@
+.git
+node_modules
+.next
+data
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+.env
+.env.*
+docs
+tests
+*.log
+*.tsbuildinfo
+Dockerfile
+docker-compose.yml

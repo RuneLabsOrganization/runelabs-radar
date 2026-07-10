@@ -2,6 +2,7 @@
 import * as React from 'react';
 import type { stories } from '@/lib/db/schema';
 import type { Domain } from '@/lib/domains';
+import { safeHttpUrl } from '@/lib/safe-url';
 import DomainChips, { parseDomainScores } from './DomainChips';
 import VoteButtons from './VoteButtons';
 
@@ -36,12 +37,13 @@ export default function StoryCard({
   highlightDomain?: Domain;
 }) {
   const scores = parseDomainScores(story.domainScores);
+  const href = safeHttpUrl(firstUrl);
   return (
     <article className="card flex items-start gap-4">
       <div className="min-w-0 flex-1">
         <h3 className="text-[14px] font-semibold leading-snug">
-          {firstUrl ? (
-            <a href={firstUrl} target="_blank" rel="noreferrer" className="hover:underline">
+          {href ? (
+            <a href={href} target="_blank" rel="noreferrer" className="hover:underline">
               {story.title}
             </a>
           ) : (

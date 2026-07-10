@@ -105,6 +105,35 @@ describe('board proposal apply/reject', () => {
     expect(history[0].change).toBe('initial values set');
   });
 
+  it('a partial proposal preserves existing fields it does not mention', async () => {
+    const pid = db
+      .insert(boardProposals)
+      .values({
+        domain: 'coding',
+        task: 'agentic-coding',
+        proposed: JSON.stringify({ costNote: 'only the cost note changed' }),
+        rationale: 'pricing update',
+        status: 'pending',
+        createdAt: new Date(),
+      })
+      .returning()
+      .get().id;
+
+    expect(await applyProposal(pid)).toEqual({ ok: true });
+
+    const entry = db.select().from(boardEntries).where(eq(boardEntries.id, entryId)).get()!;
+    expect(entry.costNote).toBe('only the cost note changed');
+    // fields absent from the proposal keep their curated values
+    expect(entry.bestOverall).toBe('GPT-5.2');
+    expect(entry.bestValue).toBe('GLM-4.7');
+    expect(entry.cheapestViable).toBe('DeepSeek-V4');
+
+    const history = db.select().from(boardHistory).all();
+    expect(history).toHaveLength(1);
+    expect(history[0].change).toContain('costNote');
+    expect(history[0].change).not.toContain('bestOverall');
+  });
+
   it('rejectProposal only flips status and leaves the entry untouched', async () => {
     expect(await rejectProposal(proposalId)).toEqual({ ok: true });
 

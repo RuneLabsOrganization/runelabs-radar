@@ -1,0 +1,1 @@
+ALTER TABLE `users` ADD `prev_seen_at` integer;

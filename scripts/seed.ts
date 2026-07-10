@@ -1,6 +1,9 @@
 import bcrypt from 'bcryptjs';
 import { eq } from 'drizzle-orm';
+import { loadDotEnv } from '../src/lib/env';
 import { getDb } from '../src/lib/db';
+
+loadDotEnv();
 import { users, sources, boardEntries } from '../src/lib/db/schema';
 import { SEED_SOURCES, SEED_BOARD_TASKS } from '../src/lib/db/seed-data';
 import { DOMAINS } from '../src/lib/domains';

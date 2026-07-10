@@ -30,6 +30,9 @@ export async function runIngest(): Promise<IngestStats> {
 
       let inserted = 0;
       for (const item of fetched) {
+        // Item URLs render into <a href> across the hub — never store
+        // non-http(s) schemes (javascript:, data:, ...) from feeds.
+        if (!/^https?:\/\//i.test(item.url)) continue;
         const result = db
           .insert(items)
           .values({

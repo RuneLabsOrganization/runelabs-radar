@@ -44,11 +44,17 @@ export async function applyProposal(proposalId: number): Promise<{ ok: boolean }
     .get();
 
   const now = new Date();
+  // Only non-null proposed fields are applied — a partial proposal must never
+  // wipe curated values it didn't mention.
+  const changes: Partial<ProposedFields> = {};
+  for (const f of FIELDS) {
+    if (proposed[f] !== null) changes[f] = proposed[f];
+  }
   db.insert(boardEntries)
-    .values({ domain: proposal.domain, task: proposal.task, ...proposed, updatedAt: now })
+    .values({ domain: proposal.domain, task: proposal.task, ...changes, updatedAt: now })
     .onConflictDoUpdate({
       target: [boardEntries.domain, boardEntries.task],
-      set: { ...proposed, updatedAt: now },
+      set: { ...changes, updatedAt: now },
     })
     .run();
 
@@ -57,8 +63,8 @@ export async function applyProposal(proposalId: number): Promise<{ ok: boolean }
   if (wasEmpty) {
     change = 'initial values set';
   } else {
-    const diffs = FIELDS.filter((f) => existing[f] !== proposed[f]).map(
-      (f) => `${f}: ${existing[f] ?? '(none)'} -> ${proposed[f] ?? '(none)'}`,
+    const diffs = FIELDS.filter((f) => proposed[f] !== null && existing[f] !== proposed[f]).map(
+      (f) => `${f}: ${existing[f] ?? '(none)'} -> ${proposed[f]}`,
     );
     change = diffs.length > 0 ? diffs.join('; ') : 'no field changes';
   }
