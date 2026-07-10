@@ -1,7 +1,50 @@
 import { and, desc, eq, gte } from 'drizzle-orm';
 import { getDb } from '../db';
-import { boardHistory, briefs, stories } from '../db/schema';
+import { boardHistory, briefs, insights, stories } from '../db/schema';
+import { DOMAINS, type Domain } from '../domains';
 import { chatJSON, LlmError } from '../llm/minimax';
+
+interface InsightItem {
+  headline: string;
+  detail: string;
+  direction: 'up' | 'down' | 'watch';
+  domain?: Domain;
+}
+
+/** Sanitizes the LLM's insights array: 1-5 items, valid directions/domains. */
+export function sanitizeInsights(v: unknown): InsightItem[] {
+  if (!Array.isArray(v)) return [];
+  const out: InsightItem[] = [];
+  for (const raw of v) {
+    if (out.length >= 5) break;
+    if (typeof raw !== 'object' || raw === null) continue;
+    const rec = raw as Record<string, unknown>;
+    if (typeof rec.headline !== 'string' || typeof rec.detail !== 'string') continue;
+    const headline = rec.headline.trim().slice(0, 120);
+    const detail = rec.detail.trim().slice(0, 400);
+    if (!headline || !detail) continue;
+    const direction =
+      rec.direction === 'up' || rec.direction === 'down' || rec.direction === 'watch'
+        ? rec.direction
+        : 'watch';
+    const domain =
+      typeof rec.domain === 'string' && (DOMAINS as readonly string[]).includes(rec.domain)
+        ? (rec.domain as Domain)
+        : undefined;
+    out.push({ headline, detail, direction, ...(domain ? { domain } : {}) });
+  }
+  return out;
+}
+
+function upsertInsights(date: string, items: InsightItem[]): void {
+  if (items.length === 0) return;
+  const now = new Date();
+  getDb()
+    .insert(insights)
+    .values({ date, items: JSON.stringify(items), createdAt: now })
+    .onConflictDoUpdate({ target: insights.date, set: { items: JSON.stringify(items), createdAt: now } })
+    .run();
+}
 
 function todayStr(): string {
   return new Date().toISOString().slice(0, 10);
@@ -29,12 +72,13 @@ function quietDayMarkdown(date: string, historyLines: string[]): string {
 }
 
 /**
- * Daily brief: top 10 curated stories of the last 24h + board changes of the
- * last 7 days → one MiniMax call → upsert briefs[today]. With fewer than 3
- * stories a static "quiet day" brief is written without touching the LLM.
+ * Daily brief: top curated stories of the last 24h + board changes of the
+ * last 7 days → one MiniMax call → upsert briefs[today] plus the day's
+ * analyst-note insights. With fewer than 3 stories a static "quiet day" brief
+ * is written without touching the LLM (insights left as-is).
  * Returns {wrote:false} only when the LLM call failed (logged, non-fatal).
  */
-export async function runBrief(): Promise<{ wrote: boolean }> {
+export async function runBrief(): Promise<{ wrote: boolean; insights: number }> {
   const db = getDb();
   const date = todayStr();
   const dayAgo = new Date(Date.now() - 864e5);
@@ -60,7 +104,7 @@ export async function runBrief(): Promise<{ wrote: boolean }> {
 
   if (topStories.length < 3) {
     upsertBrief(date, quietDayMarkdown(date, historyLines));
-    return { wrote: true };
+    return { wrote: true, insights: 0 };
   }
 
   const storiesText = topStories
@@ -81,7 +125,13 @@ export async function runBrief(): Promise<{ wrote: boolean }> {
     'Runelabs" (concrete implications for what the team builds), and "## Board changes" ' +
     '(summarize the recent Best-Right-Now board changes, or state there were none). Keep it ' +
     'tight and factual — a tool, not a newsletter.\n' +
-    'Respond ONLY with a JSON object of this exact shape: {"markdown":"..."}';
+    'Additionally produce "insights": 3-5 analyst notes that go BEYOND summarizing — trends, ' +
+    'shifts and calls to action a sharp analyst would flag for Runelabs. Each is ' +
+    '{"headline": punchy claim (max ~12 words), "detail": 1-2 sentences of evidence/implication, ' +
+    '"direction": "up" (rising, act on it) | "down" (fading, deprioritize) | "watch" (developing), ' +
+    '"domain": optionally one of coding|copy|image|video|ads|agentic}.\n' +
+    'Respond ONLY with a JSON object of this exact shape: ' +
+    '{"markdown":"...","insights":[{"headline":"...","detail":"...","direction":"...","domain":"..."}]}';
 
   const user =
     `Date: ${date}\n\n` +
@@ -91,13 +141,15 @@ export async function runBrief(): Promise<{ wrote: boolean }> {
     }`;
 
   try {
-    const res = await chatJSON<{ markdown?: unknown }>(system, user);
+    const res = await chatJSON<{ markdown?: unknown; insights?: unknown }>(system, user);
     const markdown = typeof res.markdown === 'string' ? res.markdown.trim() : '';
     if (!markdown) throw new LlmError('Brief response missing "markdown"', false);
     upsertBrief(date, markdown);
-    return { wrote: true };
+    const items = sanitizeInsights(res.insights);
+    upsertInsights(date, items);
+    return { wrote: true, insights: items.length };
   } catch (e) {
     console.error('[brief] LLM brief generation failed:', e);
-    return { wrote: false };
+    return { wrote: false, insights: 0 };
   }
 }

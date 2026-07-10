@@ -29,6 +29,8 @@ export const stories = sqliteTable('stories', {
   tldr: text('tldr'),
   whyItMatters: text('why_it_matters'),
   domainScores: text('domain_scores'),
+  // JSON [{name, kind: 'model'|'tool'|'org'|'technique'}] extracted at curation
+  entities: text('entities'),
   topScore: integer('top_score').notNull().default(0),
   status: text('status', { enum: ['raw', 'curated'] }).notNull().default('raw'),
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
@@ -108,6 +110,13 @@ export const benchmarkSnapshots = sqliteTable('benchmark_snapshots', {
 export const briefs = sqliteTable('briefs', {
   date: text('date').primaryKey(),
   markdown: text('markdown').notNull(),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+});
+
+export const insights = sqliteTable('insights', {
+  date: text('date').primaryKey(),
+  // JSON [{headline, detail, direction: 'up'|'down'|'watch', domain?}]
+  items: text('items').notNull(),
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
 });
 

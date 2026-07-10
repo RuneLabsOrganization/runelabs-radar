@@ -7,13 +7,15 @@ export interface SectorStat {
   domain: Domain;
   count: number;
   fresh: number;
+  /** Week-over-week volume change (%); null hides the momentum readout. */
+  deltaPct?: number | null;
 }
 
 /** Sweep readout across the six sectors — doubles as domain navigation. */
 export default function SectorStrip({ stats, active }: { stats: SectorStat[]; active?: Domain }) {
   return (
     <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
-      {stats.map(({ domain, count, fresh }) => (
+      {stats.map(({ domain, count, fresh, deltaPct }) => (
         <Link
           key={domain}
           href={`/domain/${domain}`}
@@ -35,6 +37,16 @@ export default function SectorStrip({ stats, active }: { stats: SectorStat[]; ac
             {fresh > 0 && (
               <span className="text-[10.5px]" style={{ color: 'var(--phosphor)' }}>
                 +{fresh}
+              </span>
+            )}
+            {deltaPct != null && deltaPct !== 0 && (
+              <span
+                className="ml-auto text-[10px]"
+                title="volume vs last week"
+                style={{ color: deltaPct > 0 ? 'var(--phosphor)' : 'var(--ink-4)' }}
+              >
+                {deltaPct > 0 ? '+' : ''}
+                {deltaPct}%
               </span>
             )}
           </span>

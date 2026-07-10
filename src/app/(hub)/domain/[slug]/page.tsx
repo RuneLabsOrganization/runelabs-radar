@@ -10,9 +10,11 @@ import {
   DOMAIN_MEMBERSHIP_THRESHOLD,
   isDomain,
 } from '@/lib/domains';
+import { dailyDomainCounts, domainMomentum } from '@/lib/analytics';
 import { splitFeed } from '@/lib/feed';
 import { visitAnchor } from '@/lib/visits';
 import { parseDomainScores } from '@/components/DomainChips';
+import ActivityTrace from '@/components/ActivityTrace';
 import ScanRow from '@/components/ScanRow';
 import SectionHeader from '@/components/SectionHeader';
 import SectorStrip, { type SectorStat } from '@/components/SectorStrip';
@@ -48,6 +50,7 @@ export default async function DomainPage({ params }: { params: Promise<{ slug: s
     };
   });
 
+  const momentum = new Map(domainMomentum().map((m) => [m.domain, m.deltaPct]));
   const stats: SectorStat[] = DOMAINS.map((domain) => {
     let n = 0;
     let fresh = 0;
@@ -57,7 +60,7 @@ export default async function DomainPage({ params }: { params: Promise<{ slug: s
         if (c.isNew) fresh += 1;
       }
     }
-    return { domain, count: n, fresh };
+    return { domain, count: n, fresh, deltaPct: momentum.get(domain) ?? null };
   });
 
   const member = all.filter((c) => c.score >= DOMAIN_MEMBERSHIP_THRESHOLD);
@@ -113,6 +116,9 @@ export default async function DomainPage({ params }: { params: Promise<{ slug: s
       <div className="mt-4">
         <SectorStrip stats={stats} active={slug} />
       </div>
+
+      <SectionHeader label="Sector activity — 14-day sweep" />
+      <ActivityTrace days={dailyDomainCounts(14)} focus={slug} />
 
       <SectionHeader label="Top signals" count={top.length} tone="phosphor" />
       {top.length === 0 ? (

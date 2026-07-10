@@ -3,10 +3,20 @@ import { requireUser } from '@/lib/auth/user';
 import { getDb } from '@/lib/db';
 import { items, sources, stories, votes } from '@/lib/db/schema';
 import { DOMAINS, DOMAIN_MEMBERSHIP_THRESHOLD } from '@/lib/domains';
+import {
+  dailyDomainCounts,
+  domainMomentum,
+  echoStats,
+  latestInsights,
+  topEntities,
+} from '@/lib/analytics';
 import { splitFeed, timeAgo } from '@/lib/feed';
 import { safeHttpUrl } from '@/lib/safe-url';
 import { visitAnchor } from '@/lib/visits';
 import { parseDomainScores, topDomain } from '@/components/DomainChips';
+import ActivityTrace from '@/components/ActivityTrace';
+import AnalystNotes from '@/components/AnalystNotes';
+import EntityBars from '@/components/EntityBars';
 import MarkSeen from '@/components/MarkSeen';
 import ScanRow from '@/components/ScanRow';
 import SectionHeader from '@/components/SectionHeader';
@@ -108,6 +118,7 @@ export default async function BriefingPage() {
   });
   const { top, scan, lowCount } = splitFeed(contacts);
 
+  const momentum = new Map(domainMomentum().map((m) => [m.domain, m.deltaPct]));
   const stats: SectorStat[] = DOMAINS.map((domain) => {
     let n = 0;
     let fresh = 0;
@@ -117,12 +128,17 @@ export default async function BriefingPage() {
         if (c.isNew) fresh += 1;
       }
     }
-    return { domain, count: n, fresh };
+    return { domain, count: n, fresh, deltaPct: momentum.get(domain) ?? null };
   });
   const freshTotal = contacts.filter((c) => c.isNew).length;
 
+  const days = dailyDomainCounts(14);
+  const entities = topEntities(8);
+  const notes = latestInsights();
+  const echoes = echoStats();
+
   return (
-    <div className="mx-auto max-w-[760px] px-6 py-7">
+    <div className="mx-auto max-w-[860px] px-6 py-7">
       <MarkSeen />
 
       <div className="readout">
@@ -130,12 +146,31 @@ export default async function BriefingPage() {
         {freshTotal > 0 && (
           <span style={{ color: 'var(--phosphor)' }}> &middot; {freshTotal} new</span>
         )}
+        {echoes.multiSource > 0 && <span> &middot; {echoes.multiSource} multi-source echoes</span>}
       </div>
       <h1 className="mt-1 text-[17px] font-semibold tracking-[-0.01em]">Briefing</h1>
 
       <div className="mt-4">
         <SectorStrip stats={stats} />
       </div>
+
+      <SectionHeader label="Activity — 14-day sweep" />
+      <div className="flex flex-col gap-7 md:flex-row">
+        <div className="min-w-0 flex-1">
+          <ActivityTrace days={days} />
+        </div>
+        <div className="w-full shrink-0 md:w-[240px]">
+          <div className="readout mb-2.5">most mentioned &middot; 7d</div>
+          <EntityBars entities={entities} />
+        </div>
+      </div>
+
+      {notes && notes.items.length > 0 && (
+        <>
+          <SectionHeader label={`Analyst notes — ${notes.date}`} />
+          <AnalystNotes items={notes.items} />
+        </>
+      )}
 
       <SectionHeader label="Top signals" count={top.length} tone="phosphor" />
       {top.length === 0 ? (

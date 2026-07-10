@@ -35,6 +35,31 @@ interface CurationResponse {
   domain_scores?: Partial<Record<Domain, number>>;
   tldr?: string;
   why_it_matters?: string;
+  entities?: unknown;
+}
+
+const ENTITY_KINDS = ['model', 'tool', 'org', 'technique'] as const;
+
+/** Sanitizes the LLM's entities array: max 6, non-empty names, known kinds. */
+export function sanitizeEntities(v: unknown): { name: string; kind: string }[] {
+  if (!Array.isArray(v)) return [];
+  const out: { name: string; kind: string }[] = [];
+  const seen = new Set<string>();
+  for (const e of v) {
+    if (out.length >= 6) break;
+    if (typeof e !== 'object' || e === null) continue;
+    const rec = e as Record<string, unknown>;
+    if (typeof rec.name !== 'string') continue;
+    const name = rec.name.trim().slice(0, 80);
+    if (!name || seen.has(name.toLowerCase())) continue;
+    seen.add(name.toLowerCase());
+    const kind =
+      typeof rec.kind === 'string' && (ENTITY_KINDS as readonly string[]).includes(rec.kind)
+        ? rec.kind
+        : 'model';
+    out.push({ name, kind });
+  }
+  return out;
 }
 
 /** Builds the system + user prompts for one story's curation call. Exported for tests. */
@@ -66,12 +91,16 @@ export function buildCurationPrompts(
     'Also write:',
     '- "tldr": a factual summary of the story in at most two short sentences.',
     '- "why_it_matters": one or two sentences on the concrete implication for Runelabs teams.',
+    '- "entities": up to 6 named things the story is about, each {"name","kind"} with kind one of',
+    '  "model" (AI models, e.g. "GPT-5.2"), "tool" (products/frameworks, e.g. "Claude Code"),',
+    '  "org" (companies/labs), "technique" (methods, e.g. "speculative decoding").',
+    '  Use short canonical names (no version suffixes like dates, no vendor prefixes unless part of the name).',
     '',
     'Recent team votes are provided as calibration: score stories resembling [UP] votes',
     'higher and stories resembling [DOWN] votes lower.',
     '',
     'Respond with STRICT JSON only — no markdown, no code fences, no commentary — exactly:',
-    '{"domain_scores":{"coding":N,"copy":N,"image":N,"video":N,"ads":N,"agentic":N},"tldr":"...","why_it_matters":"..."}',
+    '{"domain_scores":{"coding":N,"copy":N,"image":N,"video":N,"ads":N,"agentic":N},"tldr":"...","why_it_matters":"...","entities":[{"name":"...","kind":"..."}]}',
     'where each N is an integer between 0 and 100.',
   ].join('\n');
 
@@ -159,11 +188,13 @@ export async function runCurate(): Promise<{ clustered: number; curated: number;
         scores[d] = clampScore(res.domain_scores?.[d]);
       }
       const topScore = Math.max(...DOMAINS.map((d) => scores[d]));
+      const entities = sanitizeEntities(res.entities);
       db.update(stories)
         .set({
           domainScores: JSON.stringify(scores),
           tldr: typeof res.tldr === 'string' ? res.tldr : null,
           whyItMatters: typeof res.why_it_matters === 'string' ? res.why_it_matters : null,
+          entities: entities.length > 0 ? JSON.stringify(entities) : null,
           topScore,
           status: 'curated',
         })
