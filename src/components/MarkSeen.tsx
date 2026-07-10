@@ -9,7 +9,12 @@ import { useEffect } from 'react';
  */
 export default function MarkSeen() {
   useEffect(() => {
-    void fetch('/api/seen', { method: 'POST' }).catch(() => {});
+    const mark = () => void fetch('/api/seen', { method: 'POST' }).catch(() => {});
+    mark();
+    // Heartbeat keeps lastSeenAt fresh during long reads so the visit-gap
+    // logic never mistakes the current visit for a new one mid-session.
+    const timer = setInterval(mark, 5 * 60_000);
+    return () => clearInterval(timer);
   }, []);
   return null;
 }

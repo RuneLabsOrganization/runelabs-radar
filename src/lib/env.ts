@@ -14,8 +14,14 @@ export function loadDotEnv(file = '.env'): void {
       const m = /^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*?)\s*$/.exec(line);
       if (!m || m[1].startsWith('#')) continue;
       let v = m[2];
-      if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) {
+      const quoted =
+        (v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"));
+      if (quoted) {
         v = v.slice(1, -1);
+      } else {
+        // Match Next's dotenv semantics: unquoted values stop at an inline
+        // comment, otherwise web and worker would read different values.
+        v = v.replace(/\s+#.*$/, '').trim();
       }
       if (process.env[m[1]] === undefined) process.env[m[1]] = v;
     }

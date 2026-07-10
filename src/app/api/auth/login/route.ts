@@ -18,8 +18,12 @@ const MAX_FAILURES = 10;
 const failures = new Map<string, { count: number; resetAt: number }>();
 
 function clientKey(req: Request, name: string): string {
+  // Rightmost XFF entry is the hop appended by our own reverse proxy; the
+  // leftmost entries are client-controlled and would let an attacker rotate
+  // keys (bypass) or spoof a victim's IP (lockout).
   const fwd = req.headers.get('x-forwarded-for');
-  const ip = fwd ? fwd.split(',')[0].trim() : 'local';
+  const parts = fwd ? fwd.split(',') : [];
+  const ip = parts.length > 0 ? parts[parts.length - 1].trim() : 'local';
   return `${ip}|${name.toLowerCase()}`;
 }
 
