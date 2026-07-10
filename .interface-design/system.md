@@ -36,6 +36,19 @@ Content column: 760px (reading pages), 860px (tables/admin).
 - **Sweep status** — top-bar readout dot: phosphor nominal, amber stale.
 - **Why-it-matters** — phosphor left-border callout inside entries, not a filled panel.
 
+## Analytics deck (briefing)
+
+- **ActivityTrace** — hand-rolled SVG (no chart lib): graticule grid, total volume as
+  grat-soft area, sector polylines in `--sector-*`, hover crosshair + mono tooltip
+  (scope-2 panel), clickable legend ticks (aria-pressed, 0.35 opacity when hidden).
+  `focus` prop pre-isolates one sector (domain pages).
+- **EntityBars** — mono name + 3px phosphor bar + count + delta (`new` / `+n` phosphor,
+  `-n` ink-4). Data: entities extracted at curation, counted once per story.
+- **AnalystNotes** — direction glyph (▲ phosphor / ▼ alert / ◆ amber) + bold headline +
+  ink-2 detail + optional sector tick. Written daily by the brief job.
+- Momentum: w/w % in SectorStrip cells (phosphor positive, ink-4 negative; hidden when
+  no prior-week data). Charts stay ≤180px tall; briefing container is 860px.
+
 ## Patterns
 
 - Top bar console (h-12, sticky, blur) — no sidebar. NavLinks: mono uppercase, phosphor
