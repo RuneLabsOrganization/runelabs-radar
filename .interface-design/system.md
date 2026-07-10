@@ -48,6 +48,10 @@ Content column: 760px (reading pages), 860px (tables/admin).
   ink-2 detail + optional sector tick. Written daily by the brief job.
 - Momentum: w/w % in SectorStrip cells (phosphor positive, ink-4 negative; hidden when
   no prior-week data). Charts stay ≤180px tall; briefing container is 860px.
+- **ModelScatter** (board) — AA quality-vs-price: log-price x-axis, pareto frontier
+  phosphor-lit + labeled + faint connective trace, metric toggle (intelligence/coding),
+  mono attribution line ("data: Artificial Analysis"). Pure math lives in client-safe
+  `lib/pareto.ts` — client components must NEVER import `lib/analytics` (it pulls the DB).
 
 ## Patterns
 
