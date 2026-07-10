@@ -1,0 +1,26 @@
+services:
+  web:
+    build:
+      context: .
+      target: web
+    ports:
+      - '127.0.0.1:3121:3000' # reverse proxy points here
+    env_file: .env
+    environment:
+      DATABASE_PATH: /data/radar.db
+    volumes:
+      - ./data:/data
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: .
+      target: worker
+    env_file: .env
+    environment:
+      DATABASE_PATH: /data/radar.db
+    volumes:
+      - ./data:/data
+    restart: unless-stopped
+    depends_on:
+      - web
