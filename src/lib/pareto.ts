@@ -6,6 +6,8 @@ export interface AaModel {
   intelligence: number;
   coding: number | null;
   price: number; // $/1M tokens, blended 3:1
+  priceIn: number | null; // $/1M input tokens
+  priceOut: number | null; // $/1M output tokens
   speed: number | null; // median output tok/s
   released: string | null;
 }

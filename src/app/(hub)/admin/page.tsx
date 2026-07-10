@@ -1,7 +1,12 @@
 import { desc, eq } from 'drizzle-orm';
 import JobsPanel from '@/components/JobsPanel';
+import JobTimeline from '@/components/JobTimeline';
+import LlmBudget from '@/components/LlmBudget';
+import PipelineFunnel from '@/components/PipelineFunnel';
 import ProposalCard, { type ProposedFields } from '@/components/ProposalCard';
 import SourcesPanel, { type SourceRow } from '@/components/SourcesPanel';
+import SourceVolume from '@/components/SourceVolume';
+import { jobHistory, llmUsageHistory, pipelineFunnel, sourceVolume } from '@/lib/analytics';
 import { requireAdmin } from '@/lib/auth/user';
 import { getDb } from '@/lib/db';
 import { boardProposals, jobRuns, sources } from '@/lib/db/schema';
@@ -61,6 +66,29 @@ export default async function AdminPage() {
         <div className="readout">operator console &middot; sources, sweeps, proposals</div>
         <h1 className="mt-1 text-[17px] font-semibold tracking-[-0.01em]">Admin</h1>
       </div>
+
+      <section>
+        <div className="grid gap-x-10 gap-y-6 md:grid-cols-2">
+          <div>
+            <h2 className="section-title">Pipeline — 7 days</h2>
+            <PipelineFunnel funnel={pipelineFunnel()} />
+          </div>
+          <div>
+            <h2 className="section-title">LLM budget</h2>
+            <LlmBudget {...llmUsageHistory()} />
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <h2 className="section-title">Sweep health — recent runs</h2>
+        <JobTimeline history={jobHistory()} />
+      </section>
+
+      <section>
+        <h2 className="section-title">Source volume — 14 days</h2>
+        <SourceVolume rows={sourceVolume()} />
+      </section>
 
       <section>
         <h2 className="section-title">Pending proposals</h2>

@@ -7,6 +7,11 @@ import { SEED_BOARD_TASKS } from '../db/seed-data';
 import { chatJSON } from '../llm/minimax';
 
 const AA_URL = 'https://artificialanalysis.ai/api/v2/data/llms/models';
+const AA_MEDIA_ENDPOINTS = [
+  { source: 'aa-media-image', url: 'https://artificialanalysis.ai/api/v2/data/media/text-to-image' },
+  { source: 'aa-media-video', url: 'https://artificialanalysis.ai/api/v2/data/media/text-to-video' },
+  { source: 'aa-media-image-edit', url: 'https://artificialanalysis.ai/api/v2/data/media/image-editing' },
+];
 const SNAPSHOT_MAX_CHARS = 100_000;
 const PROMPT_SNAPSHOT_BUDGET = 8_000;
 const FETCH_TIMEOUT_MS = 20_000;
@@ -81,6 +86,55 @@ export function compactAaSnapshot(raw: string): string {
     return JSON.stringify({ compact: true, models });
   } catch {
     return raw.slice(0, SNAPSHOT_MAX_CHARS);
+  }
+}
+
+interface AaMediaApiModel {
+  name?: unknown;
+  model_creator?: { name?: unknown };
+  elo?: unknown;
+  rank?: unknown;
+  release_date?: unknown;
+}
+
+/** Compacts an AA media-arena response (ELO leaderboard) for storage. Exported for tests. */
+export function compactAaMediaSnapshot(raw: string): string {
+  try {
+    const parsed = JSON.parse(raw) as { data?: unknown };
+    if (!Array.isArray(parsed.data)) return raw.slice(0, SNAPSHOT_MAX_CHARS);
+    const models = (parsed.data as AaMediaApiModel[])
+      .map((m) => ({
+        name: typeof m.name === 'string' ? m.name : null,
+        org: typeof m.model_creator?.name === 'string' ? m.model_creator.name : null,
+        elo: num(m.elo),
+        rank: num(m.rank),
+        released: typeof m.release_date === 'string' ? m.release_date : null,
+      }))
+      .filter((m) => m.name !== null && m.elo !== null && m.rank !== null)
+      .sort((a, b) => (a.rank as number) - (b.rank as number))
+      .slice(0, 25);
+    return JSON.stringify({ compact: true, models });
+  } catch {
+    return raw.slice(0, SNAPSHOT_MAX_CHARS);
+  }
+}
+
+/** Renders a compact media snapshot as prompt-friendly lines (top by arena rank). */
+function aaMediaPromptLines(compactRaw: string, limit = 12): string | null {
+  try {
+    const parsed = JSON.parse(compactRaw) as { compact?: boolean; models?: unknown };
+    if (!parsed.compact || !Array.isArray(parsed.models)) return null;
+    const models = (parsed.models as Record<string, unknown>[]).slice(0, limit);
+    if (models.length === 0) return null;
+    return models
+      .map(
+        (m) =>
+          `#${m.rank} ${m.name as string} (${(m.org as string) ?? '?'}) — arena ELO ${m.elo}` +
+          (m.released ? `, released ${m.released as string}` : ''),
+      )
+      .join('\n');
+  } catch {
+    return null;
   }
 }
 
@@ -216,6 +270,15 @@ export async function runBoardSync(): Promise<{ snapshots: number; proposals: nu
     } catch (e) {
       console.error('[board] Artificial Analysis fetch failed:', e);
     }
+    for (const ep of AA_MEDIA_ENDPOINTS) {
+      try {
+        const raw = await fetchText(ep.url, { 'x-api-key': config.aaApiKey });
+        storeSnapshot(ep.source, compactAaMediaSnapshot(raw));
+        snapshots++;
+      } catch (e) {
+        console.error(`[board] ${ep.source} fetch failed:`, e);
+      }
+    }
   }
   // Latest snapshot per source (includes earlier weeks when this run's fetches failed).
   const allSnaps = db
@@ -231,7 +294,12 @@ export async function runBoardSync(): Promise<{ snapshots: number; proposals: nu
   const perSource = Math.floor(PROMPT_SNAPSHOT_BUDGET / Math.max(1, latestBySource.size));
   const snapshotText = Array.from(latestBySource.entries())
     .map(([source, raw]) => {
-      const pretty = source === 'artificial-analysis' ? aaPromptLines(raw) : null;
+      const pretty =
+        source === 'artificial-analysis'
+          ? aaPromptLines(raw)
+          : source.startsWith('aa-media')
+            ? aaMediaPromptLines(raw)
+            : null;
       return `--- ${source} ---\n${pretty ?? raw.slice(0, perSource)}`;
     })
     .join('\n\n');

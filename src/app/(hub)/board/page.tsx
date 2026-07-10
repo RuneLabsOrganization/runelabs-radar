@@ -1,9 +1,12 @@
 import { desc, gte } from 'drizzle-orm';
 import type { ReactNode } from 'react';
+import EloBars from '@/components/EloBars';
 import ModelScatter from '@/components/ModelScatter';
+import TaskCostExplorer from '@/components/TaskCostExplorer';
+import ValueBars from '@/components/ValueBars';
 import VerdictEditor from '@/components/VerdictEditor';
 import SectionHeader from '@/components/SectionHeader';
-import { aaModels } from '@/lib/analytics';
+import { aaMedia, aaModels } from '@/lib/analytics';
 import { requireViewer } from '@/lib/auth/user';
 import { getDb } from '@/lib/db';
 import { boardEntries, boardHistory } from '@/lib/db/schema';
@@ -27,6 +30,7 @@ export default async function BoardPage() {
   const user = await requireViewer();
   const db = getDb();
   const aa = aaModels();
+  const media = aaMedia();
 
   const entries = db
     .select()
@@ -58,6 +62,32 @@ export default async function BoardPage() {
         <>
           <SectionHeader label="The market — quality vs price" />
           <ModelScatter models={aa.models} fetchedAt={aa.fetchedAt} />
+
+          <SectionHeader label="Bottom line — cost per task" tone="phosphor" />
+          <TaskCostExplorer models={aa.models} />
+
+          <SectionHeader label="Value — intelligence per dollar" />
+          <ValueBars models={aa.models} />
+        </>
+      )}
+
+      {media && (
+        <>
+          <SectionHeader label="Media arenas — crowd-ranked quality" />
+          <div className="grid gap-x-8 gap-y-6 md:grid-cols-3">
+            {media.arenas.image && <EloBars title="text to image" models={media.arenas.image} />}
+            {media.arenas.video && <EloBars title="text to video" models={media.arenas.video} />}
+            {media.arenas.imageEdit && (
+              <EloBars title="image editing" models={media.arenas.imageEdit} />
+            )}
+          </div>
+          <p className="mono mt-2 text-[10px]" style={{ color: 'var(--ink-4)' }}>
+            arena ELO from human preference votes &middot;{' '}
+            <a href="https://artificialanalysis.ai" target="_blank" rel="noreferrer" className="hover:underline">
+              data: Artificial Analysis
+            </a>{' '}
+            &middot; {media.fetchedAt}
+          </p>
         </>
       )}
 

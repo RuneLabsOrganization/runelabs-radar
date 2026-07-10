@@ -10,7 +10,10 @@ import {
   paretoFrontier,
   topEntities,
 } from '@/lib/analytics';
-import { compactAaSnapshot } from '@/lib/board/sync';
+import { compactAaMediaSnapshot, compactAaSnapshot } from '@/lib/board/sync';
+import { fmtUsd, taskCost, TASK_ARCHETYPES } from '@/lib/costs';
+import { aaMedia, llmUsageHistory, pipelineFunnel, sourceVolume } from '@/lib/analytics';
+import { llmUsage } from '@/lib/db/schema';
 import { sanitizeEntities } from '@/lib/curate/curate';
 import { sanitizeInsights } from '@/lib/brief/brief';
 
@@ -179,6 +182,105 @@ describe('artificial analysis data', () => {
       { x: 0.1, y: 20 } // D frontier (cheapest)
     ];
     expect(paretoFrontier(pts)).toEqual([true, true, false, true]);
+  });
+});
+
+describe('task costs', () => {
+  it('taskCost = in*priceIn + out*priceOut per million', () => {
+    const landing = TASK_ARCHETYPES.find((t) => t.key === 'landing')!;
+    // 6k in @ $5/1M + 12k out @ $30/1M = $0.03 + $0.36 = $0.39
+    expect(taskCost({ priceIn: 5, priceOut: 30 }, landing)).toBeCloseTo(0.39, 5);
+    expect(taskCost({ priceIn: null, priceOut: 30 }, landing)).toBeNull();
+  });
+
+  it('agent sessions are input-heavy: cheap-output models can still be pricey', () => {
+    const agent = TASK_ARCHETYPES.find((t) => t.key === 'agent')!;
+    const inputHeavy = taskCost({ priceIn: 5, priceOut: 1 }, agent)!;
+    const outputHeavy = taskCost({ priceIn: 1, priceOut: 5 }, agent)!;
+    expect(inputHeavy).toBeGreaterThan(outputHeavy); // 150k in dominates
+  });
+
+  it('fmtUsd scales precision with magnitude', () => {
+    expect(fmtUsd(12.3)).toBe('$12.3');
+    expect(fmtUsd(1.234)).toBe('$1.23');
+    expect(fmtUsd(0.1234)).toBe('$0.123');
+    expect(fmtUsd(0.01234)).toBe('$0.0123');
+  });
+});
+
+describe('media arenas', () => {
+  const MEDIA_RAW = JSON.stringify({
+    status: 200,
+    data: [
+      { name: 'HappyHorse-1.0', model_creator: { name: 'Alibaba-ATH' }, elo: 1286, rank: 1, release_date: '2026-04' },
+      { name: 'Seedance 2.0', model_creator: { name: 'ByteDance Seed' }, elo: 1272, rank: 3, release_date: '2026-03' },
+      { name: 'broken', elo: null, rank: 2 },
+    ],
+  });
+
+  it('compactAaMediaSnapshot keeps ranked entries only', () => {
+    const compact = JSON.parse(compactAaMediaSnapshot(MEDIA_RAW)) as { models: unknown[] };
+    expect(compact.models).toHaveLength(2);
+    expect(compact.models[0]).toMatchObject({ name: 'HappyHorse-1.0', elo: 1286, rank: 1 });
+  });
+
+  it('aaMedia reads per-type snapshots', () => {
+    const db = useTestDb();
+    db.insert(benchmarkSnapshots)
+      .values({ source: 'aa-media-video', raw: compactAaMediaSnapshot(MEDIA_RAW), fetchedAt: new Date() })
+      .run();
+    const media = aaMedia();
+    expect(media).not.toBeNull();
+    expect(media!.arenas.video).toHaveLength(2);
+    expect(media!.arenas.image).toBeUndefined();
+    expect(media!.arenas.video![0].name).toBe('HappyHorse-1.0');
+  });
+});
+
+describe('ops analytics', () => {
+  it('pipelineFunnel counts items, stories, curated and top signals in-window', () => {
+    const db = useTestDb();
+    const src = db.insert(sources).values({ type: 'rss', name: 's', config: '{}' }).returning().get();
+    const now = new Date();
+    db.insert(items).values([
+      { sourceId: src.id, url: 'https://x.example/1', title: 'a', fetchedAt: now },
+      { sourceId: src.id, url: 'https://x.example/2', title: 'b', fetchedAt: now },
+      { sourceId: src.id, url: 'https://x.example/3', title: 'c', fetchedAt: new Date(now.getTime() - 10 * 864e5) }, // out of window
+    ]).run();
+    insertStory(db, { daysAgo: 1, coding: 85 }); // curated, top signal
+    insertStory(db, { daysAgo: 1, coding: 50 }); // curated
+    db.insert(stories)
+      .values({ title: 'raw one', status: 'raw', topScore: 0, createdAt: now })
+      .run();
+    expect(pipelineFunnel()).toEqual({ items: 2, stories: 3, curated: 2, topSignals: 1 });
+  });
+
+  it('llmUsageHistory zero-fills days and reports the cap', () => {
+    const db = useTestDb();
+    const today = new Date().toISOString().slice(0, 10);
+    db.insert(llmUsage).values({ date: today, calls: 42 }).run();
+    const usage = llmUsageHistory(5);
+    expect(usage.days).toHaveLength(5);
+    expect(usage.days[4]).toEqual({ date: today, calls: 42 });
+    expect(usage.days[0].calls).toBe(0);
+    expect(usage.cap).toBeGreaterThan(0);
+  });
+
+  it('sourceVolume buckets items per source per day', () => {
+    const db = useTestDb();
+    const a = db.insert(sources).values({ type: 'rss', name: 'Feed A', config: '{}' }).returning().get();
+    const b = db.insert(sources).values({ type: 'rss', name: 'Feed B', config: '{}' }).returning().get();
+    const now = new Date();
+    db.insert(items).values([
+      { sourceId: a.id, url: 'https://a.example/1', title: 'x', fetchedAt: now },
+      { sourceId: a.id, url: 'https://a.example/2', title: 'y', fetchedAt: now },
+      { sourceId: b.id, url: 'https://b.example/1', title: 'z', fetchedAt: now },
+    ]).run();
+    const rows = sourceVolume(7);
+    expect(rows[0]).toMatchObject({ name: 'Feed A', total7d: 2 });
+    expect(rows[0].daily).toHaveLength(7);
+    expect(rows[0].daily[6]).toBe(2);
+    expect(rows[1]).toMatchObject({ name: 'Feed B', total7d: 1 });
   });
 });
 

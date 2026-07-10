@@ -1,6 +1,15 @@
-import { and, desc, eq, gte, inArray } from 'drizzle-orm';
+import { and, count, desc, eq, gte, inArray } from 'drizzle-orm';
+import { config } from './config';
 import { getDb } from './db';
-import { benchmarkSnapshots, insights, items, stories } from './db/schema';
+import {
+  benchmarkSnapshots,
+  insights,
+  items,
+  jobRuns,
+  llmUsage,
+  sources as sourcesTable,
+  stories,
+} from './db/schema';
 import { DOMAINS, DOMAIN_MEMBERSHIP_THRESHOLD, type Domain } from './domains';
 import { parseDomainScores } from '@/components/DomainChips';
 
@@ -249,6 +258,8 @@ export function aaModels(limit = 60): { fetchedAt: string; models: AaModel[] } |
         intelligence: m.intelligence as number,
         coding: typeof m.coding === 'number' ? m.coding : null,
         price: m.price as number,
+        priceIn: typeof m.priceIn === 'number' ? m.priceIn : null,
+        priceOut: typeof m.priceOut === 'number' ? m.priceOut : null,
         speed: typeof m.speed === 'number' ? m.speed : null,
         released: typeof m.released === 'string' ? m.released : null,
       }))
@@ -259,6 +270,173 @@ export function aaModels(limit = 60): { fetchedAt: string; models: AaModel[] } |
   } catch {
     return null;
   }
+}
+
+export interface MediaModel {
+  name: string;
+  org: string | null;
+  elo: number;
+  rank: number;
+  released: string | null;
+}
+
+export const MEDIA_TYPES = [
+  { source: 'aa-media-image', key: 'image', label: 'Text to image' },
+  { source: 'aa-media-video', key: 'video', label: 'Text to video' },
+  { source: 'aa-media-image-edit', key: 'imageEdit', label: 'Image editing' },
+] as const;
+
+export type MediaKey = (typeof MEDIA_TYPES)[number]['key'];
+
+/** Latest AA media-arena snapshots (image/video/image-editing), top models by ELO rank. */
+export function aaMedia(limit = 10): { fetchedAt: string; arenas: Partial<Record<MediaKey, MediaModel[]>> } | null {
+  const db = getDb();
+  const arenas: Partial<Record<MediaKey, MediaModel[]>> = {};
+  let newest: Date | null = null;
+  for (const t of MEDIA_TYPES) {
+    const snap = db
+      .select()
+      .from(benchmarkSnapshots)
+      .where(eq(benchmarkSnapshots.source, t.source))
+      .orderBy(desc(benchmarkSnapshots.fetchedAt), desc(benchmarkSnapshots.id))
+      .limit(1)
+      .get();
+    if (!snap) continue;
+    try {
+      const parsed = JSON.parse(snap.raw) as { compact?: boolean; models?: unknown };
+      if (!parsed.compact || !Array.isArray(parsed.models)) continue;
+      const models = (parsed.models as Record<string, unknown>[])
+        .filter(
+          (m): m is Record<string, unknown> =>
+            typeof m.name === 'string' && typeof m.elo === 'number' && typeof m.rank === 'number',
+        )
+        .map((m) => ({
+          name: m.name as string,
+          org: typeof m.org === 'string' ? m.org : null,
+          elo: m.elo as number,
+          rank: m.rank as number,
+          released: typeof m.released === 'string' ? m.released : null,
+        }))
+        .sort((a, b) => a.rank - b.rank)
+        .slice(0, limit);
+      if (models.length > 0) {
+        arenas[t.key] = models;
+        if (!newest || snap.fetchedAt > newest) newest = snap.fetchedAt;
+      }
+    } catch {
+      // skip unparseable snapshot
+    }
+  }
+  if (!newest) return null;
+  return { fetchedAt: newest.toISOString().slice(0, 10), arenas };
+}
+
+export interface SourceVolumeRow {
+  name: string;
+  daily: number[]; // items per day, oldest → newest
+  total7d: number;
+}
+
+/** Item volume per source: daily counts for sparklines + 7-day totals. */
+export function sourceVolume(days = 14): SourceVolumeRow[] {
+  const db = getDb();
+  const start = new Date(Date.now() - days * DAY_MS);
+  const rows = db
+    .select({ fetchedAt: items.fetchedAt, name: sourcesTable.name })
+    .from(items)
+    .innerJoin(sourcesTable, eq(items.sourceId, sourcesTable.id))
+    .where(gte(items.fetchedAt, start))
+    .all();
+
+  // UTC calendar-day buckets, matching dailyDomainCounts.
+  const index = new Map<string, number>();
+  for (let i = 0; i < days; i++) {
+    index.set(utcDay(new Date(Date.now() - (days - 1 - i) * DAY_MS)), i);
+  }
+  const bySource = new Map<string, number[]>();
+  for (const row of rows) {
+    const i = index.get(utcDay(row.fetchedAt));
+    if (i === undefined) continue;
+    const daily = bySource.get(row.name) ?? new Array<number>(days).fill(0);
+    daily[i] += 1;
+    bySource.set(row.name, daily);
+  }
+  return [...bySource.entries()]
+    .map(([name, daily]) => ({
+      name,
+      daily,
+      total7d: daily.slice(-7).reduce((a, b) => a + b, 0),
+    }))
+    .sort((a, b) => b.total7d - a.total7d);
+}
+
+export interface JobRunCell {
+  status: 'ok' | 'error' | 'running';
+  startedAt: Date;
+  durationMs: number | null;
+}
+
+/** Recent runs per job for the health timeline (oldest → newest). */
+export function jobHistory(perJob = 28): Record<string, JobRunCell[]> {
+  const db = getDb();
+  const out: Record<string, JobRunCell[]> = {};
+  for (const job of ['ingest', 'curate', 'board', 'brief'] as const) {
+    const rows = db
+      .select()
+      .from(jobRuns)
+      .where(eq(jobRuns.job, job))
+      .orderBy(desc(jobRuns.id))
+      .limit(perJob)
+      .all();
+    out[job] = rows
+      .reverse()
+      .map((r) => ({
+        status: r.status,
+        startedAt: r.startedAt,
+        durationMs: r.finishedAt ? r.finishedAt.getTime() - r.startedAt.getTime() : null,
+      }));
+  }
+  return out;
+}
+
+/** Daily LLM call counts (zero-filled) plus the configured cap. */
+export function llmUsageHistory(days = 14): { days: { date: string; calls: number }[]; cap: number } {
+  const db = getDb();
+  const rows = db.select().from(llmUsage).all();
+  const byDate = new Map(rows.map((r) => [r.date, r.calls]));
+  const out: { date: string; calls: number }[] = [];
+  for (let i = days - 1; i >= 0; i--) {
+    const date = utcDay(new Date(Date.now() - i * DAY_MS));
+    out.push({ date, calls: byDate.get(date) ?? 0 });
+  }
+  return { days: out, cap: config.minimaxDailyCallCap };
+}
+
+export interface Funnel {
+  items: number;
+  stories: number;
+  curated: number;
+  topSignals: number;
+}
+
+/** 7-day pipeline conversion: fetched items → stories → curated → top signals. */
+export function pipelineFunnel(days = 7): Funnel {
+  const db = getDb();
+  const start = new Date(Date.now() - days * DAY_MS);
+  const itemCount =
+    db.select({ c: count() }).from(items).where(gte(items.fetchedAt, start)).get()?.c ?? 0;
+  const storyRows = db
+    .select({ status: stories.status, topScore: stories.topScore })
+    .from(stories)
+    .where(gte(stories.createdAt, start))
+    .all();
+  const curated = storyRows.filter((s) => s.status === 'curated');
+  return {
+    items: itemCount,
+    stories: storyRows.length,
+    curated: curated.length,
+    topSignals: curated.filter((s) => s.topScore >= 70).length,
+  };
 }
 
 /** Latest analyst notes (written by the daily brief job). */
