@@ -60,6 +60,24 @@ Content column: 760px (reading pages), 860px (tables/admin).
   amber ≥60% / alert ≥90%, 14d columns), JobTimeline (7px status blocks: ok phosphor
   0.45, error alert, running amber), SourceVolume (100×16 sparkline polylines).
 
+## Identity layer (three.js)
+
+- **RadarField** — WebGL scope backdrop: polar graticule, 380 sweep-lit contacts
+  (additive shader points), rotating beam, mouse parallax. Rules: DPR ≤1.5,
+  `preserveDrawingBuffer: true` (capture interop), static frame under
+  prefers-reduced-motion, RAF paused when hidden, always `pointer-events: none`.
+  Intensity discipline: **0.5 login / 0.06 behind data pages** — any louder and the
+  blips read as stray datapoints under charts. Loaded via RadarBackdrop
+  (next/dynamic, ssr:false) so three.js never blocks the critical path.
+
+## Motion
+
+`bar-grow` (scaleX, 700ms cubic-bezier(0.22,1,0.36,1)) on every `.anim-bar` chart
+fill — re-key the fill element to replay on data switch; `fade-up` (`.anim-in`) for
+cards; `.hover-raise` (−1px) on sector cells; `.row-hover` tint on dense rows.
+All guarded by prefers-reduced-motion. Frontier chart labels alternate above/below
+the point to avoid collisions in tight clusters.
+
 ## Patterns
 
 - Top bar console (h-12, sticky, blur) — no sidebar. NavLinks: mono uppercase, phosphor
