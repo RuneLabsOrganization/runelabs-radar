@@ -3,9 +3,17 @@
 import * as React from 'react';
 import { useMemo, useState } from 'react';
 import { paretoFrontier, type AaModel } from '@/lib/pareto';
-import { fmtUsd, taskCost, TASK_ARCHETYPES } from '@/lib/costs';
+import { fmtPtsPerDollar, fmtUsd, taskCost, TASK_ARCHETYPES } from '@/lib/costs';
 
 const CHART_SIZE = 14;
+
+type SortKey = 'cost' | 'intel' | 'value';
+
+const SORTS: { key: SortKey; label: string }[] = [
+  { key: 'cost', label: 'cheapest' },
+  { key: 'intel', label: 'smartest' },
+  { key: 'value', label: 'intel/$' },
+];
 
 /**
  * The bottom line: what one concrete piece of Runelabs work costs on each
@@ -13,6 +21,7 @@ const CHART_SIZE = 14;
  */
 export default function TaskCostExplorer({ models }: { models: AaModel[] }) {
   const [taskKey, setTaskKey] = useState(TASK_ARCHETYPES[0].key);
+  const [sortKey, setSortKey] = useState<SortKey>('cost');
   const task = TASK_ARCHETYPES.find((t) => t.key === taskKey) ?? TASK_ARCHETYPES[0];
 
   // Chart set: pareto-frontier models plus the most intelligent rest, so both
@@ -29,17 +38,25 @@ export default function TaskCostExplorer({ models }: { models: AaModel[] }) {
   }, [models]);
 
   const rows = useMemo(() => {
-    return chartSet.picked
+    const scored = chartSet.picked
       .map((m) => ({ m, cost: taskCost(m, task) }))
-      .filter((r): r is { m: AaModel; cost: number } => r.cost !== null)
-      .sort((a, b) => a.cost - b.cost);
-  }, [chartSet, task]);
+      .filter((r): r is { m: AaModel; cost: number } => r.cost !== null && r.cost > 0)
+      .map((r) => ({ ...r, ratio: r.m.intelligence / r.cost }));
+    switch (sortKey) {
+      case 'intel':
+        return scored.sort((a, b) => b.m.intelligence - a.m.intelligence || a.cost - b.cost);
+      case 'value':
+        return scored.sort((a, b) => b.ratio - a.ratio);
+      default:
+        return scored.sort((a, b) => a.cost - b.cost);
+    }
+  }, [chartSet, task, sortKey]);
 
   if (rows.length === 0) return null;
-  const maxCost = rows[rows.length - 1].cost;
-  const cheapest = rows[0];
-  const priciest = rows[rows.length - 1];
-  const spread = cheapest.cost > 0 ? Math.round(priciest.cost / cheapest.cost) : null;
+  const costs = rows.map((r) => r.cost);
+  const maxCost = Math.max(...costs);
+  const minCost = Math.min(...costs);
+  const spread = minCost > 0 ? Math.round(maxCost / minCost) : null;
 
   return (
     <div>
@@ -60,6 +77,24 @@ export default function TaskCostExplorer({ models }: { models: AaModel[] }) {
           </button>
         ))}
       </div>
+      <div className="mono mb-1.5 flex items-center gap-1.5 text-[10px] tracking-[0.06em]">
+        <span style={{ color: 'var(--ink-4)' }}>sort</span>
+        {SORTS.map((s) => (
+          <button
+            key={s.key}
+            type="button"
+            onClick={() => setSortKey(s.key)}
+            aria-pressed={s.key === sortKey}
+            className={`cursor-pointer rounded-[3px] border px-2 py-0.5 uppercase transition-colors ${
+              s.key === sortKey
+                ? 'border-[var(--phosphor)] text-[var(--ink)]'
+                : 'border-[var(--grat)] text-[var(--ink-3)] hover:border-[var(--grat-strong)]'
+            }`}
+          >
+            {s.label}
+          </button>
+        ))}
+      </div>
       <p className="mono mb-3 text-[10px]" style={{ color: 'var(--ink-4)' }}>
         {task.blurb} &middot; assumes ~{(task.inTokens / 1000).toLocaleString()}k in /{' '}
         {(task.outTokens / 1000).toLocaleString()}k out tokens
@@ -71,7 +106,7 @@ export default function TaskCostExplorer({ models }: { models: AaModel[] }) {
         )}
       </p>
       <ul className="flex flex-col gap-[7px]">
-        {rows.map(({ m, cost }) => {
+        {rows.map(({ m, cost, ratio }) => {
           const onFrontier = chartSet.frontierSet.has(m);
           return (
             <li key={m.name} title={`${m.name} — in $${m.priceIn}/1M, out $${m.priceOut}/1M`}>
@@ -82,16 +117,26 @@ export default function TaskCostExplorer({ models }: { models: AaModel[] }) {
                     <span style={{ color: 'var(--ink-4)' }}> &middot; {m.org}</span>
                   )}
                 </span>
-                <span className="mono shrink-0 text-[10.5px]" style={{ color: 'var(--ink-3)' }}>
-                  <span style={{ color: 'var(--ink-4)' }}>intel {m.intelligence}</span>
-                  <span className="ml-2" style={{ color: onFrontier ? 'var(--phosphor)' : 'var(--ink-2)' }}>
+                <span className="mono shrink-0 text-[10.5px]">
+                  <span style={{ color: sortKey === 'intel' ? 'var(--ink)' : 'var(--ink-4)' }}>
+                    intel {m.intelligence}
+                  </span>
+                  <span className="ml-2" style={{ color: sortKey === 'value' ? 'var(--ink)' : 'var(--ink-4)' }}>
+                    {fmtPtsPerDollar(ratio)}
+                  </span>
+                  <span
+                    className="ml-2"
+                    style={{
+                      color: onFrontier ? 'var(--phosphor)' : sortKey === 'cost' ? 'var(--ink)' : 'var(--ink-2)',
+                    }}
+                  >
                     {fmtUsd(cost)}
                   </span>
                 </span>
               </div>
               <div className="mt-[3px] h-[3px] w-full rounded-[1px]" style={{ background: 'var(--grat-soft)' }}>
                 <div
-                  key={taskKey}
+                  key={`${taskKey}-${sortKey}`}
                   className="anim-bar h-full rounded-[1px]"
                   style={{
                     width: `${Math.max(1.5, (cost / maxCost) * 100)}%`,

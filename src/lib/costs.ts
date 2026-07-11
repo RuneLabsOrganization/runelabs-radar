@@ -74,3 +74,18 @@ export function fmtUsd(v: number): string {
   if (v >= 0.1) return `$${v.toFixed(3)}`;
   return `$${v.toFixed(4)}`;
 }
+
+/** Compact "intelligence points per dollar" formatting (ratios span 1..100k). */
+export function fmtPtsPerDollar(v: number): string {
+  const n =
+    v >= 10_000
+      ? `${Math.round(v / 1000)}k`
+      : v >= 1000
+        ? `${(v / 1000).toFixed(1)}k`
+        : v >= 100
+          ? v.toFixed(0)
+          : v >= 10
+            ? v.toFixed(1)
+            : v.toFixed(2);
+  return `${n} pts/$`;
+}

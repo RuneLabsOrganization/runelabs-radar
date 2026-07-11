@@ -11,7 +11,7 @@ import {
   topEntities,
 } from '@/lib/analytics';
 import { compactAaMediaSnapshot, compactAaSnapshot } from '@/lib/board/sync';
-import { fmtUsd, taskCost, TASK_ARCHETYPES } from '@/lib/costs';
+import { fmtPtsPerDollar, fmtUsd, taskCost, TASK_ARCHETYPES } from '@/lib/costs';
 import { aaMedia, llmUsageHistory, pipelineFunnel, sourceVolume } from '@/lib/analytics';
 import { llmUsage } from '@/lib/db/schema';
 import { sanitizeEntities } from '@/lib/curate/curate';
@@ -205,6 +205,14 @@ describe('task costs', () => {
     expect(fmtUsd(1.234)).toBe('$1.23');
     expect(fmtUsd(0.1234)).toBe('$0.123');
     expect(fmtUsd(0.01234)).toBe('$0.0123');
+  });
+
+  it('fmtPtsPerDollar spans unit to 10k+ ratios', () => {
+    expect(fmtPtsPerDollar(9595)).toBe('9.6k pts/$');
+    expect(fmtPtsPerDollar(12345)).toBe('12k pts/$');
+    expect(fmtPtsPerDollar(151)).toBe('151 pts/$');
+    expect(fmtPtsPerDollar(41.2)).toBe('41.2 pts/$');
+    expect(fmtPtsPerDollar(3.456)).toBe('3.46 pts/$');
   });
 });
 
