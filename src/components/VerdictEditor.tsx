@@ -9,9 +9,17 @@ interface VerdictEditorProps {
   author: string | null;
   /** false renders read-only text (anonymous visitors in public mode). */
   canEdit?: boolean;
+  /** Which record the verdict belongs to: a board entry (default) or a stack. */
+  kind?: 'board' | 'stack';
 }
 
-export default function VerdictEditor({ entryId, verdict, author, canEdit = true }: VerdictEditorProps) {
+export default function VerdictEditor({
+  entryId,
+  verdict,
+  author,
+  canEdit = true,
+  kind = 'board',
+}: VerdictEditorProps) {
   const router = useRouter();
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState('');
@@ -39,10 +47,12 @@ export default function VerdictEditor({ entryId, verdict, author, canEdit = true
     setSaving(true);
     setError(null);
     try {
-      const res = await fetch('/api/verdicts', {
+      const res = await fetch(kind === 'stack' ? '/api/stack-verdicts' : '/api/verdicts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ entryId, verdict: text }),
+        body: JSON.stringify(
+          kind === 'stack' ? { stackId: entryId, verdict: text } : { entryId, verdict: text },
+        ),
       });
       if (!res.ok) {
         const data = (await res.json().catch(() => null)) as { error?: string } | null;

@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
+import RadarBackdrop from '@/components/RadarBackdrop';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -39,8 +40,11 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center px-6">
-      <form onSubmit={onSubmit} className="card w-full max-w-[340px] !p-6">
+    <main className="relative flex min-h-screen items-center justify-center px-6">
+      <div aria-hidden className="absolute inset-0">
+        <RadarBackdrop intensity={0.5} />
+      </div>
+      <form onSubmit={onSubmit} className="card anim-in relative z-10 w-full max-w-[340px] !p-6">
         <div className="mono flex items-center gap-2 text-[11.5px] font-semibold tracking-[0.16em] text-[var(--ink)]">
           <span aria-hidden className="inline-block h-[10px] w-[3px]" style={{ background: 'var(--phosphor)' }} />
           RUNELABS RADAR

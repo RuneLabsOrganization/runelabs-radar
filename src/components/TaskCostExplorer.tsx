@@ -91,7 +91,8 @@ export default function TaskCostExplorer({ models }: { models: AaModel[] }) {
               </div>
               <div className="mt-[3px] h-[3px] w-full rounded-[1px]" style={{ background: 'var(--grat-soft)' }}>
                 <div
-                  className="h-full rounded-[1px]"
+                  key={taskKey}
+                  className="anim-bar h-full rounded-[1px]"
                   style={{
                     width: `${Math.max(1.5, (cost / maxCost) * 100)}%`,
                     background: onFrontier ? 'var(--phosphor)' : 'var(--grat-strong)',

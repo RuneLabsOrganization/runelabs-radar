@@ -11,7 +11,13 @@ const PLOT_W = W - PAD.left - PAD.right;
 const PLOT_H = H - PAD.top - PAD.bottom;
 const X_TICKS = [0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50, 100];
 
-type Metric = 'intelligence' | 'coding';
+type Metric = 'intelligence' | 'coding' | 'speed';
+
+const METRIC_Y: Record<Metric, (m: AaModel) => number | null> = {
+  intelligence: (m) => m.intelligence,
+  coding: (m) => m.coding,
+  speed: (m) => m.speed,
+};
 
 /**
  * Quality vs price scatter from the Artificial Analysis snapshot — log-price
@@ -23,7 +29,7 @@ export default function ModelScatter({ models, fetchedAt }: { models: AaModel[];
 
   const pts = useMemo(() => {
     return models
-      .map((m) => ({ m, y: metric === 'coding' ? m.coding : m.intelligence }))
+      .map((m) => ({ m, y: METRIC_Y[metric](m) }))
       .filter((p): p is { m: AaModel; y: number } => p.y !== null && p.y > 0);
   }, [models, metric]);
 
@@ -48,7 +54,7 @@ export default function ModelScatter({ models, fetchedAt }: { models: AaModel[];
   return (
     <div className="relative">
       <div className="mono mb-2 flex items-center gap-2 text-[10px] tracking-[0.08em]">
-        {(['intelligence', 'coding'] as const).map((m) => (
+        {(['intelligence', 'coding', 'speed'] as const).map((m) => (
           <button
             key={m}
             type="button"
@@ -67,7 +73,7 @@ export default function ModelScatter({ models, fetchedAt }: { models: AaModel[];
           </button>
         ))}
         <span className="ml-auto" style={{ color: 'var(--ink-4)' }}>
-          index vs $/1M tokens (blended, log)
+          {metric === 'speed' ? 'median tok/s' : 'index'} vs $/1M tokens (blended, log)
         </span>
       </div>
 
@@ -159,9 +165,11 @@ export default function ModelScatter({ models, fetchedAt }: { models: AaModel[];
           <div style={{ color: 'var(--ink)' }}>{hovered.m.name}</div>
           {hovered.m.org && <div style={{ color: 'var(--ink-3)' }}>{hovered.m.org}</div>}
           <div>
-            {metric} {hovered.y} &middot; ${hovered.m.price}/1M
+            {metric === 'speed' ? `${Math.round(hovered.y)} tok/s` : `${metric} ${hovered.y}`} &middot; $
+            {hovered.m.price}/1M
           </div>
-          {hovered.m.speed !== null && <div>{Math.round(hovered.m.speed)} tok/s</div>}
+          {metric !== 'speed' && hovered.m.speed !== null && <div>{Math.round(hovered.m.speed)} tok/s</div>}
+          {metric === 'speed' && <div>intel {hovered.m.intelligence}</div>}
         </div>
       )}
 

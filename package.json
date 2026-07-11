@@ -13,6 +13,7 @@
     "db:generate": "drizzle-kit generate"
   },
   "dependencies": {
+    "@types/three": "^0.185.1",
     "bcryptjs": "^3.0.2",
     "better-sqlite3": "^12.2.0",
     "drizzle-orm": "^0.44.2",
@@ -21,7 +22,8 @@
     "node-cron": "^3.0.3",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
-    "server-only": "^0.0.1"
+    "server-only": "^0.0.1",
+    "three": "^0.185.1"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.1.10",

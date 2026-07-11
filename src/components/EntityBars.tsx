@@ -39,7 +39,7 @@ export default function EntityBars({ entities }: { entities: EntityCount[] }) {
             </div>
             <div className="mt-[3px] h-[3px] w-full rounded-[1px]" style={{ background: 'var(--grat-soft)' }}>
               <div
-                className="h-full rounded-[1px]"
+                className="anim-bar h-full rounded-[1px]"
                 style={{ width: `${Math.max(4, (e.count / max) * 100)}%`, background: 'var(--phosphor)', opacity: 0.75 }}
               />
             </div>

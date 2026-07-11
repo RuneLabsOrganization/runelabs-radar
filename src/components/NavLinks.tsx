@@ -9,6 +9,7 @@ export default function NavLinks({ isAdmin }: { isAdmin: boolean }) {
   const links = [
     { href: '/', label: 'Briefing', active: pathname === '/' || pathname.startsWith('/domain') },
     { href: '/board', label: 'Board', active: pathname.startsWith('/board') },
+    { href: '/stacks', label: 'Stacks', active: pathname.startsWith('/stacks') },
     { href: '/brief', label: 'Brief', active: pathname.startsWith('/brief') },
     ...(isAdmin ? [{ href: '/admin', label: 'Admin', active: pathname.startsWith('/admin') }] : []),
   ];

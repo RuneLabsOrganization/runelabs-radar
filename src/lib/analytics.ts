@@ -380,7 +380,7 @@ export interface JobRunCell {
 export function jobHistory(perJob = 28): Record<string, JobRunCell[]> {
   const db = getDb();
   const out: Record<string, JobRunCell[]> = {};
-  for (const job of ['ingest', 'curate', 'board', 'brief'] as const) {
+  for (const job of ['ingest', 'curate', 'board', 'brief', 'stacks'] as const) {
     const rows = db
       .select()
       .from(jobRuns)

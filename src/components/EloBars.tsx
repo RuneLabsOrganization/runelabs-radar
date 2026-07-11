@@ -25,7 +25,7 @@ export default function EloBars({ title, models }: { title: string; models: Medi
             </div>
             <div className="mt-[3px] h-[3px] w-full rounded-[1px]" style={{ background: 'var(--grat-soft)' }}>
               <div
-                className="h-full rounded-[1px]"
+                className="anim-bar h-full rounded-[1px]"
                 style={{
                   width: `${25 + ((m.elo - min) / span) * 75}%`,
                   background: m.rank === 1 ? 'var(--phosphor)' : 'var(--grat-strong)',

@@ -31,13 +31,15 @@
   --amber-dim: rgba(217, 161, 63, 0.12);
   --alert: #d96b5c;
 
-  /* sector ticks — identification, not decoration */
-  --sector-coding: #6f9fd6;
-  --sector-copy: #c8a55e;
-  --sector-image: #c583ab;
-  --sector-video: #9d88cb;
-  --sector-ads: #5fb8ac;
-  --sector-agentic: #94ad61;
+  /* sector ticks — identification, not decoration.
+     Validated (dataviz six checks, dark surface): chroma floor ✓, CVD worst-pair
+     ΔE 13.8 ✓, contrast ✓; always paired with mono text labels. */
+  --sector-coding: #6aa7ec;
+  --sector-copy: #dfa947;
+  --sector-image: #e388bd;
+  --sector-video: #b291ee;
+  --sector-ads: #3ecdba;
+  --sector-agentic: #a6c355;
 
   --font-readout:
     ui-monospace, 'Cascadia Mono', 'SF Mono', Menlo, Consolas, monospace;
@@ -88,6 +90,59 @@ a {
 
 ::selection {
   background: var(--phosphor-dim);
+}
+
+/* motion — instrument, not spectacle */
+@keyframes bar-grow {
+  from {
+    transform: scaleX(0);
+  }
+}
+
+.anim-bar {
+  transform-origin: left;
+  animation: bar-grow 700ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
+.anim-in {
+  animation: fade-up 360ms ease-out both;
+}
+
+.hover-raise {
+  transition:
+    transform 140ms ease,
+    border-color 140ms ease;
+}
+
+.hover-raise:hover {
+  transform: translateY(-1px);
+}
+
+.row-hover {
+  transition: background 120ms ease;
+}
+
+.row-hover:hover {
+  background: rgba(151, 180, 205, 0.045);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .anim-bar,
+  .anim-in {
+    animation: none;
+  }
+  .hover-raise,
+  .hover-raise:hover {
+    transition: none;
+    transform: none;
+  }
 }
 
 /* readouts — instrument labels */

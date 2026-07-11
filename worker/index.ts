@@ -5,6 +5,7 @@ import { runIngest } from '../src/lib/ingest/ingest';
 import { runCurate } from '../src/lib/curate/curate';
 import { runBoardSync } from '../src/lib/board/sync';
 import { runBrief } from '../src/lib/brief/brief';
+import { runStacks } from '../src/lib/stacks/generate';
 
 loadDotEnv();
 
@@ -14,6 +15,7 @@ const tasks = [
   cron.schedule('*/30 * * * *', () => void withJobRun('ingest', runIngest)),
   cron.schedule('5 * * * *', () => void withJobRun('curate', runCurate)),
   cron.schedule('0 6 * * 1', () => void withJobRun('board', runBoardSync)),
+  cron.schedule('30 6 * * 1', () => void withJobRun('stacks', runStacks)),
   cron.schedule('0 7 * * *', () => void withJobRun('brief', runBrief)),
 ];
 

@@ -2,7 +2,7 @@ import { and, desc, eq } from 'drizzle-orm';
 import { getDb } from './db';
 import { jobRuns } from './db/schema';
 
-export type JobName = 'ingest' | 'curate' | 'board' | 'brief';
+export type JobName = 'ingest' | 'curate' | 'board' | 'brief' | 'stacks';
 
 // In-process overlap guard: a slow run (e.g. curate during a MiniMax incident)
 // must not overlap the next cron tick — overlapping curates would double-score

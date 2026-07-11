@@ -139,7 +139,7 @@ function aaMediaPromptLines(compactRaw: string, limit = 12): string | null {
 }
 
 /** Renders a compact AA snapshot as prompt-friendly lines (top models by intelligence). */
-function aaPromptLines(compactRaw: string, limit = 40): string | null {
+export function aaPromptLines(compactRaw: string, limit = 40): string | null {
   try {
     const parsed = JSON.parse(compactRaw) as { compact?: boolean; models?: unknown };
     if (!parsed.compact || !Array.isArray(parsed.models)) return null;

@@ -113,6 +113,21 @@ export const briefs = sqliteTable('briefs', {
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
 });
 
+export const stacks = sqliteTable('stacks', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  venture: text('venture').notNull().unique(),
+  title: text('title').notNull(),
+  tagline: text('tagline'),
+  // JSON [{layer, pick, alt, note}] — layer from the fixed set in lib/stacks
+  layers: text('layers').notNull(),
+  costNote: text('cost_note'),
+  timeToMvp: text('time_to_mvp'),
+  rationale: text('rationale'),
+  runelabsVerdict: text('runelabs_verdict'),
+  verdictAuthor: text('verdict_author'),
+  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
+});
+
 export const insights = sqliteTable('insights', {
   date: text('date').primaryKey(),
   // JSON [{headline, detail, direction: 'up'|'down'|'watch', domain?}]

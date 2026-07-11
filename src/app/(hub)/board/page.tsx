@@ -1,6 +1,9 @@
 import { desc, gte } from 'drizzle-orm';
 import type { ReactNode } from 'react';
+import BoardNav from '@/components/BoardNav';
+import CostMatrix from '@/components/CostMatrix';
 import EloBars from '@/components/EloBars';
+import FrontierTimeline from '@/components/FrontierTimeline';
 import ModelScatter from '@/components/ModelScatter';
 import TaskCostExplorer from '@/components/TaskCostExplorer';
 import ValueBars from '@/components/ValueBars';
@@ -58,21 +61,39 @@ export default async function BoardPage() {
       <div className="readout">cost-benefit board &middot; weekly sync, human-approved</div>
       <h1 className="mt-1 text-[17px] font-semibold tracking-[-0.01em]">Best Right Now</h1>
 
+      <div className="mt-3">
+        <BoardNav />
+      </div>
+
       {aa && aa.models.length > 0 && (
         <>
-          <SectionHeader label="The market — quality vs price" />
-          <ModelScatter models={aa.models} fetchedAt={aa.fetchedAt} />
+          <section id="market" className="scroll-mt-24">
+            <SectionHeader label="The market — quality vs price" />
+            <ModelScatter models={aa.models} fetchedAt={aa.fetchedAt} />
+          </section>
 
-          <SectionHeader label="Bottom line — cost per task" tone="phosphor" />
-          <TaskCostExplorer models={aa.models} />
+          <section id="race" className="scroll-mt-24">
+            <SectionHeader label="The race — intelligence over time" />
+            <FrontierTimeline models={aa.models} />
+          </section>
 
-          <SectionHeader label="Value — intelligence per dollar" />
-          <ValueBars models={aa.models} />
+          <section id="costs" className="scroll-mt-24">
+            <SectionHeader label="Bottom line — cost per task" tone="phosphor" />
+            <TaskCostExplorer models={aa.models} />
+            <div className="mt-7">
+              <CostMatrix models={aa.models} />
+            </div>
+          </section>
+
+          <section id="value" className="scroll-mt-24">
+            <SectionHeader label="Value — intelligence per dollar" />
+            <ValueBars models={aa.models} />
+          </section>
         </>
       )}
 
       {media && (
-        <>
+        <section id="arenas" className="scroll-mt-24">
           <SectionHeader label="Media arenas — crowd-ranked quality" />
           <div className="grid gap-x-8 gap-y-6 md:grid-cols-3">
             {media.arenas.image && <EloBars title="text to image" models={media.arenas.image} />}
@@ -88,7 +109,7 @@ export default async function BoardPage() {
             </a>{' '}
             &middot; {media.fetchedAt}
           </p>
-        </>
+        </section>
       )}
 
       {entries.length === 0 && (
@@ -97,6 +118,7 @@ export default async function BoardPage() {
         </p>
       )}
 
+      <div id="boards" className="scroll-mt-24" />
       {DOMAINS.map((domain) => {
         const rows = byDomain.get(domain);
         if (!rows || rows.length === 0) return null;
@@ -146,6 +168,7 @@ export default async function BoardPage() {
         );
       })}
 
+      <div id="changes" className="scroll-mt-24" />
       <SectionHeader label="Changed recently" count={history.length} />
       {history.length === 0 ? (
         <p className="mono text-[12px]" style={{ color: 'var(--ink-4)' }}>

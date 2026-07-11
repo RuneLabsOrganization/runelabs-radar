@@ -6,17 +6,19 @@ import { runIngest } from '../src/lib/ingest/ingest';
 import { runCurate } from '../src/lib/curate/curate';
 import { runBoardSync } from '../src/lib/board/sync';
 import { runBrief } from '../src/lib/brief/brief';
+import { runStacks } from '../src/lib/stacks/generate';
 
 const jobs: Record<JobName, () => Promise<Record<string, unknown>>> = {
   ingest: runIngest,
   curate: runCurate,
   board: runBoardSync,
   brief: runBrief,
+  stacks: runStacks,
 };
 
 const name = process.argv[2] as JobName | undefined;
 if (!name || !(name in jobs)) {
-  console.error('Usage: npm run job -- <ingest|curate|board|brief>');
+  console.error('Usage: npm run job -- <ingest|curate|board|brief|stacks>');
   process.exit(1);
 }
 

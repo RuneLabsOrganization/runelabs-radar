@@ -19,7 +19,7 @@ export default function SectorStrip({ stats, active }: { stats: SectorStat[]; ac
         <Link
           key={domain}
           href={`/domain/${domain}`}
-          className={`rounded-[5px] border bg-[var(--scope-1)] px-2.5 py-2 transition-colors ${
+          className={`hover-raise rounded-[5px] border bg-[var(--scope-1)] px-2.5 py-2 ${
             active === domain
               ? 'border-[var(--grat-strong)]'
               : 'border-[var(--grat-soft)] hover:border-[var(--grat)]'
