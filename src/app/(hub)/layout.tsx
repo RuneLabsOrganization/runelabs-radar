@@ -20,8 +20,9 @@ export default async function HubLayout({ children }: { children: React.ReactNod
 
   return (
     <div className="min-h-screen">
+      {/* whisper-quiet: any louder and the blips read as stray datapoints under charts */}
       <div aria-hidden className="fixed inset-0 -z-10">
-        <RadarBackdrop intensity={0.13} />
+        <RadarBackdrop intensity={0.06} />
       </div>
       <header className="sticky top-0 z-20 border-b border-[var(--grat)] bg-[rgba(10,14,19,0.88)] backdrop-blur">
         <div className="mx-auto flex h-12 max-w-[860px] items-center gap-7 px-6">

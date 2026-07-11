@@ -138,7 +138,8 @@ export default function ModelScatter({ models, fetchedAt }: { models: AaModel[];
             {frontier[i] && hover !== i && (
               <text
                 x={xOf(p.m.price) + 6}
-                y={yOf(p.y) - 5}
+                // alternate above/below so clustered frontier labels don't collide
+                y={yOf(p.y) + (pts.slice(0, i).filter((_, j) => frontier[j]).length % 2 === 0 ? -6 : 12)}
                 fontSize={8.5}
                 fill="var(--ink-3)"
                 fontFamily="var(--font-readout)"

@@ -111,7 +111,14 @@ export default function FrontierTimeline({ models }: { models: AaModel[] }) {
             />
             <circle cx={xOf(p.t)} cy={yOf(p.m.intelligence)} r={9} fill="transparent" onMouseEnter={() => setHover(i)} />
             {frontierIdx.has(i) && hover !== i && (
-              <text x={xOf(p.t) + 6} y={yOf(p.m.intelligence) - 5} fontSize={8.5} fill="var(--ink-3)" fontFamily="var(--font-readout)">
+              <text
+                x={xOf(p.t) + 6}
+                // alternate above/below so clustered frontier labels don't collide
+                y={yOf(p.m.intelligence) + (pts.slice(0, i).filter((_, j) => frontierIdx.has(j)).length % 2 === 0 ? -6 : 12)}
+                fontSize={8.5}
+                fill="var(--ink-3)"
+                fontFamily="var(--font-readout)"
+              >
                 {p.m.name.length > 22 ? `${p.m.name.slice(0, 21)}…` : p.m.name}
               </text>
             )}
