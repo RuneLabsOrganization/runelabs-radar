@@ -6,6 +6,7 @@ import {
   AA_URL,
   compactAaMediaSnapshot,
   compactAaSnapshot,
+  isCompactSnapshot,
 } from './board/sync';
 import { fetchText } from './ingest/adapters/shared';
 import { recordMetrics, type MetricInput } from './metrics';
@@ -70,6 +71,8 @@ export async function runSnapshot(): Promise<{ snapshots: number; points: number
     const compact = compactAaSnapshot(
       await fetchText(AA_URL, { headers: { 'x-api-key': config.aaApiKey } }),
     );
+    // never store a raw fallback slice — a junk "latest" snapshot would blank the board charts
+    if (!isCompactSnapshot(compact)) throw new Error('AA response was not parseable model data');
     db.insert(benchmarkSnapshots)
       .values({ source: 'artificial-analysis', raw: compact, fetchedAt: new Date() })
       .run();
@@ -84,6 +87,7 @@ export async function runSnapshot(): Promise<{ snapshots: number; points: number
       const compact = compactAaMediaSnapshot(
         await fetchText(ep.url, { headers: { 'x-api-key': config.aaApiKey } }),
       );
+      if (!isCompactSnapshot(compact)) throw new Error('media response was not parseable leaderboard data');
       db.insert(benchmarkSnapshots)
         .values({ source: ep.source, raw: compact, fetchedAt: new Date() })
         .run();

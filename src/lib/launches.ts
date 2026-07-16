@@ -5,7 +5,7 @@ import { getDb } from './db';
 import { launches } from './db/schema';
 import { fetchJson } from './ingest/adapters/shared';
 import { chatJSON } from './llm/minimax';
-import { upsertMetric } from './metrics';
+import { upsertMetric, utcDay } from './metrics';
 
 export const LAUNCH_CATEGORIES = [
   'ai-coding',
@@ -117,8 +117,13 @@ function upsertLaunches(list: NewLaunch[]): number {
   return n;
 }
 
-/** One batched LLM call tags untagged recent launches with a category slug. */
-async function tagCategories(): Promise<number> {
+/**
+ * One batched LLM call tags untagged recent launches with a category slug.
+ * Launches the response omits (or mislabels) stay NULL so the next run
+ * retries them — never coerce to 'other' on a bad response shape.
+ * Exported for tests.
+ */
+export async function tagCategories(): Promise<number> {
   const db = getDb();
   const untagged = db
     .select()
@@ -138,32 +143,55 @@ async function tagCategories(): Promise<number> {
   const user = untagged.map((l) => `Launch ${l.id}: ${l.title}`).join('\n');
 
   const res = await chatJSON<{ categories?: Record<string, unknown> }>(system, user);
-  const map = res.categories ?? {};
+  const map = res.categories;
+  if (typeof map !== 'object' || map === null || Object.keys(map).length === 0) {
+    console.warn('[launches] tagging response missing "categories" — leaving launches untagged for retry');
+    return 0;
+  }
   let tagged = 0;
   for (const l of untagged) {
     const cat = map[String(l.id)];
-    const valid =
-      typeof cat === 'string' && (LAUNCH_CATEGORIES as readonly string[]).includes(cat)
-        ? cat
-        : 'other';
-    db.update(launches).set({ category: valid }).where(eq(launches.id, l.id)).run();
+    if (typeof cat !== 'string' || !(LAUNCH_CATEGORIES as readonly string[]).includes(cat)) {
+      continue; // stays NULL → retried next run
+    }
+    db.update(launches).set({ category: cat }).where(eq(launches.id, l.id)).run();
     tagged++;
+  }
+  if (tagged === 0) {
+    console.warn('[launches] tagging response matched no launch ids — check response shape');
   }
   return tagged;
 }
 
-/** Writes today's launch counts per category into the time-series store. */
-function recordDailyCounts(): void {
+/**
+ * Writes per-category launch counts keyed by the LAUNCH date (not run time),
+ * covering the tagging retry window. Untagged rows are skipped, and every
+ * category is written (zeros included) for each covered day, so a later
+ * successful tagging run heals earlier bad values. Exported for tests.
+ */
+export function recordDailyCounts(): void {
   const db = getDb();
-  const dayAgo = new Date(Date.now() - 864e5);
-  const recent = db.select().from(launches).where(gte(launches.launchedAt, dayAgo)).all();
-  const counts = new Map<string, number>();
+  const twoDaysAgo = new Date(Date.now() - 2 * 864e5);
+  const recent = db.select().from(launches).where(gte(launches.launchedAt, twoDaysAgo)).all();
+
+  const byDay = new Map<string, Map<string, number>>();
   for (const l of recent) {
-    const cat = l.category ?? 'other';
-    counts.set(cat, (counts.get(cat) ?? 0) + 1);
+    if (!l.category) continue; // untagged → wait for the retry, don't pollute the series
+    const day = utcDay(l.launchedAt);
+    const counts = byDay.get(day) ?? new Map<string, number>();
+    counts.set(l.category, (counts.get(l.category) ?? 0) + 1);
+    byDay.set(day, counts);
   }
-  for (const [category, count] of counts) {
-    upsertMetric({ source: 'launches', entity: category, metric: 'count', value: count });
+  for (const [day, counts] of byDay) {
+    for (const category of LAUNCH_CATEGORIES) {
+      upsertMetric({
+        source: 'launches',
+        entity: category,
+        metric: 'count',
+        value: counts.get(category) ?? 0,
+        date: day,
+      });
+    }
   }
 }
 

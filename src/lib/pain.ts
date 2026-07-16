@@ -32,11 +32,28 @@ export function sanitizePains(v: unknown, batchSize: number): PainDraft[] {
         ? rec.sector
         : null;
     const itemIndexes = Array.isArray(rec.itemIndexes)
-      ? rec.itemIndexes
+      ? [...new Set(rec.itemIndexes)]
           .filter((i): i is number => Number.isInteger(i) && (i as number) >= 0 && (i as number) < batchSize)
           .slice(0, 5)
       : [];
     out.push({ summary, sector, itemIndexes });
+  }
+  return out;
+}
+
+/** Newest-first evidence merge, deduped by url, capped. Exported for tests. */
+export function mergeEvidence(
+  prior: { title: string; url: string }[],
+  next: { title: string; url: string }[],
+  cap = 10,
+): { title: string; url: string }[] {
+  const seen = new Set<string>();
+  const out: { title: string; url: string }[] = [];
+  for (const e of [...next, ...prior]) {
+    if (!e?.url || seen.has(e.url)) continue;
+    seen.add(e.url);
+    out.push(e);
+    if (out.length >= cap) break;
   }
   return out;
 }
@@ -114,18 +131,23 @@ export async function runPain(): Promise<{ pains: number; comps: number }> {
         const evidence = p.itemIndexes.map((idx) => ({ title: batch[idx].title, url: batch[idx].url }));
         const match = byNorm.get(p.summary.toLowerCase());
         if (match) {
-          const merged = [
-            ...(JSON.parse(match.evidence) as { title: string; url: string }[]),
-            ...evidence,
-          ].slice(0, 10);
-          db.update(painPoints)
+          const merged = mergeEvidence(
+            JSON.parse(match.evidence) as { title: string; url: string }[],
+            evidence,
+          );
+          const updated = db
+            .update(painPoints)
             .set({
               intensity: match.intensity + 1,
               lastSeenAt: new Date(),
               evidence: JSON.stringify(merged),
             })
             .where(eq(painPoints.id, match.id))
-            .run();
+            .returning()
+            .get();
+          // keep the cache fresh — a later batch matching the same summary
+          // must not clobber this update (lost-update bug caught in review)
+          if (updated) byNorm.set(p.summary.toLowerCase(), updated);
         } else {
           const row = db
             .insert(painPoints)
@@ -169,7 +191,16 @@ export async function runPain(): Promise<{ pains: number; comps: number }> {
     const user = candidates.map((s) => `- ${s.title}${s.tldr ? ` — ${s.tldr}` : ''}`).join('\n');
     try {
       const res = await chatJSON<{ comps?: unknown }>(system, user);
+      const existing = db
+        .select()
+        .from(comps)
+        .where(gte(comps.createdAt, new Date(Date.now() - 7 * 864e5)))
+        .all();
+      const seen = new Set(existing.map((c) => `${c.kind}|${c.product.toLowerCase()}|${c.amountUsd ?? ''}`));
       for (const c of sanitizeComps(res.comps)) {
+        const key = `${c.kind}|${c.product.toLowerCase()}|${c.amountUsd ?? ''}`;
+        if (seen.has(key)) continue; // re-runs and re-reported stories don't duplicate
+        seen.add(key);
         db.insert(comps)
           .values({ ...c, sourceUrl: null, createdAt: new Date() })
           .run();

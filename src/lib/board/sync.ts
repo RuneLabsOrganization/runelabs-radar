@@ -119,6 +119,15 @@ export function compactAaMediaSnapshot(raw: string): string {
   }
 }
 
+/** True when a snapshot string is the compact parsed form (not a raw fallback slice). */
+export function isCompactSnapshot(raw: string): boolean {
+  try {
+    return (JSON.parse(raw) as { compact?: boolean }).compact === true;
+  } catch {
+    return false;
+  }
+}
+
 /** Renders a compact media snapshot as prompt-friendly lines (top by arena rank). */
 function aaMediaPromptLines(compactRaw: string, limit = 12): string | null {
   try {
@@ -264,16 +273,19 @@ export async function runBoardSync(): Promise<{ snapshots: number; proposals: nu
 
   if (config.aaApiKey) {
     try {
-      const raw = await fetchText(AA_URL, { 'x-api-key': config.aaApiKey });
-      storeSnapshot('artificial-analysis', compactAaSnapshot(raw));
+      const compact = compactAaSnapshot(await fetchText(AA_URL, { 'x-api-key': config.aaApiKey }));
+      // never store a raw fallback slice — a junk "latest" snapshot would blank the board charts
+      if (!isCompactSnapshot(compact)) throw new Error('AA response was not parseable model data');
+      storeSnapshot('artificial-analysis', compact);
       snapshots++;
     } catch (e) {
       console.error('[board] Artificial Analysis fetch failed:', e);
     }
     for (const ep of AA_MEDIA_ENDPOINTS) {
       try {
-        const raw = await fetchText(ep.url, { 'x-api-key': config.aaApiKey });
-        storeSnapshot(ep.source, compactAaMediaSnapshot(raw));
+        const compact = compactAaMediaSnapshot(await fetchText(ep.url, { 'x-api-key': config.aaApiKey }));
+        if (!isCompactSnapshot(compact)) throw new Error('media response was not parseable leaderboard data');
+        storeSnapshot(ep.source, compact);
         snapshots++;
       } catch (e) {
         console.error(`[board] ${ep.source} fetch failed:`, e);

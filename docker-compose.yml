@@ -19,6 +19,8 @@ services:
     env_file: .env
     environment:
       DATABASE_PATH: /data/radar.db
+      # embedding model weights must survive container recreation
+      TRANSFORMERS_CACHE: /data/hfcache
     volumes:
       - ./data:/data
     restart: unless-stopped

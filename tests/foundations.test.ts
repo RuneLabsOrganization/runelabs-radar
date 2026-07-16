@@ -4,10 +4,17 @@ import { recordMetrics, seriesFor, upsertMetric, utcDay } from '@/lib/metrics';
 import { metricsFromAaCompact, metricsFromMediaCompact } from '@/lib/snapshot';
 import { compactAaMediaSnapshot, compactAaSnapshot } from '@/lib/board/sync';
 import { parseGithubRepo } from '@/lib/velocity';
-import { mapShowHn } from '@/lib/launches';
-import { sanitizeComps, sanitizePains } from '@/lib/pain';
+import { mapShowHn, recordDailyCounts, tagCategories } from '@/lib/launches';
+import { mergeEvidence, sanitizeComps, sanitizePains } from '@/lib/pain';
+import { launches as launchesTable } from '@/lib/db/schema';
 
 vi.mock('@huggingface/transformers', () => ({ env: {}, pipeline: vi.fn() }));
+vi.mock('@/lib/llm/minimax', () => ({
+  chatJSON: vi.fn(),
+  LlmError: class LlmError extends Error {},
+}));
+// eslint-disable-next-line import/first
+import { chatJSON } from '@/lib/llm/minimax';
 // eslint-disable-next-line import/first
 import { bufferToVec, cosine, vecToBuffer } from '@/lib/embed';
 
@@ -109,6 +116,71 @@ describe('launch mapping', () => {
       source: 'show-hn',
     });
     expect(out[1].url).toBe('https://news.ycombinator.com/item?id=2');
+  });
+});
+
+describe('launch tagging resilience (review findings)', () => {
+  function insertLaunch(db: ReturnType<typeof useTestDb>, title: string, daysAgo = 0, category: string | null = null) {
+    return db
+      .insert(launchesTable)
+      .values({
+        source: 'show-hn',
+        title,
+        url: `https://example.com/${title.replace(/\s/g, '-')}`,
+        points: 10,
+        comments: 1,
+        category,
+        launchedAt: new Date(Date.now() - daysAgo * 864e5),
+        createdAt: new Date(),
+      })
+      .returning()
+      .get();
+  }
+
+  it('a wrong-shaped tagging response leaves categories NULL for retry', async () => {
+    const db = useTestDb();
+    insertLaunch(db, 'radar tool');
+    vi.mocked(chatJSON).mockResolvedValueOnce({ category_map: { '1': 'agents' } } as never);
+    expect(await tagCategories()).toBe(0);
+    expect(db.select().from(launchesTable).all()[0].category).toBeNull();
+  });
+
+  it('launches omitted from a valid response stay NULL; valid ids get tagged', async () => {
+    const db = useTestDb();
+    const a = insertLaunch(db, 'tagged one');
+    insertLaunch(db, 'omitted one');
+    vi.mocked(chatJSON).mockResolvedValueOnce({ categories: { [String(a.id)]: 'agents' } } as never);
+    expect(await tagCategories()).toBe(1);
+    const rows = db.select().from(launchesTable).all();
+    expect(rows.find((r) => r.id === a.id)?.category).toBe('agents');
+    expect(rows.find((r) => r.id !== a.id)?.category).toBeNull();
+  });
+
+  it('recordDailyCounts keys by launch date, skips untagged, writes zeros for healing', () => {
+    const db = useTestDb();
+    insertLaunch(db, 'today agents', 0, 'agents');
+    insertLaunch(db, 'today untagged', 0, null); // must not appear anywhere
+    insertLaunch(db, 'yesterday coding', 1, 'ai-coding');
+    recordDailyCounts();
+    const today = utcDay();
+    const yesterday = utcDay(new Date(Date.now() - 864e5));
+    expect(seriesFor('launches', 'agents', 'count', 3)).toContainEqual({ date: today, value: 1 });
+    // zero written for a category with no launches that day → later runs can heal bad values
+    expect(seriesFor('launches', 'other', 'count', 3)).toContainEqual({ date: today, value: 0 });
+    expect(seriesFor('launches', 'ai-coding', 'count', 3)).toContainEqual({ date: yesterday, value: 1 });
+  });
+});
+
+describe('evidence merging (review finding)', () => {
+  it('keeps newest first, dedups by url, caps at 10', () => {
+    const prior = Array.from({ length: 9 }, (_, i) => ({ title: `old${i}`, url: `https://e.x/${i}` }));
+    const merged = mergeEvidence(prior, [
+      { title: 'new', url: 'https://e.x/new' },
+      { title: 'dupe of old0', url: 'https://e.x/0' },
+    ]);
+    expect(merged[0].url).toBe('https://e.x/new');
+    expect(merged.filter((e) => e.url === 'https://e.x/0')).toHaveLength(1);
+    expect(merged.length).toBeLessThanOrEqual(10);
   });
 });
 

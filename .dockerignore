@@ -16,3 +16,4 @@ Dockerfile
 docker-compose.yml
 *.jpeg
 .playwright-mcp
+.hfcache
