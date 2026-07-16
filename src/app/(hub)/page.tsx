@@ -8,7 +8,9 @@ import {
   domainMomentum,
   echoStats,
   latestInsights,
+  latestPatterns,
   topEntities,
+  topicMapData,
 } from '@/lib/analytics';
 import { splitFeed, timeAgo } from '@/lib/feed';
 import { safeHttpUrl } from '@/lib/safe-url';
@@ -16,7 +18,9 @@ import { visitAnchor } from '@/lib/visits';
 import { parseDomainScores, topDomain } from '@/components/DomainChips';
 import ActivityTrace from '@/components/ActivityTrace';
 import AnalystNotes from '@/components/AnalystNotes';
+import AnomalyFeed from '@/components/AnomalyFeed';
 import EntityBars from '@/components/EntityBars';
+import TopicMap from '@/components/TopicMap';
 import MarkSeen from '@/components/MarkSeen';
 import ScanRow from '@/components/ScanRow';
 import SectionHeader from '@/components/SectionHeader';
@@ -136,6 +140,8 @@ export default async function BriefingPage() {
   const entities = topEntities(8);
   const notes = latestInsights();
   const echoes = echoStats();
+  const noticed = latestPatterns(6);
+  const map = topicMapData();
   const recentLaunches = db
     .select()
     .from(launches)
@@ -171,6 +177,20 @@ export default async function BriefingPage() {
           <EntityBars entities={entities} />
         </div>
       </div>
+
+      {noticed.length > 0 && (
+        <>
+          <SectionHeader label={`The machine noticed — ${noticed[0].date}`} tone="phosphor" count={noticed.length} />
+          <AnomalyFeed items={noticed} />
+        </>
+      )}
+
+      {map && map.points.length >= 12 && (
+        <>
+          <SectionHeader label={`Topic map — ${map.clusters.length} clusters`} count={map.points.length} />
+          <TopicMap clusters={map.clusters} points={map.points} />
+        </>
+      )}
 
       {notes && notes.items.length > 0 && (
         <>

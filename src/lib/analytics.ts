@@ -1,4 +1,4 @@
-import { and, count, desc, eq, gte, inArray } from 'drizzle-orm';
+import { and, count, desc, eq, gte, inArray, isNotNull } from 'drizzle-orm';
 import { config } from './config';
 import { getDb } from './db';
 import {
@@ -7,8 +7,10 @@ import {
   items,
   jobRuns,
   llmUsage,
+  patterns,
   sources as sourcesTable,
   stories,
+  topicClusters,
 } from './db/schema';
 import { DOMAINS, DOMAIN_MEMBERSHIP_THRESHOLD, type Domain } from './domains';
 import { parseDomainScores } from '@/components/DomainChips';
@@ -388,6 +390,7 @@ export function jobHistory(perJob = 28): Record<string, JobRunCell[]> {
     'velocity',
     'launches',
     'pain',
+    'science',
     'board',
     'brief',
     'stacks',
@@ -448,6 +451,98 @@ export function pipelineFunnel(days = 7): Funnel {
     curated: curated.length,
     topSignals: curated.filter((s) => s.topScore >= 70).length,
   };
+}
+
+export interface PatternRow {
+  kind: string;
+  headline: string;
+  detail: string;
+  score: number;
+  date: string;
+}
+
+/** The most recent day's anomaly detections, strongest first. */
+export function latestPatterns(limit = 6): PatternRow[] {
+  const db = getDb();
+  const latest = db
+    .select({ date: patterns.date })
+    .from(patterns)
+    .orderBy(desc(patterns.date))
+    .limit(1)
+    .get();
+  if (!latest) return [];
+  return db
+    .select({
+      kind: patterns.kind,
+      headline: patterns.headline,
+      detail: patterns.detail,
+      score: patterns.score,
+      date: patterns.date,
+    })
+    .from(patterns)
+    .where(eq(patterns.date, latest.date))
+    .orderBy(desc(patterns.score))
+    .limit(limit)
+    .all();
+}
+
+export interface TopicMapPoint {
+  id: number;
+  title: string;
+  x: number;
+  y: number;
+  clusterId: number;
+  score: number;
+}
+
+export interface TopicMapCluster {
+  id: number;
+  label: string;
+  summary: string | null;
+  size: number;
+  heat: number;
+  x: number;
+  y: number;
+}
+
+/** Latest clustering run as plain serializable map data (labels positioned at member means). */
+export function topicMapData(): { clusters: TopicMapCluster[]; points: TopicMapPoint[] } | null {
+  const db = getDb();
+  const clusterRows = db.select().from(topicClusters).all();
+  if (clusterRows.length === 0) return null;
+  const valid = new Set(clusterRows.map((c) => c.id));
+
+  const raw = db
+    .select({
+      id: stories.id,
+      title: stories.title,
+      mapX: stories.mapX,
+      mapY: stories.mapY,
+      clusterId: stories.clusterId,
+      topScore: stories.topScore,
+    })
+    .from(stories)
+    .where(and(eq(stories.status, 'curated'), isNotNull(stories.mapX), isNotNull(stories.clusterId)))
+    .all();
+  const points: TopicMapPoint[] = raw
+    .filter((p) => p.clusterId !== null && valid.has(p.clusterId))
+    .map((p) => ({
+      id: p.id,
+      title: p.title,
+      x: p.mapX as number,
+      y: p.mapY as number,
+      clusterId: p.clusterId as number,
+      score: p.topScore,
+    }));
+  if (points.length === 0) return null;
+
+  const clusters: TopicMapCluster[] = clusterRows.map((c) => {
+    const member = points.filter((p) => p.clusterId === c.id);
+    const cx = member.reduce((a, p) => a + p.x, 0) / Math.max(1, member.length);
+    const cy = member.reduce((a, p) => a + p.y, 0) / Math.max(1, member.length);
+    return { id: c.id, label: c.label, summary: c.summary, size: c.size, heat: c.heat, x: cx, y: cy };
+  });
+  return { clusters, points };
 }
 
 /** Latest analyst notes (written by the daily brief job). */

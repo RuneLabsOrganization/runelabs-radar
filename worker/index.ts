@@ -11,6 +11,7 @@ import { runVelocity } from '../src/lib/velocity';
 import { runLaunches } from '../src/lib/launches';
 import { runEmbed } from '../src/lib/embed';
 import { runPain } from '../src/lib/pain';
+import { runScience } from '../src/lib/science/run';
 
 loadDotEnv();
 
@@ -26,6 +27,7 @@ const tasks = [
   cron.schedule('15 6 * * *', () => void withJobRun('launches', runLaunches)),
   cron.schedule('30 6 * * 1', () => void withJobRun('stacks', runStacks)),
   cron.schedule('40 6 * * *', () => void withJobRun('pain', runPain)),
+  cron.schedule('50 6 * * *', () => void withJobRun('science', runScience)),
   cron.schedule('0 7 * * *', () => void withJobRun('brief', runBrief)),
 ];
 

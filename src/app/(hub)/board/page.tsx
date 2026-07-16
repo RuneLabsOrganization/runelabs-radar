@@ -10,6 +10,10 @@ import ValueBars from '@/components/ValueBars';
 import VerdictEditor from '@/components/VerdictEditor';
 import SectionHeader from '@/components/SectionHeader';
 import { aaMedia, aaModels } from '@/lib/analytics';
+import { forecastFrontierPrice } from '@/lib/science/forecast';
+import { lagFindings, lagReadiness } from '@/lib/science/lag';
+import ForecastChart from '@/components/ForecastChart';
+import LagPanel from '@/components/LagPanel';
 import { requireViewer } from '@/lib/auth/user';
 import { getDb } from '@/lib/db';
 import { boardEntries, boardHistory } from '@/lib/db/schema';
@@ -75,6 +79,15 @@ export default async function BoardPage() {
           <section id="race" className="scroll-mt-24">
             <SectionHeader label="The race — intelligence over time" />
             <FrontierTimeline models={aa.models} />
+          </section>
+
+          <section id="forecast" className="scroll-mt-24">
+            <SectionHeader label="Forecast — price of frontier intelligence" tone="phosphor" />
+            <ForecastChart forecast={forecastFrontierPrice()} />
+            <div className="mt-6">
+              <div className="readout mb-2">timing lab — release&rarr;launch windows</div>
+              <LagPanel readiness={lagReadiness()} findings={lagFindings()} />
+            </div>
           </section>
 
           <section id="costs" className="scroll-mt-24">

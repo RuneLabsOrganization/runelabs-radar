@@ -5,6 +5,7 @@ import * as React from 'react';
 const SECTIONS = [
   ['market', 'Market'],
   ['race', 'Race'],
+  ['forecast', 'Forecast'],
   ['costs', 'Costs'],
   ['value', 'Value'],
   ['arenas', 'Arenas'],

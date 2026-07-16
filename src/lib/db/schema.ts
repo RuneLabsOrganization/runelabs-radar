@@ -33,6 +33,10 @@ export const stories = sqliteTable('stories', {
   entities: text('entities'),
   // Float32Array bytes from the local sentence-embedding model (embed job)
   embedding: blob('embedding', { mode: 'buffer' }),
+  // semantic-map placement, refreshed by the daily science job
+  clusterId: integer('cluster_id'),
+  mapX: real('map_x'),
+  mapY: real('map_y'),
   topScore: integer('top_score').notNull().default(0),
   status: text('status', { enum: ['raw', 'curated'] }).notNull().default('raw'),
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
@@ -185,6 +189,31 @@ export const stacks = sqliteTable('stacks', {
   runelabsVerdict: text('runelabs_verdict'),
   verdictAuthor: text('verdict_author'),
   updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
+});
+
+/** Semantic topic clusters over story embeddings — regenerated daily, replace-all. */
+export const topicClusters = sqliteTable('topic_clusters', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  label: text('label').notNull(),
+  summary: text('summary'),
+  size: integer('size').notNull(),
+  // recency-weighted activity, normalized 0..1 across clusters
+  heat: real('heat').notNull().default(0),
+  centroid: blob('centroid', { mode: 'buffer' }),
+  date: text('date').notNull(), // run day (YYYY-MM-DD UTC)
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+});
+
+/** "The machine noticed" — daily anomaly detections, narrated. */
+export const patterns = sqliteTable('patterns', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  kind: text('kind').notNull(), // 'sector-spike' | 'entity-surge' | 'price-drop' | 'launch-spike' | 'cluster-heat' | 'pain-cluster'
+  headline: text('headline').notNull(),
+  detail: text('detail').notNull(),
+  score: real('score').notNull(), // magnitude for ranking (z-score, ratio, %)
+  evidence: text('evidence').notNull().default('[]'), // JSON refs
+  date: text('date').notNull(), // detection day (YYYY-MM-DD UTC)
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
 });
 
 export const insights = sqliteTable('insights', {
