@@ -6,8 +6,8 @@ import { DOMAINS, DOMAIN_LABELS, type Domain } from '../domains';
 import { SEED_BOARD_TASKS } from '../db/seed-data';
 import { chatJSON } from '../llm/minimax';
 
-const AA_URL = 'https://artificialanalysis.ai/api/v2/data/llms/models';
-const AA_MEDIA_ENDPOINTS = [
+export const AA_URL = 'https://artificialanalysis.ai/api/v2/data/llms/models';
+export const AA_MEDIA_ENDPOINTS = [
   { source: 'aa-media-image', url: 'https://artificialanalysis.ai/api/v2/data/media/text-to-image' },
   { source: 'aa-media-video', url: 'https://artificialanalysis.ai/api/v2/data/media/text-to-video' },
   { source: 'aa-media-image-edit', url: 'https://artificialanalysis.ai/api/v2/data/media/image-editing' },

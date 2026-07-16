@@ -1,4 +1,4 @@
-import { sqliteTable, text, integer, primaryKey, uniqueIndex } from 'drizzle-orm/sqlite-core';
+import { blob, real, sqliteTable, text, integer, primaryKey, uniqueIndex } from 'drizzle-orm/sqlite-core';
 
 export const users = sqliteTable('users', {
   id: integer('id').primaryKey({ autoIncrement: true }),
@@ -31,6 +31,8 @@ export const stories = sqliteTable('stories', {
   domainScores: text('domain_scores'),
   // JSON [{name, kind: 'model'|'tool'|'org'|'technique'}] extracted at curation
   entities: text('entities'),
+  // Float32Array bytes from the local sentence-embedding model (embed job)
+  embedding: blob('embedding', { mode: 'buffer' }),
   topScore: integer('top_score').notNull().default(0),
   status: text('status', { enum: ['raw', 'curated'] }).notNull().default('raw'),
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
@@ -110,6 +112,63 @@ export const benchmarkSnapshots = sqliteTable('benchmark_snapshots', {
 export const briefs = sqliteTable('briefs', {
   date: text('date').primaryKey(),
   markdown: text('markdown').notNull(),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+});
+
+/**
+ * Universal daily time series: one row per (source, entity, metric, day).
+ * AA model prices, arena ELOs, GitHub stars, HF/npm downloads, launch counts —
+ * everything that charts over time lands here.
+ */
+export const metricPoints = sqliteTable(
+  'metric_points',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    source: text('source').notNull(), // 'aa' | 'aa-media-*' | 'github' | 'huggingface' | 'npm' | 'launches'
+    entity: text('entity').notNull(), // model name, repo, package, category…
+    metric: text('metric').notNull(), // 'price_blended' | 'intelligence' | 'elo' | 'stars' | …
+    value: real('value').notNull(),
+    date: text('date').notNull(), // YYYY-MM-DD (UTC)
+    createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+  },
+  (t) => ({
+    metricKey: uniqueIndex('metric_points_key').on(t.source, t.entity, t.metric, t.date),
+  }),
+);
+
+export const launches = sqliteTable('launches', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  source: text('source', { enum: ['show-hn', 'producthunt'] }).notNull(),
+  title: text('title').notNull(),
+  url: text('url').notNull().unique(),
+  points: integer('points'),
+  comments: integer('comments'),
+  // LLM-tagged category slug (ai-coding, ai-media, agents, saas-tools, …)
+  category: text('category'),
+  launchedAt: integer('launched_at', { mode: 'timestamp' }).notNull(),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+});
+
+export const painPoints = sqliteTable('pain_points', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  // imperative unmet-need statement, e.g. "reliable bulk background removal for product photos"
+  summary: text('summary').notNull(),
+  sector: text('sector'),
+  // times this need has been observed (bumped on dedup matches)
+  intensity: integer('intensity').notNull().default(1),
+  // JSON [{title, url}] of observed evidence
+  evidence: text('evidence').notNull().default('[]'),
+  lastSeenAt: integer('last_seen_at', { mode: 'timestamp' }).notNull(),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+});
+
+export const comps = sqliteTable('comps', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  kind: text('kind', { enum: ['exit', 'revenue'] }).notNull(),
+  product: text('product').notNull(),
+  amountUsd: real('amount_usd'),
+  note: text('note'),
+  sourceUrl: text('source_url'),
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
 });
 

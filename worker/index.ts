@@ -6,6 +6,11 @@ import { runCurate } from '../src/lib/curate/curate';
 import { runBoardSync } from '../src/lib/board/sync';
 import { runBrief } from '../src/lib/brief/brief';
 import { runStacks } from '../src/lib/stacks/generate';
+import { runSnapshot } from '../src/lib/snapshot';
+import { runVelocity } from '../src/lib/velocity';
+import { runLaunches } from '../src/lib/launches';
+import { runEmbed } from '../src/lib/embed';
+import { runPain } from '../src/lib/pain';
 
 loadDotEnv();
 
@@ -14,13 +19,20 @@ console.log('[worker] Runelabs Radar worker starting');
 const tasks = [
   cron.schedule('*/30 * * * *', () => void withJobRun('ingest', runIngest)),
   cron.schedule('5 * * * *', () => void withJobRun('curate', runCurate)),
+  cron.schedule('20 * * * *', () => void withJobRun('embed', runEmbed)),
+  cron.schedule('30 5 * * *', () => void withJobRun('snapshot', runSnapshot)),
+  cron.schedule('45 5 * * *', () => void withJobRun('velocity', runVelocity)),
   cron.schedule('0 6 * * 1', () => void withJobRun('board', runBoardSync)),
+  cron.schedule('15 6 * * *', () => void withJobRun('launches', runLaunches)),
   cron.schedule('30 6 * * 1', () => void withJobRun('stacks', runStacks)),
+  cron.schedule('40 6 * * *', () => void withJobRun('pain', runPain)),
   cron.schedule('0 7 * * *', () => void withJobRun('brief', runBrief)),
 ];
 
 // Populate immediately on boot instead of waiting for the first tick
-void withJobRun('ingest', runIngest).then(() => withJobRun('curate', runCurate));
+void withJobRun('ingest', runIngest)
+  .then(() => withJobRun('curate', runCurate))
+  .then(() => withJobRun('embed', runEmbed));
 
 function shutdown() {
   console.log('[worker] shutting down');

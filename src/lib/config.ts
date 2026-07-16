@@ -28,4 +28,16 @@ export const config = {
   get publicMode(): boolean {
     return process.env.PUBLIC_MODE === 'true';
   },
+  /** Optional: raises GitHub API rate limits for the velocity job. */
+  get githubToken(): string {
+    return process.env.GITHUB_TOKEN ?? '';
+  },
+  /** Optional: enables the Product Hunt launch adapter. */
+  get phToken(): string {
+    return process.env.PH_TOKEN ?? '';
+  },
+  /** Where the local embedding model weights are cached (persist on a volume). */
+  get transformersCache(): string {
+    return process.env.TRANSFORMERS_CACHE ?? '.hfcache';
+  },
 };

@@ -1,7 +1,7 @@
 import { and, count, desc, eq, gt, inArray } from 'drizzle-orm';
 import { requireViewer } from '@/lib/auth/user';
 import { getDb } from '@/lib/db';
-import { items, sources, stories, votes } from '@/lib/db/schema';
+import { items, launches, sources, stories, votes } from '@/lib/db/schema';
 import { DOMAINS, DOMAIN_MEMBERSHIP_THRESHOLD } from '@/lib/domains';
 import {
   dailyDomainCounts,
@@ -136,6 +136,13 @@ export default async function BriefingPage() {
   const entities = topEntities(8);
   const notes = latestInsights();
   const echoes = echoStats();
+  const recentLaunches = db
+    .select()
+    .from(launches)
+    .where(gt(launches.launchedAt, new Date(now - 24 * 36e5)))
+    .orderBy(desc(launches.points))
+    .limit(8)
+    .all();
 
   return (
     <div className="mx-auto max-w-[860px] px-6 py-7">
@@ -213,6 +220,42 @@ export default async function BriefingPage() {
                 domain={topDomain(c.scores)}
                 isNew={c.isNew}
               />
+            ))}
+          </ul>
+        </>
+      )}
+
+      {recentLaunches.length > 0 && (
+        <>
+          <SectionHeader label="Launch radar — 24h" count={recentLaunches.length} />
+          <ul>
+            {recentLaunches.map((l) => (
+              <li
+                key={l.id}
+                className="row-hover flex items-center gap-3 border-b border-[var(--grat-soft)] px-1 py-[7px] text-[13px] last:border-b-0"
+              >
+                <span className="mono w-11 shrink-0 text-right text-[10.5px]" style={{ color: 'var(--ink-3)' }}>
+                  {l.points ?? '—'}&#9650;
+                </span>
+                <span className="min-w-0 flex-1 truncate" style={{ color: 'var(--ink-2)' }}>
+                  <a
+                    href={l.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="decoration-[var(--grat-strong)] underline-offset-2 hover:underline"
+                  >
+                    {l.title}
+                  </a>
+                </span>
+                {l.category && (
+                  <span className="mono hidden shrink-0 text-[10px] uppercase sm:inline" style={{ color: 'var(--ink-4)' }}>
+                    {l.category}
+                  </span>
+                )}
+                <span className="mono w-14 shrink-0 text-right text-[10.5px]" style={{ color: 'var(--ink-4)' }}>
+                  {timeAgo(l.launchedAt)}
+                </span>
+              </li>
             ))}
           </ul>
         </>
