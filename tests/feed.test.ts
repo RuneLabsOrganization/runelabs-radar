@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { signalLevel, splitFeed, timeAgo, TOP_MAX } from '@/lib/feed';
+import { filterBySector, type FeedEntry } from '@/components/FilteredFeed';
 
 function contact(score: number, minutesAgo: number) {
   return { score, createdAt: new Date(Date.now() - minutesAgo * 60_000) };
@@ -43,6 +44,36 @@ describe('splitFeed', () => {
 
   it('handles an empty scope', () => {
     expect(splitFeed([])).toEqual({ top: [], scan: [], lowCount: 0 });
+  });
+});
+
+describe('filterBySector', () => {
+  const entry = (id: number, scores: Record<string, number>): FeedEntry => ({
+    story: {
+      id,
+      title: `s${id}`,
+      tldr: null,
+      whyItMatters: null,
+      domainScores: JSON.stringify(scores),
+      topScore: 50,
+      createdAt: new Date(),
+    },
+    itemCount: 1,
+    firstUrl: null,
+    sourceName: null,
+    up: 0,
+    down: 0,
+    myVote: 0,
+    isNew: false,
+    score: 50,
+  });
+
+  it('keeps entries at or above the membership threshold for the sector', () => {
+    const entries = [entry(1, { coding: 80 }), entry(2, { coding: 39, video: 60 }), entry(3, { video: 40 })];
+    expect(filterBySector(entries, null)).toHaveLength(3);
+    expect(filterBySector(entries, 'coding').map((e) => e.story.id)).toEqual([1]);
+    expect(filterBySector(entries, 'video').map((e) => e.story.id)).toEqual([2, 3]);
+    expect(filterBySector(entries, 'ads')).toEqual([]);
   });
 });
 

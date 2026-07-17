@@ -1,7 +1,7 @@
 // Namespace import keeps JSX working under vitest's classic transform (jsx: preserve).
 import * as React from 'react';
 import { DOMAIN_COLORS, DOMAIN_LABELS, type Domain } from '@/lib/domains';
-import { timeAgo, type Story } from '@/lib/feed';
+import { timeAgo, type FeedStory } from '@/lib/feed';
 import { safeHttpUrl } from '@/lib/safe-url';
 import SignalMeter from './SignalMeter';
 
@@ -13,7 +13,7 @@ export default function ScanRow({
   domain,
   isNew = false,
 }: {
-  story: Story;
+  story: FeedStory;
   firstUrl: string | null;
   score: number;
   domain: Domain | null;

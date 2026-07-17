@@ -15,17 +15,16 @@ import {
 import { splitFeed, timeAgo } from '@/lib/feed';
 import { safeHttpUrl } from '@/lib/safe-url';
 import { visitAnchor } from '@/lib/visits';
-import { parseDomainScores, topDomain } from '@/components/DomainChips';
+import { parseDomainScores } from '@/components/DomainChips';
 import ActivityTrace from '@/components/ActivityTrace';
 import AnalystNotes from '@/components/AnalystNotes';
 import AnomalyFeed from '@/components/AnomalyFeed';
 import EntityBars from '@/components/EntityBars';
+import FilteredFeed, { type FeedEntry } from '@/components/FilteredFeed';
 import TopicMap from '@/components/TopicMap';
 import MarkSeen from '@/components/MarkSeen';
-import ScanRow from '@/components/ScanRow';
 import SectionHeader from '@/components/SectionHeader';
 import SectorStrip, { type SectorStat } from '@/components/SectorStrip';
-import SignalEntry from '@/components/SignalEntry';
 
 type ItemAgg = { count: number; firstUrl: string | null; sourceName: string | null };
 type VoteAgg = { up: number; down: number; mine: 1 | -1 | 0 };
@@ -67,6 +66,39 @@ function voteAggByStory(storyIds: number[], userId: number): Map<number, VoteAgg
     map.set(row.storyId, agg);
   }
   return map;
+}
+
+type Contact = {
+  story: import('@/lib/feed').Story;
+  score: number;
+  isNew: boolean;
+};
+
+/** Slim, Buffer-free serialization for the client-side filtered feed. */
+function toFeedEntry(itemAgg: Map<number, ItemAgg>, voteAgg: Map<number, VoteAgg>) {
+  return (c: Contact): FeedEntry => {
+    const it = itemAgg.get(c.story.id) ?? { count: 0, firstUrl: null, sourceName: null };
+    const vt = voteAgg.get(c.story.id) ?? { up: 0, down: 0, mine: 0 as const };
+    return {
+      story: {
+        id: c.story.id,
+        title: c.story.title,
+        tldr: c.story.tldr,
+        whyItMatters: c.story.whyItMatters,
+        domainScores: c.story.domainScores,
+        topScore: c.story.topScore,
+        createdAt: c.story.createdAt,
+      },
+      itemCount: it.count,
+      firstUrl: it.firstUrl,
+      sourceName: it.sourceName,
+      up: vt.up,
+      down: vt.down,
+      myVote: vt.mine,
+      isNew: c.isNew,
+      score: c.score,
+    };
+  };
 }
 
 const WEEKDAYS = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
@@ -199,51 +231,11 @@ export default async function BriefingPage() {
         </>
       )}
 
-      <SectionHeader label="Top signals" count={top.length} tone="phosphor" />
-      {top.length === 0 ? (
-        <p className="mono py-4 text-[12px]" style={{ color: 'var(--ink-4)' }}>
-          No strong signals on the scope yet — curation sweeps hourly.
-        </p>
-      ) : (
-        <div>
-          {top.map((c) => {
-            const it = itemAgg.get(c.story.id) ?? { count: 0, firstUrl: null, sourceName: null };
-            const vt = voteAgg.get(c.story.id) ?? { up: 0, down: 0, mine: 0 as const };
-            return (
-              <SignalEntry
-                key={c.story.id}
-                story={c.story}
-                itemCount={it.count}
-                firstUrl={it.firstUrl}
-                sourceName={it.sourceName}
-                up={vt.up}
-                down={vt.down}
-                myVote={vt.mine}
-                isNew={c.isNew}
-                readOnly={!user}
-              />
-            );
-          })}
-        </div>
-      )}
-
-      {scan.length > 0 && (
-        <>
-          <SectionHeader label="Scan log" count={scan.length} />
-          <ul>
-            {scan.map((c) => (
-              <ScanRow
-                key={c.story.id}
-                story={c.story}
-                firstUrl={itemAgg.get(c.story.id)?.firstUrl ?? null}
-                score={c.score}
-                domain={topDomain(c.scores)}
-                isNew={c.isNew}
-              />
-            ))}
-          </ul>
-        </>
-      )}
+      <FilteredFeed
+        top={top.map(toFeedEntry(itemAgg, voteAgg))}
+        scan={scan.map(toFeedEntry(itemAgg, voteAgg))}
+        readOnly={!user}
+      />
 
       {recentLaunches.length > 0 && (
         <>

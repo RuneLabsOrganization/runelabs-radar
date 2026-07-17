@@ -13,7 +13,7 @@ import {
   topicClusters,
 } from './db/schema';
 import { DOMAINS, DOMAIN_MEMBERSHIP_THRESHOLD, type Domain } from './domains';
-import { parseDomainScores } from '@/components/DomainChips';
+import { parseDomainScores, topDomain } from '@/components/DomainChips';
 
 const DAY_MS = 864e5;
 
@@ -510,6 +510,10 @@ export interface TopicMapPoint {
   y: number;
   clusterId: number;
   score: number;
+  /** story age in days — the starfield's depth axis */
+  ageDays: number;
+  sector: Domain | null;
+  url: string | null;
 }
 
 export interface TopicMapCluster {
@@ -538,20 +542,43 @@ export function topicMapData(): { clusters: TopicMapCluster[]; points: TopicMapP
       mapY: stories.mapY,
       clusterId: stories.clusterId,
       topScore: stories.topScore,
+      domainScores: stories.domainScores,
+      createdAt: stories.createdAt,
     })
     .from(stories)
     .where(and(eq(stories.status, 'curated'), isNotNull(stories.mapX), isNotNull(stories.clusterId)))
     .all();
-  const points: TopicMapPoint[] = raw
-    .filter((p) => p.clusterId !== null && valid.has(p.clusterId))
-    .map((p) => ({
+  const kept = raw.filter((p) => p.clusterId !== null && valid.has(p.clusterId));
+
+  // first item url per story, for click-through from the starfield
+  const urlByStory = new Map<number, string>();
+  if (kept.length > 0) {
+    const itemRows = db
+      .select({ storyId: items.storyId, url: items.url })
+      .from(items)
+      .where(inArray(items.storyId, kept.map((p) => p.id)))
+      .orderBy(items.id)
+      .all();
+    for (const row of itemRows) {
+      if (row.storyId !== null && !urlByStory.has(row.storyId)) urlByStory.set(row.storyId, row.url);
+    }
+  }
+
+  const now = Date.now();
+  const points: TopicMapPoint[] = kept.map((p) => {
+    const scores = parseDomainScores(p.domainScores);
+    return {
       id: p.id,
       title: p.title,
       x: p.mapX as number,
       y: p.mapY as number,
       clusterId: p.clusterId as number,
       score: p.topScore,
-    }));
+      ageDays: Math.max(0, (now - p.createdAt.getTime()) / 864e5),
+      sector: topDomain(scores),
+      url: urlByStory.get(p.id) ?? null,
+    };
+  });
   if (points.length === 0) return null;
 
   const clusters: TopicMapCluster[] = clusterRows.map((c) => {

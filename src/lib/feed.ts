@@ -2,6 +2,15 @@ import type { stories } from './db/schema';
 
 export type Story = typeof stories.$inferSelect;
 
+/**
+ * The slice of a story the feed renders — safe to serialize to client
+ * components (the full row carries the embedding Buffer, which is not).
+ */
+export type FeedStory = Pick<
+  Story,
+  'id' | 'title' | 'tldr' | 'whyItMatters' | 'domainScores' | 'topScore' | 'createdAt'
+>;
+
 /** Score at or above which a contact leads the briefing as a top signal. */
 export const TOP_SIGNAL_MIN = 70;
 /** Score below which a contact is archive noise, not worth the scan log. */
