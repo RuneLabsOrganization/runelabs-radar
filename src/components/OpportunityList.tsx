@@ -156,6 +156,8 @@ function Card({ opp, canGenerate, sortKey }: { opp: OppView; canGenerate: boolea
       return;
     }
     setOpen(true);
+    // anonymous + no cached brief → show the sign-in hint, don't fire a doomed POST
+    if (!canGenerate && !brief) return;
     if (brief || loading) return;
     setLoading(true);
     setError(null);
@@ -226,7 +228,13 @@ function Card({ opp, canGenerate, sortKey }: { opp: OppView; canGenerate: boolea
 
       <div className="mt-3.5 flex items-center gap-4">
         <button type="button" onClick={expand} className={open ? 'btn' : 'btn btn-primary'}>
-          {open ? 'collapse' : brief ? 'launch brief' : 'draft launch brief'}
+          {open
+            ? 'collapse'
+            : brief
+              ? 'launch brief'
+              : canGenerate
+                ? 'draft launch brief'
+                : 'launch brief (sign in)'}
         </button>
         <span className="mono text-[10px]" style={{ color: 'var(--ink-4)' }}>
           first seen {opp.firstSeenLabel}

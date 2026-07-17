@@ -43,6 +43,13 @@ describe('scoring', () => {
     expect(normalizeSlug('Bulk BG-Removal (Shopify)!')).toBe('bulk-bg-removal-shopify');
     expect(normalizeSlug('  --Weird__Slug--  ')).toBe('weird-slug');
   });
+
+  it('normalizeSlug is idempotent at the truncation boundary (review finding)', () => {
+    const long = 'a'.repeat(59) + ' more words here';
+    const once = normalizeSlug(long);
+    expect(normalizeSlug(once)).toBe(once);
+    expect(once.endsWith('-')).toBe(false);
+  });
 });
 
 describe('sanitizeOpportunities', () => {
@@ -62,6 +69,11 @@ describe('sanitizeOpportunities', () => {
     expect(out).toHaveLength(2);
     expect(out[0].evidenceRefs).toEqual(['P1', 'M']);
     expect(out[1].sub.demand).toBe(20); // clamped
+  });
+
+  it('canonicalizes bracketed/cased/padded refs as the model echoes them (review finding)', () => {
+    const out = sanitizeOpportunities([{ ...valid, evidenceRefs: ['[P1]', ' [M] ', 'p2', '[BOGUS]'] }], refs);
+    expect(out[0].evidenceRefs).toEqual(['P1', 'M', 'P2']);
   });
 
   it('rejects missing subscores, dup slugs, short theses', () => {
@@ -107,6 +119,13 @@ describe('sanitizeBrief', () => {
     expect(sanitizeBrief({ ...valid, mvp: ['one', 'two'] })).toBeNull(); // <3 features
     expect(sanitizeBrief({ ...valid, icp: 'short' })).toBeNull();
     expect(sanitizeBrief(null)).toBeNull();
+  });
+
+  it('is idempotent across the cache round-trip (review finding)', () => {
+    const b = sanitizeBrief({ ...valid, mvp: ['bulk upload', 'batch background removal', 'A  b', 'export flow'] });
+    expect(b).not.toBeNull();
+    // whatever passed validation must still pass after store+parse
+    expect(sanitizeBrief(JSON.parse(JSON.stringify(b)))).not.toBeNull();
   });
 
   it('drops non-finite or absurd economics', () => {
@@ -190,6 +209,32 @@ describe('runOpportunities lifecycle', () => {
     expect(refreshed.flipScore).toBeGreaterThan(50);
 
     expect(db.select().from(opportunities).where(eq(opportunities.slug, 'stale-one')).get()!.status).toBe('archived');
+  });
+
+  it('resurrecting an archived slug clears the stale brief (review finding)', async () => {
+    const db = useTestDb();
+    seedSignal(db);
+    const old = new Date(Date.now() - 30 * 864e5);
+    db.insert(opportunities)
+      .values({
+        slug: 'resurrect-me',
+        title: 'Old incarnation',
+        thesis: 'An old thesis from a different market moment entirely.',
+        status: 'archived',
+        flipScore: 10,
+        holdScore: 10,
+        scores: '{}',
+        brief: JSON.stringify({ icp: 'stale brief from months ago long enough', mvp: ['a1234', 'b1234', 'c1234'], gtm: ['x1234'], risks: ['y1234'], unitEconomics: { assumptions: [] } }),
+        briefGeneratedAt: old,
+        firstSeenAt: old,
+        lastSeenAt: old,
+      })
+      .run();
+    vi.mocked(chatJSON).mockResolvedValueOnce({ opportunities: [draft('resurrect-me')] } as never);
+    await runOpportunities();
+    const row = db.select().from(opportunities).where(eq(opportunities.slug, 'resurrect-me')).get()!;
+    expect(row.status).toBe('active');
+    expect(row.brief).toBeNull(); // stale brief must regenerate
   });
 
   it('skips when there is not enough signal', async () => {

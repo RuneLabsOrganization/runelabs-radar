@@ -25,9 +25,12 @@ export interface OppBrief {
 
 function strList(v: unknown, maxItems: number, maxLen: number): string[] {
   if (!Array.isArray(v)) return [];
+  // sanitize BEFORE filtering: validation must judge what actually gets stored,
+  // or a brief can pass at write time and fail re-validation from cache
   return v
-    .filter((s): s is string => typeof s === 'string' && s.trim().length > 3)
+    .filter((s): s is string => typeof s === 'string')
     .map((s) => promptLine(s, maxLen))
+    .filter((s) => s.length > 3)
     .slice(0, maxItems);
 }
 
@@ -69,20 +72,35 @@ export function sanitizeBrief(v: unknown): OppBrief | null {
   };
 }
 
+type BriefResult = { ok: true; brief: OppBrief } | { ok: false; error: string };
+
+// in-flight dedupe: concurrent expands of the same opportunity share one LLM call
+const inflight = new Map<number, Promise<BriefResult>>();
+
 /**
  * One-call launchable brief for an opportunity, cached on the row.
  * Grounded in the opportunity itself, the Stacks playbooks, the model
  * market, sector pains, and recent money comps.
  */
-export async function generateBrief(
-  oppId: number,
-): Promise<{ ok: true; brief: OppBrief } | { ok: false; error: string }> {
+export function generateBrief(oppId: number): Promise<BriefResult> {
+  const existing = inflight.get(oppId);
+  if (existing) return existing;
+  const p = generateBriefInner(oppId).finally(() => inflight.delete(oppId));
+  inflight.set(oppId, p);
+  return p;
+}
+
+async function generateBriefInner(oppId: number): Promise<BriefResult> {
   const db = getDb();
   const opp = db.select().from(opportunities).where(eq(opportunities.id, oppId)).get();
   if (!opp) return { ok: false, error: 'opportunity not found' };
   if (opp.brief) {
-    const cached = sanitizeBrief(JSON.parse(opp.brief));
-    if (cached) return { ok: true, brief: cached };
+    try {
+      const cached = sanitizeBrief(JSON.parse(opp.brief));
+      if (cached) return { ok: true, brief: cached };
+    } catch {
+      // corrupt cache — fall through and regenerate over it
+    }
   }
 
   const stackRows = db.select().from(stacks).all();

@@ -55,6 +55,7 @@ export default function TopicMap({
           </g>
         ))}
 
+        {/* coherence 0 = pre-migration rows (unknown), not grab-bag — don't smear them */}
         {clusters.map((c) => (
           <text
             key={c.id}
@@ -63,11 +64,11 @@ export default function TopicMap({
             textAnchor="middle"
             fontSize={9.5}
             fontFamily="var(--font-readout)"
-            fill={c.coherence < 0.5 ? 'var(--ink-4)' : c.heat > 0.7 ? 'var(--ink)' : 'var(--ink-3)'}
-            opacity={c.coherence < 0.5 ? 0.7 : 1}
+            fill={c.coherence > 0 && c.coherence < 0.5 ? 'var(--ink-4)' : c.heat > 0.7 ? 'var(--ink)' : 'var(--ink-3)'}
+            opacity={c.coherence > 0 && c.coherence < 0.5 ? 0.7 : 1}
             style={{ textTransform: 'uppercase', letterSpacing: '0.08em' }}
           >
-            {c.coherence < 0.5 ? `${c.label} (mixed)` : c.label}
+            {c.coherence > 0 && c.coherence < 0.5 ? `${c.label} (mixed)` : c.label}
           </text>
         ))}
       </svg>

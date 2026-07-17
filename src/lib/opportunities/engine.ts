@@ -36,11 +36,15 @@ export function compositeScore(sub: SubScores, weights: SubScores): number {
 }
 
 export function normalizeSlug(s: string): string {
+  // trailing strip AFTER the slice keeps this idempotent — a stored 60-char
+  // slug ending at a hyphen must re-normalize to itself, or day-2 refreshes
+  // silently duplicate the opportunity
   return s
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 60);
+    .replace(/^-+/, '')
+    .slice(0, 60)
+    .replace(/-+$/g, '');
 }
 
 export interface OppDraft {
@@ -86,9 +90,16 @@ export function sanitizeOpportunities(v: unknown, validRefs: Set<string>): OppDr
     }
     if (!subOk) continue;
 
+    // canonicalize before matching — models echo refs as they were rendered ("[P1]")
     const evidenceRefs = Array.isArray(rec.evidenceRefs)
-      ? [...new Set(rec.evidenceRefs)]
-          .filter((r): r is string => typeof r === 'string' && validRefs.has(r))
+      ? [
+          ...new Set(
+            rec.evidenceRefs
+              .filter((r): r is string => typeof r === 'string')
+              .map((r) => r.trim().replace(/^\[+|\]+$/g, '').trim().toUpperCase()),
+          ),
+        ]
+          .filter((r) => validRefs.has(r))
           .slice(0, 6)
       : [];
 
@@ -294,8 +305,9 @@ export async function runOpportunities(): Promise<{
   let created = 0;
   let refreshed = 0;
   const now = new Date();
+  // keyed by re-normalized slug — heals any legacy rows stored pre-idempotency-fix
   const bySlug = new Map(
-    db.select().from(opportunities).all().map((o) => [o.slug, o]),
+    db.select().from(opportunities).all().map((o) => [normalizeSlug(o.slug), o]),
   );
   for (const d of drafts) {
     const evidence = d.evidenceRefs
@@ -315,8 +327,15 @@ export async function runOpportunities(): Promise<{
     };
     const prior = bySlug.get(d.slug);
     if (prior) {
-      // brief + firstSeenAt survive refreshes
-      db.update(opportunities).set(values).where(eq(opportunities.id, prior.id)).run();
+      // brief + firstSeenAt survive day-to-day refreshes — but resurrecting an
+      // ARCHIVED slug is a new incarnation: its old brief (stale prices, maybe
+      // a different thesis entirely) must regenerate on next expand
+      const resurrect =
+        prior.status === 'archived' ? { brief: null, briefGeneratedAt: null } : {};
+      db.update(opportunities)
+        .set({ ...values, ...resurrect })
+        .where(eq(opportunities.id, prior.id))
+        .run();
       refreshed++;
     } else {
       db.insert(opportunities)
