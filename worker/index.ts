@@ -12,6 +12,7 @@ import { runLaunches } from '../src/lib/launches';
 import { runEmbed } from '../src/lib/embed';
 import { runPain } from '../src/lib/pain';
 import { runScience } from '../src/lib/science/run';
+import { runOpportunities } from '../src/lib/opportunities/engine';
 
 loadDotEnv();
 
@@ -29,6 +30,7 @@ const tasks = [
   cron.schedule('40 6 * * *', () => void withJobRun('pain', runPain)),
   cron.schedule('50 6 * * *', () => void withJobRun('science', runScience)),
   cron.schedule('0 7 * * *', () => void withJobRun('brief', runBrief)),
+  cron.schedule('10 7 * * *', () => void withJobRun('opportunities', runOpportunities)),
 ];
 
 // Populate immediately on boot instead of waiting for the first tick

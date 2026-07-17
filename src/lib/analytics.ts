@@ -116,6 +116,21 @@ interface StoredEntity {
   kind?: unknown;
 }
 
+/** Platforms/sources misextracted as "entities" — noise, not signal. */
+const ENTITY_STOPLIST = new Set([
+  'reddit',
+  'hacker news',
+  'hackernews',
+  'hn',
+  'github',
+  'youtube',
+  'twitter',
+  'x',
+  'discord',
+  'arxiv',
+  'show hn',
+]);
+
 function collectEntities(rows: { entities: string | null }[]): Map<string, { name: string; kind: string; count: number }> {
   const map = new Map<string, { name: string; kind: string; count: number }>();
   for (const row of rows) {
@@ -133,6 +148,7 @@ function collectEntities(rows: { entities: string | null }[]): Map<string, { nam
       if (typeof e?.name !== 'string' || e.name.trim() === '') continue;
       const name = e.name.replace(/\s+/g, ' ').trim();
       const key = name.toLowerCase();
+      if (ENTITY_STOPLIST.has(key)) continue;
       if (seenInStory.has(key)) continue; // count once per story
       seenInStory.add(key);
       const cur = map.get(key);
@@ -391,6 +407,7 @@ export function jobHistory(perJob = 28): Record<string, JobRunCell[]> {
     'launches',
     'pain',
     'science',
+    'opportunities',
     'board',
     'brief',
     'stacks',
@@ -501,6 +518,7 @@ export interface TopicMapCluster {
   summary: string | null;
   size: number;
   heat: number;
+  coherence: number;
   x: number;
   y: number;
 }
@@ -540,7 +558,16 @@ export function topicMapData(): { clusters: TopicMapCluster[]; points: TopicMapP
     const member = points.filter((p) => p.clusterId === c.id);
     const cx = member.reduce((a, p) => a + p.x, 0) / Math.max(1, member.length);
     const cy = member.reduce((a, p) => a + p.y, 0) / Math.max(1, member.length);
-    return { id: c.id, label: c.label, summary: c.summary, size: c.size, heat: c.heat, x: cx, y: cy };
+    return {
+      id: c.id,
+      label: c.label,
+      summary: c.summary,
+      size: c.size,
+      heat: c.heat,
+      coherence: c.coherence,
+      x: cx,
+      y: cy,
+    };
   });
   return { clusters, points };
 }

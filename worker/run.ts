@@ -13,6 +13,7 @@ import { runLaunches } from '../src/lib/launches';
 import { runEmbed } from '../src/lib/embed';
 import { runPain } from '../src/lib/pain';
 import { runScience } from '../src/lib/science/run';
+import { runOpportunities } from '../src/lib/opportunities/engine';
 
 const jobs: Record<JobName, () => Promise<Record<string, unknown>>> = {
   ingest: runIngest,
@@ -26,6 +27,7 @@ const jobs: Record<JobName, () => Promise<Record<string, unknown>>> = {
   embed: runEmbed,
   pain: runPain,
   science: runScience,
+  opportunities: runOpportunities,
 };
 
 const name = process.argv[2] as JobName | undefined;

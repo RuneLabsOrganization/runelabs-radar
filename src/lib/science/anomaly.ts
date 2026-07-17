@@ -146,13 +146,16 @@ export function detectLaunchSpikes(): RawDetection[] {
   return out;
 }
 
-/** The hottest semantic cluster from TODAY's run only — stale runs stay silent. */
+/**
+ * The hottest COHERENT semantic cluster from TODAY's run only — stale runs
+ * stay silent, and grab-bag clusters (low mean cosine) never claim "hot topic".
+ */
 export function detectClusterHeat(): RawDetection[] {
   const db = getDb();
   const hot = db
     .select()
     .from(topicClusters)
-    .where(eq(topicClusters.date, utcDay()))
+    .where(and(eq(topicClusters.date, utcDay()), gte(topicClusters.coherence, 0.5)))
     .orderBy(desc(topicClusters.heat))
     .limit(1)
     .get();

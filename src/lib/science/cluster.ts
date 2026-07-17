@@ -73,6 +73,25 @@ export async function runClustering(): Promise<{ clusters: number; mapped: numbe
   });
   const maxHeat = Math.max(1e-9, ...heat);
 
+  // coherence: mean cosine of members to the (normalized) centroid —
+  // a grab-bag cluster scores low and gets excluded from "hot topic" claims
+  const coherence = new Array<number>(k).fill(0);
+  const normCentroids = centroids.map((c) => {
+    let norm = 0;
+    for (let d = 0; d < c.length; d++) norm += c[d] * c[d];
+    norm = Math.sqrt(norm) || 1;
+    const out = new Float32Array(c.length);
+    for (let d = 0; d < c.length; d++) out[d] = c[d] / norm;
+    return out;
+  });
+  rows.forEach((_, i) => {
+    const c = assignments[i];
+    let dot = 0;
+    for (let d = 0; d < vectors[i].length; d++) dot += vectors[i][d] * normCentroids[c][d];
+    coherence[c] += dot;
+  });
+  for (let c = 0; c < k; c++) if (size[c] > 0) coherence[c] /= size[c];
+
   // one LLM call for labels; template fallback keeps the run alive
   const byCluster = new Map<number, string[]>();
   rows.forEach((r, i) => {
@@ -116,6 +135,7 @@ export async function runClustering(): Promise<{ clusters: number; mapped: numbe
           summary: labels.get(c)?.summary ?? null,
           size: size[c],
           heat: heat[c] / maxHeat,
+          coherence: coherence[c],
           centroid: vecToBuffer(centroids[c]),
           date: utcDay(),
           createdAt: new Date(),

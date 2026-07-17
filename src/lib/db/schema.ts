@@ -199,9 +199,34 @@ export const topicClusters = sqliteTable('topic_clusters', {
   size: integer('size').notNull(),
   // recency-weighted activity, normalized 0..1 across clusters
   heat: real('heat').notNull().default(0),
+  // mean cosine of members to centroid — low = grab-bag cluster, not a topic
+  coherence: real('coherence').notNull().default(0),
   centroid: blob('centroid', { mode: 'buffer' }),
   date: text('date').notNull(), // run day (YYYY-MM-DD UTC)
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+});
+
+/** The Opportunity Engine's output: scored monetizable openings. */
+export const opportunities = sqliteTable('opportunities', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  // stable kebab identity — re-detection across days upserts by slug
+  slug: text('slug').notNull().unique(),
+  title: text('title').notNull(),
+  thesis: text('thesis').notNull(),
+  sector: text('sector'),
+  status: text('status', { enum: ['active', 'archived'] }).notNull().default('active'),
+  flipScore: integer('flip_score').notNull(),
+  holdScore: integer('hold_score').notNull(),
+  // JSON sub-scores {demand, buildability, margin, competition, timing} each 0-20
+  scores: text('scores').notNull(),
+  // JSON [{type: 'pain'|'pattern'|'story'|'entity'|'market', label}]
+  evidence: text('evidence').notNull().default('[]'),
+  window: text('window'),
+  // JSON launchable brief — generated on first expand, cached
+  brief: text('brief'),
+  briefGeneratedAt: integer('brief_generated_at', { mode: 'timestamp' }),
+  firstSeenAt: integer('first_seen_at', { mode: 'timestamp' }).notNull(),
+  lastSeenAt: integer('last_seen_at', { mode: 'timestamp' }).notNull(),
 });
 
 /** "The machine noticed" — daily anomaly detections, narrated. */
