@@ -131,7 +131,7 @@ function collectEntities(rows: { entities: string | null }[]): Map<string, { nam
     const seenInStory = new Set<string>();
     for (const e of list) {
       if (typeof e?.name !== 'string' || e.name.trim() === '') continue;
-      const name = e.name.trim();
+      const name = e.name.replace(/\s+/g, ' ').trim();
       const key = name.toLowerCase();
       if (seenInStory.has(key)) continue; // count once per story
       seenInStory.add(key);

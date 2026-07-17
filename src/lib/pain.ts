@@ -3,6 +3,7 @@ import { getDb } from './db';
 import { comps, items, painPoints, sources, stories } from './db/schema';
 import { DOMAINS } from './domains';
 import { chatJSON } from './llm/minimax';
+import { promptLine } from './prompt-hygiene';
 
 const ITEM_CAP = 120;
 const BATCH = 40;
@@ -24,7 +25,8 @@ export function sanitizePains(v: unknown, batchSize: number): PainDraft[] {
     if (typeof raw !== 'object' || raw === null) continue;
     const rec = raw as Record<string, unknown>;
     if (typeof rec.summary !== 'string') continue;
-    const summary = rec.summary.trim().slice(0, 200);
+    // promptLine collapses newlines — pain summaries flow into later prompts
+    const summary = promptLine(rec.summary, 200);
     if (summary.length < 10 || seen.has(summary.toLowerCase())) continue;
     seen.add(summary.toLowerCase());
     const sector =
