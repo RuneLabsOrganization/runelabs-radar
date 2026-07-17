@@ -13,6 +13,7 @@ import {
   topicClusters,
 } from './db/schema';
 import { DOMAINS, DOMAIN_MEMBERSHIP_THRESHOLD, type Domain } from './domains';
+import { safeHttpUrl } from './safe-url';
 import { parseDomainScores, topDomain } from '@/components/DomainChips';
 
 const DAY_MS = 864e5;
@@ -576,7 +577,7 @@ export function topicMapData(): { clusters: TopicMapCluster[]; points: TopicMapP
       score: p.topScore,
       ageDays: Math.max(0, (now - p.createdAt.getTime()) / 864e5),
       sector: topDomain(scores),
-      url: urlByStory.get(p.id) ?? null,
+      url: safeHttpUrl(urlByStory.get(p.id) ?? null),
     };
   });
   if (points.length === 0) return null;

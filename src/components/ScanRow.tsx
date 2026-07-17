@@ -12,12 +12,15 @@ export default function ScanRow({
   score,
   domain,
   isNew = false,
+  timeLabel,
 }: {
   story: FeedStory;
   firstUrl: string | null;
   score: number;
   domain: Domain | null;
   isNew?: boolean;
+  /** precomputed server-side when rendered under a client boundary (hydration-stable) */
+  timeLabel?: string;
 }) {
   const href = safeHttpUrl(firstUrl);
   return (
@@ -52,7 +55,7 @@ export default function ScanRow({
         </span>
       )}
       <span className="mono w-14 shrink-0 text-right text-[10.5px]" style={{ color: 'var(--ink-4)' }}>
-        {timeAgo(story.createdAt)}
+        {timeLabel ?? timeAgo(story.createdAt)}
       </span>
     </li>
   );

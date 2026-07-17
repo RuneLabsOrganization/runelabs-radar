@@ -19,6 +19,7 @@ export default function SignalEntry({
   isNew = false,
   highlightDomain,
   readOnly = false,
+  timeLabel,
 }: {
   story: FeedStory;
   itemCount: number;
@@ -30,6 +31,8 @@ export default function SignalEntry({
   isNew?: boolean;
   highlightDomain?: Domain;
   readOnly?: boolean;
+  /** precomputed server-side when rendered under a client boundary (hydration-stable) */
+  timeLabel?: string;
 }) {
   const scores = parseDomainScores(story.domainScores);
   const href = safeHttpUrl(firstUrl);
@@ -77,7 +80,7 @@ export default function SignalEntry({
               </span>
             )}
             <span className="mono text-[11px]" style={{ color: 'var(--ink-4)' }}>
-              {timeAgo(story.createdAt)}
+              {timeLabel ?? timeAgo(story.createdAt)}
             </span>
             {sourceName && (
               <span className="mono text-[11px]" style={{ color: 'var(--ink-4)' }}>

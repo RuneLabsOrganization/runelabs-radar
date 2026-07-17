@@ -97,6 +97,7 @@ function toFeedEntry(itemAgg: Map<number, ItemAgg>, voteAgg: Map<number, VoteAgg
       myVote: vt.mine,
       isNew: c.isNew,
       score: c.score,
+      timeLabel: timeAgo(c.story.createdAt),
     };
   };
 }

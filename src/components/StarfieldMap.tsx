@@ -207,7 +207,15 @@ export default function StarfieldMap({
       pointer.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
       raycaster.setFromCamera(pointer, camera);
       const hits = raycaster.intersectObject(cloud);
-      return hits.length > 0 && hits[0].index !== undefined ? hits[0].index : null;
+      // dimmed (non-selected-cluster) points are effectively invisible — they
+      // must not steal hover/clicks from the isolated region
+      const sel = selectedRef.current;
+      for (const hit of hits) {
+        if (hit.index === undefined) continue;
+        if (sel !== null && points[hit.index].clusterId !== sel) continue;
+        return hit.index;
+      }
+      return null;
     };
 
     const onMove = (e: PointerEvent) => {
@@ -230,10 +238,17 @@ export default function StarfieldMap({
         });
       }
     };
+    const onLeave = () => {
+      hoveredIdx = null;
+      renderer.domElement.style.cursor = 'grab';
+      onHover(null);
+    };
     const onDown = (e: PointerEvent) => {
+      if (e.button !== 0) return; // right/middle must not click-through
       downPos = { x: e.clientX, y: e.clientY };
     };
     const onUp = (e: PointerEvent) => {
+      if (e.button !== 0) return;
       if (!downPos) return;
       const moved = Math.hypot(e.clientX - downPos.x, e.clientY - downPos.y);
       downPos = null;
@@ -246,6 +261,7 @@ export default function StarfieldMap({
       }
     };
     renderer.domElement.addEventListener('pointermove', onMove, { passive: true });
+    renderer.domElement.addEventListener('pointerleave', onLeave, { passive: true });
     renderer.domElement.addEventListener('pointerdown', onDown, { passive: true });
     renderer.domElement.addEventListener('pointerup', onUp, { passive: true });
 
@@ -282,7 +298,9 @@ export default function StarfieldMap({
     return () => {
       cancelAnimationFrame(raf);
       document.removeEventListener('visibilitychange', onVisibility);
+      onHover(null); // no stale tooltip across re-renders
       renderer.domElement.removeEventListener('pointermove', onMove);
+      renderer.domElement.removeEventListener('pointerleave', onLeave);
       renderer.domElement.removeEventListener('pointerdown', onDown);
       renderer.domElement.removeEventListener('pointerup', onUp);
       ro.disconnect();

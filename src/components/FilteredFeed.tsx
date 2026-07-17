@@ -25,6 +25,8 @@ export interface FeedEntry {
   myVote: 1 | -1 | 0;
   isNew: boolean;
   score: number;
+  /** server-computed so SSR and hydration render identical text */
+  timeLabel: string;
 }
 
 function sectorScore(e: FeedEntry, sector: Domain): number {
@@ -119,6 +121,7 @@ export default function FilteredFeed({
               isNew={e.isNew}
               highlightDomain={sector ?? undefined}
               readOnly={readOnly}
+              timeLabel={e.timeLabel}
             />
           ))}
         </div>
@@ -138,6 +141,7 @@ export default function FilteredFeed({
                   score={sector ? (scores?.[sector] ?? 0) : e.score}
                   domain={sector ?? topDomain(scores)}
                   isNew={e.isNew}
+                  timeLabel={e.timeLabel}
                 />
               );
             })}

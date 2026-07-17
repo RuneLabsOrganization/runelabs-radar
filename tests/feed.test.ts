@@ -66,6 +66,7 @@ describe('filterBySector', () => {
     myVote: 0,
     isNew: false,
     score: 50,
+    timeLabel: 'just now',
   });
 
   it('keeps entries at or above the membership threshold for the sector', () => {
