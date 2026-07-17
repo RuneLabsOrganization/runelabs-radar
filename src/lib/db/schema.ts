@@ -191,16 +191,24 @@ export const stacks = sqliteTable('stacks', {
   updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
 });
 
-/** Semantic topic clusters over story embeddings — regenerated daily, replace-all. */
+/**
+ * Semantic topic clusters over story embeddings — regenerated daily,
+ * replace-all. Two levels: macro categories (parentId null) and their
+ * subtopics (parentId set). stories.clusterId points at the LEAF cluster
+ * (a subtopic, or the macro itself when it was too small to split).
+ */
 export const topicClusters = sqliteTable('topic_clusters', {
   id: integer('id').primaryKey({ autoIncrement: true }),
+  parentId: integer('parent_id'),
   label: text('label').notNull(),
   summary: text('summary'),
   size: integer('size').notNull(),
-  // recency-weighted activity, normalized 0..1 across clusters
+  // recency-weighted activity, normalized 0..1 within each level
   heat: real('heat').notNull().default(0),
   // mean cosine of members to centroid — low = grab-bag cluster, not a topic
   coherence: real('coherence').notNull().default(0),
+  // dominant sector among member stories (bubble tinting), null when mixed
+  sector: text('sector'),
   centroid: blob('centroid', { mode: 'buffer' }),
   date: text('date').notNull(), // run day (YYYY-MM-DD UTC)
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),

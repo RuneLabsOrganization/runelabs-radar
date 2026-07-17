@@ -126,7 +126,7 @@ describe('cluster labeling', () => {
     expect(out.get(0)!.label).toBe('Video LoRA workflows');
   });
 
-  it('runClustering clusters embedded stories and writes the map', async () => {
+  it('runClustering builds the macro hierarchy and maps every story to a leaf', async () => {
     const db = useTestDb();
     const rng = makeRng(11);
     for (let i = 0; i < 24; i++) {
@@ -135,21 +135,35 @@ describe('cluster labeling', () => {
           title: i < 12 ? `video story ${i}` : `coding story ${i}`,
           status: 'curated',
           topScore: 60,
+          domainScores: JSON.stringify(
+            i < 12
+              ? { coding: 0, copy: 0, image: 0, video: 85, ads: 0, agentic: 0 }
+              : { coding: 85, copy: 0, image: 0, video: 0, ads: 0, agentic: 0 },
+          ),
           embedding: vecToBuffer(blobVec(i < 12 ? 0 : 1, 16, 0.02, rng)),
           createdAt: new Date(),
         })
         .run();
     }
-    vi.mocked(chatJSON).mockResolvedValueOnce({
-      clusters: { '0': { label: 'Alpha', summary: 's' }, '1': { label: 'Beta', summary: 's' } },
+    vi.mocked(chatJSON).mockResolvedValue({
+      clusters: {
+        '0': { label: 'Alpha', summary: 's' },
+        '1': { label: 'Beta', summary: 's' },
+        '2': { label: 'Gamma', summary: 's' },
+        '3': { label: 'Delta', summary: 's' },
+      },
     } as never);
     const res = await runClustering();
     expect(res.mapped).toBe(24);
-    expect(res.clusters).toBeGreaterThanOrEqual(2);
+    expect(res.macros).toBeGreaterThanOrEqual(2);
+    expect(res.subs).toBe(0); // both blobs are below the split threshold
     const clusters = db.select().from(topicClusters).all();
-    expect(clusters.length).toBe(res.clusters);
+    expect(clusters.every((c) => c.parentId === null)).toBe(true); // all macros
     expect(Math.max(...clusters.map((c) => c.heat))).toBeCloseTo(1, 5);
-    const mapped = db.select().from(stories).all().filter((s) => s.mapX !== null && s.clusterId !== null);
+    // dominant-sector affinity computed from member stories
+    expect(clusters.some((c) => c.sector === 'video')).toBe(true);
+    expect(clusters.some((c) => c.sector === 'coding')).toBe(true);
+    const mapped = db.select().from(stories).all().filter((s) => s.clusterId !== null);
     expect(mapped).toHaveLength(24);
   });
 });
@@ -212,18 +226,32 @@ describe('anomaly detectors', () => {
     expect(detectPriceDrops()).toEqual([]);
   });
 
-  it('detectClusterHeat stays silent on a stale clustering run', () => {
+  it('detectClusterHeat fires only for fresh, coherent SUBTOPICS', () => {
     const db = useTestDb();
+    // stale sub → silent
     db.insert(topicClusters)
       .values({
+        parentId: 1,
         label: 'Old hot topic',
         size: 9,
         heat: 1,
+        coherence: 0.9,
         date: utcDay(new Date(Date.now() - 5 * 864e5)),
         createdAt: new Date(),
       })
       .run();
+    // fresh macro (parentId null) → silent (macros are too broad to be "hot")
+    db.insert(topicClusters)
+      .values({ parentId: null, label: 'Broad macro', size: 50, heat: 1, coherence: 0.9, date: utcDay(), createdAt: new Date() })
+      .run();
     expect(detectClusterHeat()).toEqual([]);
+    // fresh coherent sub → fires
+    db.insert(topicClusters)
+      .values({ parentId: 1, label: 'Hot subtopic', size: 9, heat: 1, coherence: 0.8, date: utcDay(), createdAt: new Date() })
+      .run();
+    const hits = detectClusterHeat();
+    expect(hits).toHaveLength(1);
+    expect(hits[0].subject).toBe('Hot subtopic');
   });
 
   it('runAnomalies clears today rows on a zero-detection run and writes distinct fallback headlines otherwise', async () => {

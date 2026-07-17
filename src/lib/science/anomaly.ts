@@ -1,4 +1,4 @@
-import { and, desc, eq, gte } from 'drizzle-orm';
+import { and, desc, eq, gte, isNotNull } from 'drizzle-orm';
 import { dailyDomainCounts, topEntities } from '../analytics';
 import { getDb } from '../db';
 import { metricPoints, painPoints, patterns, topicClusters } from '../db/schema';
@@ -147,15 +147,22 @@ export function detectLaunchSpikes(): RawDetection[] {
 }
 
 /**
- * The hottest COHERENT semantic cluster from TODAY's run only — stale runs
- * stay silent, and grab-bag clusters (low mean cosine) never claim "hot topic".
+ * The hottest COHERENT subtopic from TODAY's run only — stale runs stay
+ * silent, grab-bags (low mean cosine) never claim "hot topic". Subtopics
+ * (not broad macros) are the level where "hot" is meaningful.
  */
 export function detectClusterHeat(): RawDetection[] {
   const db = getDb();
   const hot = db
     .select()
     .from(topicClusters)
-    .where(and(eq(topicClusters.date, utcDay()), gte(topicClusters.coherence, 0.5)))
+    .where(
+      and(
+        eq(topicClusters.date, utcDay()),
+        isNotNull(topicClusters.parentId),
+        gte(topicClusters.coherence, 0.5),
+      ),
+    )
     .orderBy(desc(topicClusters.heat))
     .limit(1)
     .get();

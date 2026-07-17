@@ -14,9 +14,11 @@
   },
   "dependencies": {
     "@huggingface/transformers": "^4.2.0",
+    "@types/d3-hierarchy": "^3.1.7",
     "@types/three": "^0.185.1",
     "bcryptjs": "^3.0.2",
     "better-sqlite3": "^12.2.0",
+    "d3-hierarchy": "^3.1.2",
     "drizzle-orm": "^0.44.2",
     "fast-xml-parser": "^5.2.5",
     "next": "^15.3.4",

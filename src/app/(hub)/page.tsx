@@ -10,7 +10,7 @@ import {
   latestInsights,
   latestPatterns,
   topEntities,
-  topicMapData,
+  topicHierarchy,
 } from '@/lib/analytics';
 import { splitFeed, timeAgo } from '@/lib/feed';
 import { safeHttpUrl } from '@/lib/safe-url';
@@ -20,8 +20,8 @@ import ActivityTrace from '@/components/ActivityTrace';
 import AnalystNotes from '@/components/AnalystNotes';
 import AnomalyFeed from '@/components/AnomalyFeed';
 import EntityBars from '@/components/EntityBars';
+import BubbleMap from '@/components/BubbleMap';
 import FilteredFeed, { type FeedEntry } from '@/components/FilteredFeed';
-import TopicMap from '@/components/TopicMap';
 import MarkSeen from '@/components/MarkSeen';
 import SectionHeader from '@/components/SectionHeader';
 import SectorStrip, { type SectorStat } from '@/components/SectorStrip';
@@ -174,7 +174,7 @@ export default async function BriefingPage() {
   const notes = latestInsights();
   const echoes = echoStats();
   const noticed = latestPatterns(6);
-  const map = topicMapData();
+  const topics = topicHierarchy();
   const recentLaunches = db
     .select()
     .from(launches)
@@ -218,10 +218,13 @@ export default async function BriefingPage() {
         </>
       )}
 
-      {map && map.points.length >= 12 && (
+      {topics && topics.length > 0 && (
         <>
-          <SectionHeader label={`Topic map — ${map.clusters.length} clusters`} count={map.points.length} />
-          <TopicMap clusters={map.clusters} points={map.points} />
+          <SectionHeader
+            label={`Topic map — ${topics.length} categories`}
+            count={topics.reduce((a, t) => a + t.size, 0)}
+          />
+          <BubbleMap data={topics} compact />
         </>
       )}
 

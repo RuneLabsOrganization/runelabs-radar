@@ -504,100 +504,86 @@ export function latestPatterns(limit = 6): PatternRow[] {
     .all();
 }
 
-export interface TopicMapPoint {
-  id: number;
-  title: string;
-  x: number;
-  y: number;
-  clusterId: number;
-  score: number;
-  /** story age in days — the starfield's depth axis */
-  ageDays: number;
-  sector: Domain | null;
-  url: string | null;
-}
-
-export interface TopicMapCluster {
+export interface TopicNode {
   id: number;
   label: string;
   summary: string | null;
   size: number;
   heat: number;
   coherence: number;
-  x: number;
-  y: number;
+  sector: Domain | null;
+  children: TopicNode[];
 }
 
-/** Latest clustering run as plain serializable map data (labels positioned at member means). */
-export function topicMapData(): { clusters: TopicMapCluster[]; points: TopicMapPoint[] } | null {
+/** Latest clustering run as a macro→subtopic tree (largest first at each level). */
+export function topicHierarchy(): TopicNode[] | null {
   const db = getDb();
-  const clusterRows = db.select().from(topicClusters).all();
-  if (clusterRows.length === 0) return null;
-  const valid = new Set(clusterRows.map((c) => c.id));
+  const rows = db.select().from(topicClusters).all();
+  if (rows.length === 0) return null;
 
-  const raw = db
-    .select({
-      id: stories.id,
-      title: stories.title,
-      mapX: stories.mapX,
-      mapY: stories.mapY,
-      clusterId: stories.clusterId,
-      topScore: stories.topScore,
-      domainScores: stories.domainScores,
-      createdAt: stories.createdAt,
-    })
+  const toNode = (r: (typeof rows)[number]): TopicNode => ({
+    id: r.id,
+    label: r.label,
+    summary: r.summary,
+    size: r.size,
+    heat: r.heat,
+    coherence: r.coherence,
+    sector: r.sector && (DOMAINS as readonly string[]).includes(r.sector) ? (r.sector as Domain) : null,
+    children: [],
+  });
+
+  const macros = rows.filter((r) => r.parentId === null).map(toNode);
+  const byId = new Map(macros.map((m) => [m.id, m]));
+  for (const r of rows) {
+    if (r.parentId === null) continue;
+    byId.get(r.parentId)?.children.push(toNode(r));
+  }
+  for (const m of macros) m.children.sort((a, b) => b.size - a.size);
+  macros.sort((a, b) => b.size - a.size);
+  return macros;
+}
+
+export interface ClusterStory {
+  id: number;
+  title: string;
+  url: string | null;
+  score: number;
+  ageDays: number;
+  sector: Domain | null;
+}
+
+/** Stories of one leaf cluster, strongest first — the bottom of the drill-down. */
+export function clusterStories(clusterId: number, limit = 40): ClusterStory[] {
+  const db = getDb();
+  const rows = db
+    .select()
     .from(stories)
-    .where(and(eq(stories.status, 'curated'), isNotNull(stories.mapX), isNotNull(stories.clusterId)))
+    .where(and(eq(stories.status, 'curated'), eq(stories.clusterId, clusterId)))
+    .orderBy(desc(stories.topScore))
+    .limit(limit)
     .all();
-  const kept = raw.filter((p) => p.clusterId !== null && valid.has(p.clusterId));
+  if (rows.length === 0) return [];
 
-  // first item url per story, for click-through from the starfield
   const urlByStory = new Map<number, string>();
-  if (kept.length > 0) {
-    const itemRows = db
-      .select({ storyId: items.storyId, url: items.url })
-      .from(items)
-      .where(inArray(items.storyId, kept.map((p) => p.id)))
-      .orderBy(items.id)
-      .all();
-    for (const row of itemRows) {
-      if (row.storyId !== null && !urlByStory.has(row.storyId)) urlByStory.set(row.storyId, row.url);
-    }
+  const itemRows = db
+    .select({ storyId: items.storyId, url: items.url })
+    .from(items)
+    .where(inArray(items.storyId, rows.map((r) => r.id)))
+    .orderBy(items.id)
+    .all();
+  for (const row of itemRows) {
+    if (row.storyId !== null && !urlByStory.has(row.storyId)) urlByStory.set(row.storyId, row.url);
   }
 
   const now = Date.now();
-  const points: TopicMapPoint[] = kept.map((p) => {
-    const scores = parseDomainScores(p.domainScores);
-    return {
-      id: p.id,
-      title: p.title,
-      x: p.mapX as number,
-      y: p.mapY as number,
-      clusterId: p.clusterId as number,
-      score: p.topScore,
-      ageDays: Math.max(0, (now - p.createdAt.getTime()) / 864e5),
-      sector: topDomain(scores),
-      url: safeHttpUrl(urlByStory.get(p.id) ?? null),
-    };
-  });
-  if (points.length === 0) return null;
-
-  const clusters: TopicMapCluster[] = clusterRows.map((c) => {
-    const member = points.filter((p) => p.clusterId === c.id);
-    const cx = member.reduce((a, p) => a + p.x, 0) / Math.max(1, member.length);
-    const cy = member.reduce((a, p) => a + p.y, 0) / Math.max(1, member.length);
-    return {
-      id: c.id,
-      label: c.label,
-      summary: c.summary,
-      size: c.size,
-      heat: c.heat,
-      coherence: c.coherence,
-      x: cx,
-      y: cy,
-    };
-  });
-  return { clusters, points };
+  return rows.map((r) => ({
+    id: r.id,
+    title: r.title,
+    url: safeHttpUrl(urlByStory.get(r.id) ?? null),
+    score: r.topScore,
+    ageDays: Math.max(0, Math.round((now - r.createdAt.getTime()) / 864e5)),
+    sector: topDomain(parseDomainScores(r.domainScores)),
+  }));
 }
 
 /** Latest analyst notes (written by the daily brief job). */
