@@ -4,7 +4,7 @@ import { getDb } from '@/lib/db';
 import { opportunities } from '@/lib/db/schema';
 import { timeAgo } from '@/lib/feed';
 import { sanitizeBrief } from '@/lib/opportunities/brief';
-import { SUB_KEYS, type SubScores } from '@/lib/opportunities/engine';
+import { sanitizeKpis, SUB_KEYS, type OppKpis, type SubScores } from '@/lib/opportunities/engine';
 import OpportunityList, { type OppView } from '@/components/OpportunityList';
 
 function parseSub(json: string): SubScores {
@@ -49,6 +49,21 @@ export default async function OpportunitiesPage() {
         brief = null;
       }
     }
+    let kpis: OppKpis | null = null;
+    if (r.kpis) {
+      try {
+        kpis = sanitizeKpis(JSON.parse(r.kpis));
+      } catch {
+        kpis = null;
+      }
+    }
+    let legacy = true;
+    try {
+      const raw = JSON.parse(r.scores) as Record<string, unknown>;
+      legacy = typeof raw.moat !== 'number'; // pre-dossier assessments lack the new axes
+    } catch {
+      legacy = true;
+    }
     return {
       id: r.id,
       title: r.title,
@@ -58,6 +73,8 @@ export default async function OpportunitiesPage() {
       flipScore: r.flipScore,
       holdScore: r.holdScore,
       sub: parseSub(r.scores),
+      kpis,
+      legacy,
       evidence: parseEvidence(r.evidence),
       brief,
       firstSeenLabel: timeAgo(r.firstSeenAt),

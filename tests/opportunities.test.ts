@@ -16,14 +16,28 @@ import {
   HOLD_WEIGHTS,
   normalizeSlug,
   runOpportunities,
+  sanitizeKpis,
   sanitizeOpportunities,
+  SUB_KEYS,
   type SubScores,
 } from '@/lib/opportunities/engine';
 // eslint-disable-next-line import/first
 import { sanitizeBrief } from '@/lib/opportunities/brief';
 
-const SPEEDY: SubScores = { demand: 10, buildability: 20, margin: 5, competition: 10, timing: 20 };
-const CASHCOW: SubScores = { demand: 15, buildability: 8, margin: 20, competition: 15, timing: 6 };
+const BASE: SubScores = {
+  demand: 10,
+  buildability: 10,
+  margin: 10,
+  competition: 10,
+  timing: 10,
+  moat: 10,
+  regClear: 10,
+  platformSafe: 10,
+  distribution: 10,
+  qualityBar: 10,
+};
+const SPEEDY: SubScores = { ...BASE, buildability: 20, timing: 20, distribution: 18, margin: 4, moat: 3 };
+const CASHCOW: SubScores = { ...BASE, margin: 20, demand: 18, moat: 18, buildability: 6, timing: 5 };
 
 describe('scoring', () => {
   it('flip favors speed+window, hold favors margin+demand — orderings flip between plays', () => {
@@ -31,12 +45,34 @@ describe('scoring', () => {
     expect(compositeScore(CASHCOW, HOLD_WEIGHTS)).toBeGreaterThan(compositeScore(SPEEDY, HOLD_WEIGHTS));
   });
 
-  it('is bounded 0..100', () => {
-    const zeros = { demand: 0, buildability: 0, margin: 0, competition: 0, timing: 0 };
-    const maxed = { demand: 20, buildability: 20, margin: 20, competition: 20, timing: 20 };
+  it('is bounded 0..100 and both weight sets sum to 1', () => {
+    const zeros = Object.fromEntries(SUB_KEYS.map((k) => [k, 0])) as SubScores;
+    const maxed = Object.fromEntries(SUB_KEYS.map((k) => [k, 20])) as SubScores;
     expect(compositeScore(zeros, FLIP_WEIGHTS)).toBe(0);
     expect(compositeScore(maxed, FLIP_WEIGHTS)).toBe(100);
     expect(compositeScore(maxed, HOLD_WEIGHTS)).toBe(100);
+    expect(SUB_KEYS.reduce((a, k) => a + FLIP_WEIGHTS[k], 0)).toBeCloseTo(1, 8);
+    expect(SUB_KEYS.reduce((a, k) => a + HOLD_WEIGHTS[k], 0)).toBeCloseTo(1, 8);
+  });
+
+  it('sanitizeKpis bounds numbers and lines up notes', () => {
+    const k = sanitizeKpis({
+      initialCostUsd: 450,
+      monthlyCostUsd: -3,
+      priceUsd: 29.999,
+      timeToMvpDays: 900,
+      breakEvenCustomers: 4,
+      competitorCount: 3,
+      competitionNote: 'remove.bg\nand canva dominate',
+      regulatoryNote: null,
+    });
+    expect(k.initialCostUsd).toBe(450);
+    expect(k.monthlyCostUsd).toBeNull(); // negative rejected
+    expect(k.priceUsd).toBe(30);
+    expect(k.timeToMvpDays).toBeNull(); // >365 rejected
+    expect(k.competitionNote).toBe('remove.bg and canva dominate'); // newline flattened
+    expect(k.regulatoryNote).toBeNull();
+    expect(sanitizeKpis('garbage')).toMatchObject({ initialCostUsd: null, competitorCount: null });
   });
 
   it('normalizeSlug produces stable kebab ids', () => {
@@ -53,21 +89,25 @@ describe('scoring', () => {
 });
 
 describe('sanitizeOpportunities', () => {
+  const fullScores = Object.fromEntries(SUB_KEYS.map((k) => [k, 14])) as SubScores;
   const valid = {
     slug: 'shopify-bg-removal',
     title: 'Bulk background removal for Shopify sellers',
     thesis: 'Image models crossed the cost floor while sellers keep asking for batch tools nobody ships.',
     sector: 'image',
     window: '4-8 weeks',
-    subScores: { demand: 16, buildability: 18, margin: 12, competition: 9, timing: 17 },
+    subScores: { ...fullScores, demand: 16, buildability: 18 },
+    kpis: { initialCostUsd: 300, timeToMvpDays: 10, competitorCount: 2 },
     evidenceRefs: ['P1', 'M', 'BOGUS'],
   };
   const refs = new Set(['P1', 'P2', 'M', 'S1']);
 
-  it('accepts valid drafts, filters unknown refs, clamps subscores', () => {
+  it('accepts valid drafts, filters unknown refs, clamps subscores, carries kpis', () => {
     const out = sanitizeOpportunities([valid, { ...valid, slug: 'other-slug', subScores: { ...valid.subScores, demand: 99 } }], refs);
     expect(out).toHaveLength(2);
     expect(out[0].evidenceRefs).toEqual(['P1', 'M']);
+    expect(out[0].kpis.initialCostUsd).toBe(300);
+    expect(out[0].kpis.competitorCount).toBe(2);
     expect(out[1].sub.demand).toBe(20); // clamped
   });
 
@@ -159,7 +199,8 @@ describe('runOpportunities lifecycle', () => {
     thesis: 'Image models crossed the cost floor while sellers keep asking for batch tools nobody ships.',
     sector: 'image',
     window: '4-8 weeks',
-    subScores: { demand: 16, buildability: 18, margin: 12, competition: 9, timing: 17 },
+    subScores: Object.fromEntries(SUB_KEYS.map((k) => [k, 15])),
+    kpis: { initialCostUsd: 250, timeToMvpDays: 9 },
     evidenceRefs: ['P1'],
   });
 

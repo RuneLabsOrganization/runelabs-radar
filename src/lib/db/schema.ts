@@ -225,8 +225,12 @@ export const opportunities = sqliteTable('opportunities', {
   status: text('status', { enum: ['active', 'archived'] }).notNull().default('active'),
   flipScore: integer('flip_score').notNull(),
   holdScore: integer('hold_score').notNull(),
-  // JSON sub-scores {demand, buildability, margin, competition, timing} each 0-20
+  // JSON sub-scores, each 0-20: demand, buildability, margin, competition,
+  // timing, moat, regClear, platformSafe, distribution, qualityBar
   scores: text('scores').notNull(),
+  // JSON hard estimates {initialCostUsd, monthlyCostUsd, priceUsd,
+  // timeToMvpDays, breakEvenCustomers, competitorCount, competitionNote, regulatoryNote}
+  kpis: text('kpis'),
   // JSON [{type: 'pain'|'pattern'|'story'|'entity'|'market', label}]
   evidence: text('evidence').notNull().default('[]'),
   window: text('window'),

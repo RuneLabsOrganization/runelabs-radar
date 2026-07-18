@@ -57,6 +57,13 @@
       "when": 1784325865555,
       "tag": "0007_charming_ares",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1784337823069,
+      "tag": "0008_aspiring_smiling_tiger",
+      "breakpoints": true
     }
   ]
 }
