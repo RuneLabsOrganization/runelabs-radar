@@ -1,7 +1,8 @@
 // Namespace import keeps JSX working under vitest's classic transform (jsx: preserve).
 import * as React from 'react';
-import { DOMAIN_COLORS, DOMAIN_LABELS } from '@/lib/domains';
+import { DOMAIN_COLORS, DOMAIN_LABELS, type Domain } from '@/lib/domains';
 import type { Insight } from '@/lib/analytics';
+import MiniTrend from './MiniTrend';
 
 const DIRECTION: Record<Insight['direction'], { glyph: string; color: string; label: string }> = {
   up: { glyph: '▲', color: 'var(--phosphor)', label: 'rising' },
@@ -9,8 +10,18 @@ const DIRECTION: Record<Insight['direction'], { glyph: string; color: string; la
   watch: { glyph: '◆', color: 'var(--amber)', label: 'watch' },
 };
 
-/** The day's LLM-written analyst calls: trend claims with a direction, not summaries. */
-export default function AnalystNotes({ items }: { items: Insight[] }) {
+/**
+ * The day's LLM-written analyst calls, each backed by its sector's 14-day
+ * activity series on the right when the note names a sector.
+ */
+export default function AnalystNotes({
+  items,
+  sectorSeries,
+}: {
+  items: Insight[];
+  /** per-domain daily story counts for the right-rail sparkline */
+  sectorSeries?: Partial<Record<Domain, number[]>>;
+}) {
   return (
     <ul className="flex flex-col">
       {items.map((n, i) => {
@@ -49,6 +60,15 @@ export default function AnalystNotes({ items }: { items: Insight[] }) {
                 {n.detail}
               </p>
             </div>
+            {n.domain && sectorSeries?.[n.domain] && (
+              <div className="hidden sm:block">
+                <MiniTrend
+                  values={sectorSeries[n.domain] ?? null}
+                  color={DOMAIN_COLORS[n.domain]}
+                  caption={`${DOMAIN_LABELS[n.domain]} · 14d`}
+                />
+              </div>
+            )}
           </li>
         );
       })}

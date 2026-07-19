@@ -7,11 +7,15 @@ import {
   dailyDomainCounts,
   domainMomentum,
   echoStats,
+  entityDailySeries,
   latestInsights,
   latestPatterns,
   topEntities,
   topicHierarchy,
+  type PatternRow,
 } from '@/lib/analytics';
+import { seriesFor } from '@/lib/metrics';
+import { isDomain } from '@/lib/domains';
 import { splitFeed, timeAgo } from '@/lib/feed';
 import { safeHttpUrl } from '@/lib/safe-url';
 import { visitAnchor } from '@/lib/visits';
@@ -175,6 +179,24 @@ export default async function BriefingPage() {
   const echoes = echoStats();
   const noticed = latestPatterns(6);
   const topics = topicHierarchy();
+
+  // the curve behind each claim: per-pattern 14-day series for the right rail
+  const surgeSeries = entityDailySeries(
+    noticed.filter((p) => p.kind === 'entity-surge' && p.subject).map((p) => p.subject!),
+  );
+  const trendFor = (p: PatternRow): number[] | null => {
+    if (!p.subject) return null;
+    if (p.kind === 'entity-surge') return surgeSeries.get(p.subject.toLowerCase()) ?? null;
+    if (p.kind === 'sector-spike' && isDomain(p.subject)) {
+      const key = p.subject;
+      return days.map((d) => d.byDomain[key]);
+    }
+    if (p.kind === 'price-drop') return seriesFor('aa', p.subject, 'price_blended', 14).map((x) => x.value);
+    if (p.kind === 'launch-spike') return seriesFor('launches', p.subject, 'count', 14).map((x) => x.value);
+    return null;
+  };
+  const patternTrends = noticed.map(trendFor);
+  const sectorSeries = Object.fromEntries(DOMAINS.map((d) => [d, days.map((x) => x.byDomain[d])]));
   const recentLaunches = db
     .select()
     .from(launches)
@@ -214,7 +236,7 @@ export default async function BriefingPage() {
       {noticed.length > 0 && (
         <>
           <SectionHeader label={`The machine noticed — ${noticed[0].date}`} tone="phosphor" count={noticed.length} />
-          <AnomalyFeed items={noticed} />
+          <AnomalyFeed items={noticed} trends={patternTrends} />
         </>
       )}
 
@@ -231,7 +253,7 @@ export default async function BriefingPage() {
       {notes && notes.items.length > 0 && (
         <>
           <SectionHeader label={`Analyst notes — ${notes.date}`} />
-          <AnalystNotes items={notes.items} />
+          <AnalystNotes items={notes.items} sectorSeries={sectorSeries} />
         </>
       )}
 

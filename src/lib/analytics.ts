@@ -167,6 +167,57 @@ function collectEntities(rows: { entities: string | null }[]): Map<string, { nam
   return map;
 }
 
+/**
+ * Daily mention counts for specific entities over the trailing window —
+ * the series behind each entity-surge pattern's trend chart. Keys are
+ * lowercased entity names; arrays align with dailyDomainCounts' days.
+ */
+export function entityDailySeries(names: string[], days = 14): Map<string, number[]> {
+  const wanted = new Set(names.map((n) => n.toLowerCase()));
+  const out = new Map<string, number[]>();
+  if (wanted.size === 0) return out;
+  for (const n of wanted) out.set(n, new Array<number>(days).fill(0));
+
+  const dayIndex = new Map<string, number>();
+  for (let i = 0; i < days; i++) {
+    dayIndex.set(utcDay(new Date(Date.now() - (days - 1 - i) * DAY_MS)), i);
+  }
+
+  const db = getDb();
+  const rows = db
+    .select({ entities: stories.entities, createdAt: stories.createdAt })
+    .from(stories)
+    .where(
+      and(
+        eq(stories.status, 'curated'),
+        isNotNull(stories.entities),
+        gte(stories.createdAt, new Date(Date.now() - days * DAY_MS)),
+      ),
+    )
+    .all();
+  for (const row of rows) {
+    const idx = dayIndex.get(utcDay(row.createdAt));
+    if (idx === undefined || !row.entities) continue;
+    let list: StoredEntity[];
+    try {
+      const parsed: unknown = JSON.parse(row.entities);
+      if (!Array.isArray(parsed)) continue;
+      list = parsed as StoredEntity[];
+    } catch {
+      continue;
+    }
+    const seenInStory = new Set<string>();
+    for (const e of list) {
+      if (typeof e?.name !== 'string') continue;
+      const key = e.name.replace(/\s+/g, ' ').trim().toLowerCase();
+      if (!wanted.has(key) || seenInStory.has(key)) continue;
+      seenInStory.add(key);
+      out.get(key)![idx] += 1;
+    }
+  }
+  return out;
+}
+
 /** Most-mentioned entities across the last 7 days of curated stories, with prior-week counts. */
 export function topEntities(limit = 8): EntityCount[] {
   const db = getDb();
@@ -473,6 +524,7 @@ export function pipelineFunnel(days = 7): Funnel {
 
 export interface PatternRow {
   kind: string;
+  subject: string | null;
   headline: string;
   detail: string;
   score: number;
@@ -492,6 +544,7 @@ export function latestPatterns(limit = 6): PatternRow[] {
   return db
     .select({
       kind: patterns.kind,
+      subject: patterns.subject,
       headline: patterns.headline,
       detail: patterns.detail,
       score: patterns.score,

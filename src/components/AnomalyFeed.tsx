@@ -1,6 +1,7 @@
 // Namespace import keeps JSX working under vitest's classic transform (jsx: preserve).
 import * as React from 'react';
 import type { PatternRow } from '@/lib/analytics';
+import MiniTrend from './MiniTrend';
 
 const KIND: Record<string, { glyph: string; color: string; label: string }> = {
   'sector-spike': { glyph: '▲', color: 'var(--phosphor)', label: 'sector spike' },
@@ -18,8 +19,18 @@ function scoreChip(p: PatternRow): string {
   return `${Math.round(p.score)}`;
 }
 
-/** The machine-noticed feed: today's strongest anomaly detections. */
-export default function AnomalyFeed({ items }: { items: PatternRow[] }) {
+/**
+ * The machine-noticed feed: today's strongest anomaly detections, each with
+ * its underlying 14-day series on the right — the curve behind the claim.
+ */
+export default function AnomalyFeed({
+  items,
+  trends,
+}: {
+  items: PatternRow[];
+  /** per-item daily series (mentions, stories, price…), index-aligned */
+  trends?: (number[] | null)[];
+}) {
   return (
     <ul className="flex flex-col">
       {items.map((p, i) => {
@@ -46,6 +57,13 @@ export default function AnomalyFeed({ items }: { items: PatternRow[] }) {
               <p className="mt-0.5 text-[13px] leading-relaxed" style={{ color: 'var(--ink-2)' }}>
                 {p.detail}
               </p>
+            </div>
+            <div className="hidden sm:block">
+              <MiniTrend
+                values={trends?.[i] ?? null}
+                color={k.color}
+                caption={p.kind === 'price-drop' ? '$ · 14d' : '14d'}
+              />
             </div>
             <span className="mono shrink-0 pt-[2px] text-[10.5px]" style={{ color: k.color }}>
               {scoreChip(p)}

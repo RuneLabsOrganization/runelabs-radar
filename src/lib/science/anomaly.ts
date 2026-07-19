@@ -284,6 +284,7 @@ export async function runAnomalies(): Promise<{ patterns: number }> {
       tx.insert(patterns)
         .values({
           kind: d.kind,
+          subject: promptLine(d.subject, 80),
           headline: n?.headline ?? fallbackHeadline(d),
           detail: n?.detail ?? promptLine(d.fallback, 300),
           score: d.score,

@@ -245,6 +245,9 @@ export const opportunities = sqliteTable('opportunities', {
 export const patterns = sqliteTable('patterns', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   kind: text('kind').notNull(), // 'sector-spike' | 'entity-surge' | 'price-drop' | 'launch-spike' | 'cluster-heat' | 'pain-cluster'
+  // what the detection is about (entity name, sector slug, model name…) —
+  // lets the UI fetch the underlying series for a per-pattern trend chart
+  subject: text('subject'),
   headline: text('headline').notNull(),
   detail: text('detail').notNull(),
   score: real('score').notNull(), // magnitude for ranking (z-score, ratio, %)

@@ -1,6 +1,6 @@
 // Namespace import keeps JSX working under vitest's classic transform (jsx: preserve).
 import * as React from 'react';
-import type { Domain } from '@/lib/domains';
+import { DOMAINS, DOMAIN_COLORS, DOMAIN_LABELS, type Domain } from '@/lib/domains';
 import { timeAgo, type FeedStory } from '@/lib/feed';
 import { safeHttpUrl } from '@/lib/safe-url';
 import { parseDomainScores } from './DomainChips';
@@ -37,6 +37,13 @@ export default function SignalEntry({
 }) {
   const scores = parseDomainScores(story.domainScores);
   const href = safeHttpUrl(firstUrl);
+  // right rail: the story's strongest fits against OUR domains, labeled
+  const topFits = scores
+    ? DOMAINS.map((d) => ({ d, v: scores[d] ?? 0 }))
+        .filter((x) => x.v > 0)
+        .sort((a, b) => b.v - a.v)
+        .slice(0, 3)
+    : [];
   return (
     <article className="border-b border-[var(--grat-soft)] py-5 last:border-b-0">
       <div className="flex items-start gap-3.5">
@@ -95,6 +102,34 @@ export default function SignalEntry({
             </span>
           </div>
         </div>
+
+        {topFits.length > 0 && (
+          <div
+            className="mono hidden w-[128px] shrink-0 flex-col gap-[5px] pt-1.5 md:flex"
+            role="img"
+            aria-label={`relevance: ${topFits.map((f) => `${DOMAIN_LABELS[f.d]} ${f.v}`).join(', ')}`}
+          >
+            {topFits.map(({ d, v }) => (
+              <div key={d} className="flex items-center gap-1.5" aria-hidden>
+                <span
+                  className="w-[44px] shrink-0 text-right text-[8.5px] tracking-[0.04em] uppercase"
+                  style={{ color: highlightDomain === d ? 'var(--ink-2)' : 'var(--ink-4)' }}
+                >
+                  {DOMAIN_LABELS[d].length > 7 ? DOMAIN_LABELS[d].slice(0, 6) : DOMAIN_LABELS[d]}
+                </span>
+                <span className="h-[4px] flex-1 rounded-[1px]" style={{ background: 'var(--grat-soft)' }}>
+                  <span
+                    className="anim-bar block h-full rounded-[1px]"
+                    style={{ width: `${v}%`, background: DOMAIN_COLORS[d], opacity: 0.85 }}
+                  />
+                </span>
+                <span className="w-[18px] shrink-0 text-[9px]" style={{ color: 'var(--ink-3)' }}>
+                  {v}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </article>
   );
