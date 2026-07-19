@@ -3,7 +3,8 @@ import * as React from 'react';
 import type { Domain } from '@/lib/domains';
 import { timeAgo, type FeedStory } from '@/lib/feed';
 import { safeHttpUrl } from '@/lib/safe-url';
-import SectorTicks, { parseDomainScores } from './DomainChips';
+import { parseDomainScores } from './DomainChips';
+import DomainFingerprint from './DomainFingerprint';
 import SignalMeter from './SignalMeter';
 import VoteButtons from './VoteButtons';
 
@@ -88,7 +89,7 @@ export default function SignalEntry({
                 {itemCount > 1 ? ` +${itemCount - 1}` : ''}
               </span>
             )}
-            <SectorTicks scores={scores} highlight={highlightDomain} />
+            <DomainFingerprint scores={scores} highlight={highlightDomain} />
             <span className="ml-auto">
               <VoteButtons storyId={story.id} up={up} down={down} myVote={myVote} readOnly={readOnly} />
             </span>

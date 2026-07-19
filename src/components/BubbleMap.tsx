@@ -23,7 +23,8 @@ type PackNode = HierarchyCircularNode<Datum>;
 interface View {
   x: number;
   y: number;
-  r: number;
+  /** diameter to fit into the viewport's short side — root uses the short side itself so k=1 */
+  d: number;
 }
 
 interface StoryBubble {
@@ -64,14 +65,26 @@ export default function BubbleMap({ data, compact = false }: { data: TopicNode[]
   }, [data, height]);
 
   const macros = useMemo(() => root.children ?? [], [root]);
+  // root view must map 1:1 (k = 1) or the whole pack renders shrunken and
+  // labels fall below their visibility threshold — the "tiny circles" bug
   const rootView = useMemo<View>(
-    () => ({ x: W / 2, y: height / 2, r: Math.max(W, height) / 2 }),
+    () => ({ x: W / 2, y: height / 2, d: Math.min(W, height) }),
     [height],
   );
 
   const [focus, setFocus] = useState<PackNode | null>(null); // null = root overview
   const [view, setView] = useState<View>(rootView);
   const [hoverId, setHoverId] = useState<number | null>(null);
+  const [hoverCluster, setHoverCluster] = useState<{ node: TopicNode; x: number; y: number } | null>(null);
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      setMounted(true);
+      return;
+    }
+    const id = requestAnimationFrame(() => setMounted(true));
+    return () => cancelAnimationFrame(id);
+  }, []);
   const [stories, setStories] = useState<Map<number, ClusterStory[]>>(new Map());
   const [loadingLeaf, setLoadingLeaf] = useState<number | null>(null);
   const [storyError, setStoryError] = useState<string | null>(null);
@@ -79,7 +92,7 @@ export default function BubbleMap({ data, compact = false }: { data: TopicNode[]
   const animRef = useRef(0);
 
   const viewOf = (n: PackNode | null): View =>
-    n === null ? rootView : { x: n.x, y: n.y, r: n.r * 1.06 };
+    n === null ? rootView : { x: n.x, y: n.y, d: n.r * 2.12 };
 
   function animateTo(target: View) {
     cancelAnimationFrame(animRef.current);
@@ -96,7 +109,7 @@ export default function BubbleMap({ data, compact = false }: { data: TopicNode[]
       setView({
         x: from.x + (target.x - from.x) * t,
         y: from.y + (target.y - from.y) * t,
-        r: from.r + (target.r - from.r) * t,
+        d: from.d + (target.d - from.d) * t,
       });
       if (t < 1) animRef.current = requestAnimationFrame(step);
     };
@@ -145,8 +158,8 @@ export default function BubbleMap({ data, compact = false }: { data: TopicNode[]
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focus, compact]);
 
-  // zoom transform
-  const k = Math.min(W, height) / (view.r * 2);
+  // zoom transform — k is exactly 1 at the root overview
+  const k = Math.min(W, height) / view.d;
   const sx = (x: number) => (x - view.x) * k + W / 2;
   const sy = (y: number) => (y - view.y) * k + height / 2;
 
@@ -176,7 +189,7 @@ export default function BubbleMap({ data, compact = false }: { data: TopicNode[]
   const circleFill = (n: TopicNode) =>
     n.sector ? DOMAIN_COLORS[n.sector] : 'var(--phosphor)';
 
-  const renderCluster = (n: PackNode, visible: boolean, labelVisible: boolean) => {
+  const renderCluster = (n: PackNode, visible: boolean, labelVisible: boolean, delayIdx = 0) => {
     const t = n.data.node!;
     const r = n.r * k;
     if (!visible || r < 2) return null;
@@ -195,19 +208,29 @@ export default function BubbleMap({ data, compact = false }: { data: TopicNode[]
           if (isFocus) return;
           focusNode(n);
         }}
-        onMouseEnter={() => setHoverId(t.id)}
-        onMouseLeave={() => setHoverId(null)}
+        onMouseEnter={(e) => {
+          setHoverId(t.id);
+          const rect = (e.currentTarget.ownerSVGElement as SVGSVGElement).getBoundingClientRect();
+          setHoverCluster({ node: t, x: (cx / W) * rect.width, y: (cy / height) * rect.height });
+        }}
+        onMouseLeave={() => {
+          setHoverId(null);
+          setHoverCluster(null);
+        }}
         style={{ cursor: compact || isFocus ? 'default' : 'pointer' }}
       >
         <circle
           cx={cx}
           cy={cy}
-          r={r}
+          r={mounted ? (hovered && !isFocus ? r * 1.03 : r) : 0.001}
           fill={circleFill(t)}
-          fillOpacity={isFocus ? 0.04 : hovered ? 0.14 : 0.08}
+          fillOpacity={isFocus ? 0.04 : hovered ? 0.16 : 0.08}
           stroke={circleFill(t)}
-          strokeOpacity={0.18 + t.heat * 0.4 + (hovered ? 0.2 : 0)}
+          strokeOpacity={0.18 + t.heat * 0.4 + (hovered ? 0.25 : 0)}
           strokeWidth={hovered || isFocus ? 1.5 : 1}
+          style={{
+            transition: `r 650ms cubic-bezier(0.22, 1, 0.36, 1) ${delayIdx * 45}ms, fill-opacity 150ms ease, stroke-opacity 150ms ease`,
+          }}
         />
         {showLabel && (
           <>
@@ -217,8 +240,14 @@ export default function BubbleMap({ data, compact = false }: { data: TopicNode[]
               textAnchor="middle"
               fontSize={fontSize}
               fontFamily="var(--font-readout)"
-              fill={t.heat > 0.7 ? 'var(--ink)' : 'var(--ink-2)'}
-              style={{ textTransform: 'uppercase', letterSpacing: '0.08em', pointerEvents: 'none' }}
+              fill={hovered ? 'var(--ink)' : t.heat > 0.7 ? 'var(--ink)' : 'var(--ink-2)'}
+              style={{
+                textTransform: 'uppercase',
+                letterSpacing: '0.08em',
+                pointerEvents: 'none',
+                opacity: mounted ? 1 : 0,
+                transition: `opacity 500ms ease ${300 + delayIdx * 45}ms`,
+              }}
             >
               {t.label.length > 26 ? `${t.label.slice(0, 25)}…` : t.label}
             </text>
@@ -229,9 +258,13 @@ export default function BubbleMap({ data, compact = false }: { data: TopicNode[]
               fontSize={Math.max(8, fontSize * 0.7)}
               fontFamily="var(--font-readout)"
               fill="var(--ink-4)"
-              style={{ pointerEvents: 'none' }}
+              style={{
+                pointerEvents: 'none',
+                opacity: mounted ? 1 : 0,
+                transition: `opacity 500ms ease ${340 + delayIdx * 45}ms`,
+              }}
             >
-              {t.size}
+              {t.size} stories
             </text>
           </>
         )}
@@ -252,7 +285,7 @@ export default function BubbleMap({ data, compact = false }: { data: TopicNode[]
       <rect x={0} y={0} width={W} height={height} fill="transparent" />
 
       {/* macros always give spatial context; labels only in the overview */}
-      {macros.map((m) => renderCluster(m, true, focus === null))}
+      {macros.map((m, i) => renderCluster(m, true, focus === null, i))}
 
       {/* subs: shown when their macro is focused (labeled) or a sibling sub is focused */}
       {(focus && !isLeaf(focus)
@@ -260,7 +293,7 @@ export default function BubbleMap({ data, compact = false }: { data: TopicNode[]
         : focus?.parent && focus.parent.data.kind === 'macro'
           ? (focus.parent.children ?? []).map((s) => ({ s, labeled: s !== focus }))
           : []
-      ).map(({ s, labeled }) => renderCluster(s, true, labeled))}
+      ).map(({ s, labeled }, i) => renderCluster(s, true, labeled, i))}
 
       {/* stories inside the focused leaf */}
       {storyBubbles.map(({ story, x, y, r }) => {
@@ -313,14 +346,41 @@ export default function BubbleMap({ data, compact = false }: { data: TopicNode[]
     </svg>
   );
 
+  const clusterTooltip = hoverCluster && (
+    <div
+      className="mono pointer-events-none absolute z-10 max-w-[300px] rounded-[4px] border px-2.5 py-1.5 text-[10.5px]"
+      style={{
+        left: Math.min(hoverCluster.x + 14, 640),
+        top: hoverCluster.y + 12,
+        background: 'var(--scope-2)',
+        borderColor: 'var(--grat)',
+        color: 'var(--ink-2)',
+      }}
+    >
+      <div style={{ color: 'var(--ink)' }}>{hoverCluster.node.label}</div>
+      {hoverCluster.node.summary && (
+        <div style={{ color: 'var(--ink-3)' }}>{hoverCluster.node.summary}</div>
+      )}
+      <div style={{ color: 'var(--ink-4)' }}>
+        {hoverCluster.node.size} stories &middot; heat {Math.round(hoverCluster.node.heat * 100)}%
+        {hoverCluster.node.sector ? ` · ${DOMAIN_LABELS[hoverCluster.node.sector]}` : ''}
+        {compact ? ' · click to explore' : ''}
+      </div>
+    </div>
+  );
+
   if (compact) {
     return (
-      <Link href="/map" className="block" aria-label="Open the full topic map">
-        {svg}
-        <p className="mono mt-1.5 text-[10px]" style={{ color: 'var(--ink-4)' }}>
-          {data.length} categories &middot; click to explore down to the stories
-        </p>
-      </Link>
+      <div className="relative">
+        <Link href="/map" className="block" aria-label="Open the full topic map">
+          {svg}
+          <p className="mono mt-1.5 text-[10px]" style={{ color: 'var(--ink-4)' }}>
+            {data.length} categories &middot; bubble = topic, size = volume, glow = heat &middot;
+            click to zoom down to the stories
+          </p>
+        </Link>
+        {clusterTooltip}
+      </div>
     );
   }
 
@@ -368,6 +428,7 @@ export default function BubbleMap({ data, compact = false }: { data: TopicNode[]
       )}
 
       <div className="rounded-[6px] border border-[var(--grat-soft)] bg-[var(--scope-1)]">{svg}</div>
+      {clusterTooltip}
 
       {hoverStory && (
         <div

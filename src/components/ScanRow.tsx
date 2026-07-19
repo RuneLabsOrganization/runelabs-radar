@@ -1,8 +1,10 @@
 // Namespace import keeps JSX working under vitest's classic transform (jsx: preserve).
 import * as React from 'react';
-import { DOMAIN_COLORS, DOMAIN_LABELS, type Domain } from '@/lib/domains';
+import type { Domain } from '@/lib/domains';
 import { timeAgo, type FeedStory } from '@/lib/feed';
 import { safeHttpUrl } from '@/lib/safe-url';
+import { parseDomainScores } from './DomainChips';
+import DomainFingerprint from './DomainFingerprint';
 import SignalMeter from './SignalMeter';
 
 /** A scan-log contact: one dense line in the sweep record. */
@@ -45,15 +47,9 @@ export default function ScanRow({
           story.title
         )}
       </span>
-      {domain && (
-        <span
-          className="mono hidden shrink-0 items-center gap-[5px] text-[10.5px] sm:inline-flex"
-          style={{ color: 'var(--ink-4)' }}
-        >
-          <span aria-hidden className="inline-block h-[9px] w-[2px]" style={{ background: DOMAIN_COLORS[domain] }} />
-          {DOMAIN_LABELS[domain].toUpperCase()} {score}
-        </span>
-      )}
+      <span className="hidden sm:inline-flex">
+        <DomainFingerprint scores={parseDomainScores(story.domainScores)} highlight={domain ?? undefined} />
+      </span>
       <span className="mono w-14 shrink-0 text-right text-[10.5px]" style={{ color: 'var(--ink-4)' }}>
         {timeLabel ?? timeAgo(story.createdAt)}
       </span>
