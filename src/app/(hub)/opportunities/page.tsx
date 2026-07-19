@@ -3,7 +3,9 @@ import { requireViewer } from '@/lib/auth/user';
 import { getDb } from '@/lib/db';
 import { opportunities } from '@/lib/db/schema';
 import { timeAgo } from '@/lib/feed';
+import { factoryFunnel } from '@/lib/analytics';
 import { sanitizeBrief } from '@/lib/opportunities/brief';
+import FactoryPipeline from '@/components/FactoryPipeline';
 import { sanitizeKpis, SUB_KEYS, type OppKpis, type SubScores } from '@/lib/opportunities/engine';
 import OpportunityList, { type OppView } from '@/components/OpportunityList';
 
@@ -88,11 +90,15 @@ export default async function OpportunitiesPage() {
       <h1 className="mt-1 text-[17px] font-semibold tracking-[-0.01em]">Opportunities</h1>
       <p className="mt-1.5 max-w-[600px] text-[13px] leading-relaxed" style={{ color: 'var(--ink-3)' }}>
         Monetizable openings the machine detected by crossing unmet pains, newly-cheap capability,
-        launch gaps and attention surges. Scores are deterministic weightings of five sub-scores —
+        launch gaps and attention surges. Radar color is the verdict —
         <span className="mono text-[11px]"> flip</span> favors speed and window,
         <span className="mono text-[11px]"> hold</span> favors margin and durable demand. Expand any
         opening for its launchable brief.
       </p>
+
+      <div className="mt-5">
+        <FactoryPipeline funnel={factoryFunnel()} />
+      </div>
 
       {views.length === 0 ? (
         <p className="mono mt-8 text-[12px]" style={{ color: 'var(--ink-4)' }}>

@@ -5,9 +5,53 @@ import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { DOMAIN_COLORS, DOMAIN_LABELS, isDomain } from '@/lib/domains';
 import { fmtUsd } from '@/lib/costs';
-import type { OppKpis, SubScores } from '@/lib/opportunities/engine';
+import { SUB_KEYS, type SubScores } from '@/lib/opportunities/axes';
+import type { OppKpis } from '@/lib/opportunities/engine';
 import type { OppBrief } from '@/lib/opportunities/brief';
-import SpiderChart from './SpiderChart';
+import SpiderChart, { gradeColor } from './SpiderChart';
+
+const CHECK_LABELS: Record<keyof SubScores, string> = {
+  demand: 'demand',
+  buildability: 'buildable',
+  margin: 'margin',
+  competition: 'open field',
+  timing: 'timing',
+  moat: 'moat',
+  regClear: 'regulation',
+  platformSafe: 'platform',
+  distribution: 'reach',
+  qualityBar: 'quality',
+};
+const CHECK_PASS = 12; // an axis at 12+/20 clears its launch check
+
+/** Simply-Wall-St checks pattern: N/10 clear, each glyph hoverable. */
+function LaunchChecks({ sub }: { sub: SubScores }) {
+  const results = SUB_KEYS.map((k) => ({ k, v: sub[k] ?? 0, pass: (sub[k] ?? 0) >= CHECK_PASS }));
+  const passed = results.filter((r) => r.pass).length;
+  return (
+    <div
+      className="mt-2 flex items-center gap-2"
+      role="img"
+      aria-label={`${passed} of ${SUB_KEYS.length} launch checks clear`}
+    >
+      <span className="readout text-[9px]">checks</span>
+      <span className="mono text-[11px]" style={{ color: gradeColor((passed / SUB_KEYS.length) * 100) }}>
+        {passed}/{SUB_KEYS.length}
+      </span>
+      <span className="mono flex gap-[3px] text-[10px]" aria-hidden>
+        {results.map(({ k, v, pass }) => (
+          <span
+            key={k}
+            title={`${CHECK_LABELS[k]}: ${v}/20 ${pass ? '✓' : '✗'}`}
+            style={{ color: pass ? 'var(--phosphor)' : 'var(--ink-4)', cursor: 'default' }}
+          >
+            {pass ? '✓' : '✗'}
+          </span>
+        ))}
+      </span>
+    </div>
+  );
+}
 
 export interface OppView {
   id: number;
@@ -45,7 +89,7 @@ function ScoreBar({ label, value, emphasized }: { label: string; value: number; 
       <span className="h-[4px] min-w-16 flex-1 rounded-[1px]" style={{ background: 'var(--grat-soft)' }}>
         <span
           className="anim-bar block h-full rounded-[1px]"
-          style={{ width: `${value}%`, background: emphasized ? 'var(--phosphor)' : 'var(--grat-strong)', opacity: 0.85 }}
+          style={{ width: `${value}%`, background: emphasized ? gradeColor(value) : 'var(--grat-strong)', opacity: 0.85 }}
         />
       </span>
       <span className="mono w-7 text-[12px]" style={{ color: emphasized ? 'var(--ink)' : 'var(--ink-3)' }}>
@@ -246,12 +290,13 @@ function Card({ opp, canGenerate, sortKey }: { opp: OppView; canGenerate: boolea
               arrives on the next sweep
             </p>
           ) : (
-            <SpiderChart sub={opp.sub} />
+            <SpiderChart sub={opp.sub} grade={sortKey === 'flip' ? opp.flipScore : opp.holdScore} />
           )}
           <div className="mt-1 flex flex-col gap-1.5">
             <ScoreBar label="flip" value={opp.flipScore} emphasized={sortKey === 'flip'} />
             <ScoreBar label="hold" value={opp.holdScore} emphasized={sortKey === 'hold'} />
           </div>
+          {!opp.legacy && <LaunchChecks sub={opp.sub} />}
         </div>
 
         <div className="mt-4 min-w-0 md:mt-0">

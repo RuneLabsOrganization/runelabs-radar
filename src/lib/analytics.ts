@@ -3,12 +3,16 @@ import { config } from './config';
 import { getDb } from './db';
 import {
   benchmarkSnapshots,
+  comps as compsTable,
   insights,
   items,
   jobRuns,
+  launches as launchesTable,
   llmUsage,
+  opportunities as opportunitiesTable,
   patterns,
   sources as sourcesTable,
+  stacks as stacksTable,
   stories,
   topicClusters,
 } from './db/schema';
@@ -637,6 +641,36 @@ export function clusterStories(clusterId: number, limit = 40): ClusterStory[] {
     ageDays: Math.max(0, Math.round((now - r.createdAt.getTime()) / 864e5)),
     sector: topDomain(parseDomainScores(r.domainScores)),
   }));
+}
+
+export interface FactoryFunnel {
+  openings: number;
+  briefed: number;
+  stacksReady: number;
+  launches7d: number;
+  comps: number;
+}
+
+/** The factory path in numbers: detected → briefed → stack-ready → launch waves → evergreen comps. */
+export function factoryFunnel(): FactoryFunnel {
+  const db = getDb();
+  const active = db
+    .select({ brief: opportunitiesTable.brief })
+    .from(opportunitiesTable)
+    .where(eq(opportunitiesTable.status, 'active'))
+    .all();
+  return {
+    openings: active.length,
+    briefed: active.filter((o) => o.brief !== null).length,
+    stacksReady: db.select({ c: count() }).from(stacksTable).get()?.c ?? 0,
+    launches7d:
+      db
+        .select({ c: count() })
+        .from(launchesTable)
+        .where(gte(launchesTable.launchedAt, new Date(Date.now() - 7 * DAY_MS)))
+        .get()?.c ?? 0,
+    comps: db.select({ c: count() }).from(compsTable).get()?.c ?? 0,
+  };
 }
 
 /** Latest analyst notes (written by the daily brief job). */
