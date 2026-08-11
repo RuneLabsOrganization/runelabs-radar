@@ -3,6 +3,7 @@ import { env, pipeline, type FeatureExtractionPipeline } from '@huggingface/tran
 import { config } from './config';
 import { getDb } from './db';
 import { stories } from './db/schema';
+import { mergeSimilarStories } from './curate/dedup';
 
 // Worker-only module: never import from Next.js pages/components — it drags
 // the ONNX runtime into the web bundle.
@@ -38,9 +39,10 @@ import { vecToBuffer } from './vec';
 /**
  * Hourly embed job: newest curated stories missing an embedding get one
  * (title + tldr). Powers the semantic map, clustering, dedup, and
- * related-stories in later phases.
+ * related-stories in later phases. After embedding, a semantic dedup pass
+ * merges same-news-different-title stories (title Jaccard misses those).
  */
-export async function runEmbed(): Promise<{ embedded: number }> {
+export async function runEmbed(): Promise<{ embedded: number; merged: number }> {
   const db = getDb();
   const rows = db
     .select({ id: stories.id, title: stories.title, tldr: stories.tldr })
@@ -49,11 +51,13 @@ export async function runEmbed(): Promise<{ embedded: number }> {
     .orderBy(desc(stories.id))
     .limit(BATCH_LIMIT)
     .all();
-  if (rows.length === 0) return { embedded: 0 };
-
-  const vectors = await embedTexts(rows.map((r) => `${r.title}\n${r.tldr ?? ''}`.trim()));
-  for (let i = 0; i < rows.length; i++) {
-    db.update(stories).set({ embedding: vecToBuffer(vectors[i]) }).where(eq(stories.id, rows[i].id)).run();
+  if (rows.length > 0) {
+    const vectors = await embedTexts(rows.map((r) => `${r.title}\n${r.tldr ?? ''}`.trim()));
+    for (let i = 0; i < rows.length; i++) {
+      db.update(stories).set({ embedding: vecToBuffer(vectors[i]) }).where(eq(stories.id, rows[i].id)).run();
+    }
   }
-  return { embedded: rows.length };
+
+  const { merged } = await mergeSimilarStories();
+  return { embedded: rows.length, merged };
 }

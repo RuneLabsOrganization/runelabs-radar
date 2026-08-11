@@ -8,7 +8,7 @@ export type Story = typeof stories.$inferSelect;
  */
 export type FeedStory = Pick<
   Story,
-  'id' | 'title' | 'tldr' | 'whyItMatters' | 'domainScores' | 'topScore' | 'createdAt'
+  'id' | 'title' | 'tldr' | 'whyItMatters' | 'whyShown' | 'domainScores' | 'topScore' | 'createdAt'
 >;
 
 /** Score at or above which a contact leads the briefing as a top signal. */

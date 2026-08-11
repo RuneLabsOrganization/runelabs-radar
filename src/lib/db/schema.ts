@@ -28,6 +28,7 @@ export const stories = sqliteTable('stories', {
   title: text('title').notNull(),
   tldr: text('tldr'),
   whyItMatters: text('why_it_matters'),
+  whyShown: text('why_shown'),
   domainScores: text('domain_scores'),
   // JSON [{name, kind: 'model'|'tool'|'org'|'technique'}] extracted at curation
   entities: text('entities'),

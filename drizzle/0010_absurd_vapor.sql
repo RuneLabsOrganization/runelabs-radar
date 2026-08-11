@@ -1,0 +1,1 @@
+ALTER TABLE `stories` ADD `why_shown` text;

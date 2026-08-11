@@ -36,6 +36,7 @@ interface CurationResponse {
   domain_scores?: Partial<Record<Domain, number>>;
   tldr?: string;
   why_it_matters?: string;
+  why_shown?: string;
   entities?: unknown;
 }
 
@@ -93,6 +94,8 @@ export function buildCurationPrompts(
     'Also write:',
     '- "tldr": a factual summary of the story in at most two short sentences.',
     '- "why_it_matters": one or two sentences on the concrete implication for the operating team.',
+    '- "why_shown": 3-8 words naming the tracked interest this story serves (e.g. "cheaper coding',
+    '  agents", "video gen quality jump"). No filler, no punctuation at the end.',
     '- "entities": up to 6 named things the story is about, each {"name","kind"} with kind one of',
     '  "model" (AI models, e.g. "GPT-5.2"), "tool" (products/frameworks, e.g. "Claude Code"),',
     '  "org" (companies/labs), "technique" (methods, e.g. "speculative decoding").',
@@ -102,7 +105,7 @@ export function buildCurationPrompts(
     'higher and stories resembling [DOWN] votes lower.',
     '',
     'Respond with STRICT JSON only — no markdown, no code fences, no commentary — exactly:',
-    '{"domain_scores":{"coding":N,"copy":N,"image":N,"video":N,"ads":N,"agentic":N},"tldr":"...","why_it_matters":"...","entities":[{"name":"...","kind":"..."}]}',
+    '{"domain_scores":{"coding":N,"copy":N,"image":N,"video":N,"ads":N,"agentic":N},"tldr":"...","why_it_matters":"...","why_shown":"...","entities":[{"name":"...","kind":"..."}]}',
     'where each N is an integer between 0 and 100.',
   ].join('\n');
 
@@ -196,6 +199,10 @@ export async function runCurate(): Promise<{ clustered: number; curated: number;
           domainScores: JSON.stringify(scores),
           tldr: typeof res.tldr === 'string' ? res.tldr : null,
           whyItMatters: typeof res.why_it_matters === 'string' ? res.why_it_matters : null,
+          whyShown:
+            typeof res.why_shown === 'string' && res.why_shown.trim().length > 0
+              ? res.why_shown.trim().slice(0, 80)
+              : null,
           entities: entities.length > 0 ? JSON.stringify(entities) : null,
           topScore,
           status: 'curated',

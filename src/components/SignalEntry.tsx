@@ -101,6 +101,11 @@ export default function SignalEntry({
               &mdash; {story.whyItMatters}
             </p>
           )}
+          {story.whyShown && (
+            <p className="mono mt-1.5 text-[10.5px] tracking-[0.04em]" style={{ color: 'var(--ink-4)' }}>
+              scoped because <span style={{ color: 'var(--ink-3)' }}>{story.whyShown}</span>
+            </p>
+          )}
           <div className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-1.5">
             {isNew && (
               <span className="readout" style={{ color: 'var(--phosphor)' }}>

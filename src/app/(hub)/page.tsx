@@ -95,6 +95,7 @@ function toFeedEntry(itemAgg: Map<number, ItemAgg>, voteAgg: Map<number, VoteAgg
         title: c.story.title,
         tldr: c.story.tldr,
         whyItMatters: c.story.whyItMatters,
+        whyShown: c.story.whyShown,
         domainScores: c.story.domainScores,
         topScore: c.story.topScore,
         createdAt: c.story.createdAt,

@@ -135,6 +135,12 @@ export default async function StoryPage({ params }: { params: Promise<{ id: stri
         </p>
       )}
 
+      {story.whyShown && (
+        <p className="mono mt-2 text-[10.5px] tracking-[0.04em]" style={{ color: 'var(--ink-4)' }}>
+          scoped because <span style={{ color: 'var(--ink-3)' }}>{story.whyShown}</span>
+        </p>
+      )}
+
       {firstUrl && (
         <p className="mt-5">
           <a href={firstUrl} target="_blank" rel="noreferrer" className="btn">
