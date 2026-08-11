@@ -1,6 +1,6 @@
 import { and, desc, eq, gte } from 'drizzle-orm';
 import { getDb } from '../db';
-import { boardHistory, briefs, insights, stories } from '../db/schema';
+import { boardHistory, briefs, domainDigests, insights, stories } from '../db/schema';
 import { DOMAINS, type Domain } from '../domains';
 import { getIdentity } from '../identity';
 import { chatJSON, LlmError } from '../llm/minimax';
@@ -79,7 +79,7 @@ function quietDayMarkdown(date: string, historyLines: string[]): string {
  * is written without touching the LLM (insights left as-is).
  * Returns {wrote:false} only when the LLM call failed (logged, non-fatal).
  */
-export async function runBrief(): Promise<{ wrote: boolean; insights: number }> {
+export async function runBrief(): Promise<{ wrote: boolean; insights: number; digests: number }> {
   const db = getDb();
   const date = todayStr();
   const dayAgo = new Date(Date.now() - 864e5);
@@ -105,7 +105,7 @@ export async function runBrief(): Promise<{ wrote: boolean; insights: number }> 
 
   if (topStories.length < 3) {
     upsertBrief(date, quietDayMarkdown(date, historyLines));
-    return { wrote: true, insights: 0 };
+    return { wrote: true, insights: 0, digests: 0 };
   }
 
   const storiesText = topStories
@@ -147,9 +147,78 @@ export async function runBrief(): Promise<{ wrote: boolean; insights: number }> 
     upsertBrief(date, markdown);
     const items = sanitizeInsights(res.insights);
     upsertInsights(date, items);
-    return { wrote: true, insights: items.length };
+    const digests = await writeDomainDigests(date);
+    return { wrote: true, insights: items.length, digests };
   } catch (e) {
     console.error('[brief] LLM brief generation failed:', e);
-    return { wrote: false, insights: 0 };
+    return { wrote: false, insights: 0, digests: 0 };
   }
+}
+
+/**
+ * Per-domain 2-line analytical digests from the last 72h of curated stories.
+ * One extra LLM call per day; skipped when the daily cap is already hit
+ * (LlmError non-retryable) — the main brief always has priority.
+ */
+async function writeDomainDigests(date: string): Promise<number> {
+  const db = getDb();
+  const windowStart = new Date(Date.now() - 72 * 36e5);
+  const recent = db
+    .select()
+    .from(stories)
+    .where(and(eq(stories.status, 'curated'), gte(stories.createdAt, windowStart)))
+    .orderBy(desc(stories.topScore))
+    .limit(100)
+    .all();
+
+  const byDomain = new Map<Domain, { title: string; tldr: string | null; score: number }[]>();
+  for (const s of recent) {
+    let scores: Partial<Record<Domain, number>> = {};
+    try {
+      scores = JSON.parse(s.domainScores ?? '{}') as Partial<Record<Domain, number>>;
+    } catch {
+      continue;
+    }
+    for (const d of DOMAINS) {
+      if ((scores[d] ?? 0) >= 40) {
+        const list = byDomain.get(d) ?? [];
+        if (list.length < 5) list.push({ title: s.title, tldr: s.tldr, score: scores[d]! });
+        byDomain.set(d, list);
+      }
+    }
+  }
+
+  const userText = DOMAINS.map((d) => {
+    const list = byDomain.get(d) ?? [];
+    const lines = list.length
+      ? list.map((s) => `- [${s.score}] ${s.title}${s.tldr ? ` — ${s.tldr}` : ''}`).join('\n')
+      : '(no signals)';
+    return `### ${d}\n${lines}`;
+  }).join('\n\n');
+
+  const system =
+    `You write sector digests for ${getIdentity().brandContext}. For each domain, write ONE ` +
+    'analytical line (max 240 chars) about the last 72h: the direction, not a summary — what ' +
+    'shifted, what a builder should do about it. Domains with no signals get an empty string. ' +
+    'Respond ONLY with JSON: {"coding":"...","copy":"...","image":"...","video":"...","ads":"...","agentic":"..."}';
+
+  let res: Record<string, unknown>;
+  try {
+    res = await chatJSON<Record<string, unknown>>(system, userText);
+  } catch (e) {
+    if (e instanceof LlmError) return 0; // cap/outage — digests are optional
+    throw e;
+  }
+
+  let written = 0;
+  for (const d of DOMAINS) {
+    const text = typeof res[d] === 'string' ? (res[d] as string).trim().slice(0, 280) : '';
+    if (!text) continue;
+    db.insert(domainDigests)
+      .values({ domain: d, date, text, createdAt: new Date() })
+      .onConflictDoUpdate({ target: [domainDigests.domain, domainDigests.date], set: { text } })
+      .run();
+    written++;
+  }
+  return written;
 }

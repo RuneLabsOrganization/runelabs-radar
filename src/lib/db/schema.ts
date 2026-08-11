@@ -120,6 +120,18 @@ export const briefs = sqliteTable('briefs', {
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
 });
 
+/** One 2-line analytical digest per domain per day, written by the brief job. */
+export const domainDigests = sqliteTable(
+  'domain_digests',
+  {
+    domain: text('domain').notNull(),
+    date: text('date').notNull(), // YYYY-MM-DD
+    text: text('text').notNull(),
+    createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.domain, t.date] })],
+);
+
 /**
  * Universal daily time series: one row per (source, entity, metric, day).
  * AA model prices, arena ELOs, GitHub stars, HF/npm downloads, launch counts —

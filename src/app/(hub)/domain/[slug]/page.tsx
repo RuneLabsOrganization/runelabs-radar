@@ -2,7 +2,7 @@ import { notFound } from 'next/navigation';
 import { and, desc, eq, gt, inArray } from 'drizzle-orm';
 import { requireViewer } from '@/lib/auth/user';
 import { getDb } from '@/lib/db';
-import { items, sources, stories, votes } from '@/lib/db/schema';
+import { items, sources, stories, votes, domainDigests } from '@/lib/db/schema';
 import {
   DOMAINS,
   DOMAIN_COLORS,
@@ -49,6 +49,13 @@ export default async function DomainPage({ params }: { params: Promise<{ slug: s
     .all();
 
   const anchor = user ? visitAnchor(user) : null;
+  const digest = db
+    .select()
+    .from(domainDigests)
+    .where(eq(domainDigests.domain, slug))
+    .orderBy(desc(domainDigests.date))
+    .limit(1)
+    .get();
   const all = curated.map((story) => {
     const scores = parseDomainScores(story.domainScores);
     return {
@@ -122,6 +129,13 @@ export default async function DomainPage({ params }: { params: Promise<{ slug: s
         <span aria-hidden className="inline-block h-[14px] w-[3px]" style={{ background: DOMAIN_COLORS[slug] }} />
         {DOMAIN_LABELS[slug]}
       </h1>
+
+      {digest && (
+        <p className="mt-2.5 text-[13.5px] leading-relaxed" style={{ color: 'var(--ink-2)' }}>
+          <span className="readout mr-2">sector digest &middot; {digest.date}</span>
+          {digest.text}
+        </p>
+      )}
 
       <div className="mt-4">
         <SectorStrip stats={stats} active={slug} />

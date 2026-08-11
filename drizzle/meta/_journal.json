@@ -78,6 +78,13 @@
       "when": 1786488669364,
       "tag": "0010_absurd_vapor",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "6",
+      "when": 1786488861314,
+      "tag": "0011_awesome_gauntlet",
+      "breakpoints": true
     }
   ]
 }
