@@ -1,6 +1,6 @@
 # Runelabs Radar
 
-Self-hosted AI intelligence hub: automated news ingestion → LLM curation per domain (coding, copy, image gen, video gen, ads, agentic) → web hub with team votes, a "Best Right Now" cost-benefit board, stack playbooks, opportunity dossiers and a daily brief. **MIT licensed — self-host it, point it at your own operation.**
+Self-hosted AI intelligence hub: automated news ingestion → LLM curation per domain (coding, copy, image gen, video gen, ads, agentic) → web hub with team votes, a "Best Right Now" cost-benefit board, stack playbooks, opportunity dossiers and a daily brief. In the AI gold rush, we sell maps and picks: digested, decision-ready intelligence for builders shipping ideas. **Source-available (BSL 1.1, converts to Apache 2.0 on 2030-08-11) — self-host it for your own team, point it at your own operation. Hosted service offered by Runelabs.**
 
 Design: [docs/superpowers/specs/2026-07-10-runelabs-radar-design.md](docs/superpowers/specs/2026-07-10-runelabs-radar-design.md)
 
