@@ -33,6 +33,12 @@ import SectorStrip, { type SectorStat } from '@/components/SectorStrip';
 type ItemAgg = { count: number; firstUrl: string | null; sourceName: string | null };
 type VoteAgg = { up: number; down: number; mine: 1 | -1 | 0 };
 
+export const metadata = {
+  title: 'Briefing',
+  description:
+    'Today\u2019s AI signals, curated and scored per domain — coding, copy, image, video, ads, agentic.',
+};
+
 function itemAggByStory(storyIds: number[]): Map<number, ItemAgg> {
   const map = new Map<number, ItemAgg>();
   if (storyIds.length === 0) return map;

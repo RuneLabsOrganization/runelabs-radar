@@ -1,5 +1,6 @@
 // Namespace import keeps JSX working under vitest's classic transform (jsx: preserve).
 import * as React from 'react';
+import Link from 'next/link';
 import { DOMAINS, DOMAIN_COLORS, DOMAIN_LABELS, type Domain } from '@/lib/domains';
 import { timeAgo, type FeedStory } from '@/lib/feed';
 import { safeHttpUrl } from '@/lib/safe-url';
@@ -52,17 +53,24 @@ export default function SignalEntry({
         </div>
         <div className="min-w-0 flex-1">
           <h3 className="text-[15px] leading-snug font-semibold tracking-[-0.01em]">
-            {href ? (
+            <Link
+              href={`/story/${story.id}`}
+              className="decoration-[var(--grat-strong)] underline-offset-2 hover:underline"
+            >
+              {story.title}
+            </Link>
+            {href && (
               <a
                 href={href}
                 target="_blank"
                 rel="noreferrer"
-                className="decoration-[var(--grat-strong)] underline-offset-2 hover:underline"
+                aria-label="open original source"
+                title="open original source"
+                className="mono ml-1.5 text-[11px]"
+                style={{ color: 'var(--ink-4)' }}
               >
-                {story.title}
+                &#8599;
               </a>
-            ) : (
-              story.title
             )}
           </h3>
           {/* mobile: the relevance rail collapses into inline chips */}

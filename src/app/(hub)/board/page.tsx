@@ -15,11 +15,18 @@ import { lagFindings, lagReadiness } from '@/lib/science/lag';
 import ForecastChart from '@/components/ForecastChart';
 import LagPanel from '@/components/LagPanel';
 import { requireViewer } from '@/lib/auth/user';
+import { config } from '@/lib/config';
 import { getDb } from '@/lib/db';
 import { boardEntries, boardHistory } from '@/lib/db/schema';
 import { DOMAIN_COLORS, DOMAIN_LABELS, DOMAINS, isDomain } from '@/lib/domains';
 
 type BoardEntry = typeof boardEntries.$inferSelect;
+
+export const metadata = {
+  title: 'Best Right Now — cost-benefit board',
+  description:
+    'The best AI model/tool for each task right now: best overall, best value, cheapest viable, with verdicts — synced weekly from benchmarks and the news.',
+};
 
 function cell(value: string | null): ReactNode {
   return value ? value : <span style={{ color: 'var(--ink-4)' }}>—</span>;
@@ -36,8 +43,11 @@ function domainLabel(domain: string): string {
 export default async function BoardPage() {
   const user = await requireViewer();
   const db = getDb();
-  const aa = aaModels();
-  const media = aaMedia();
+  // AA-derived data is gated for anonymous visitors: republication requires
+  // a redistribution agreement with Artificial Analysis (see config.aaPublic).
+  const showAA = !!user || config.aaPublic;
+  const aa = showAA ? aaModels() : null;
+  const media = showAA ? aaMedia() : null;
 
   const entries = db
     .select()

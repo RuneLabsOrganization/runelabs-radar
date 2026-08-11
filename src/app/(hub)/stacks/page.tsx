@@ -12,6 +12,12 @@ interface Layer {
   note: string | null;
 }
 
+export const metadata = {
+  title: 'Stacks — ship-it-today playbooks',
+  description:
+    'The recommended tech stack per venture type, regenerated weekly from the model market and the news — optimized for speed to MVP and low run cost.',
+};
+
 function parseLayers(json: string): Layer[] {
   try {
     const parsed: unknown = JSON.parse(json);

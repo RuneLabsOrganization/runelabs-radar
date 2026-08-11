@@ -1,5 +1,6 @@
 // Namespace import keeps JSX working under vitest's classic transform (jsx: preserve).
 import * as React from 'react';
+import Link from 'next/link';
 import type { Domain } from '@/lib/domains';
 import { timeAgo, type FeedStory } from '@/lib/feed';
 import { safeHttpUrl } from '@/lib/safe-url';
@@ -34,17 +35,24 @@ export default function ScanRow({
             &#9679;{' '}
           </span>
         )}
-        {href ? (
+        <Link
+          href={`/story/${story.id}`}
+          className="decoration-[var(--grat-strong)] underline-offset-2 hover:underline"
+        >
+          {story.title}
+        </Link>
+        {href && (
           <a
             href={href}
             target="_blank"
             rel="noreferrer"
-            className="decoration-[var(--grat-strong)] underline-offset-2 hover:underline"
+            aria-label="open original source"
+            title="open original source"
+            className="mono ml-1.5 text-[10px]"
+            style={{ color: 'var(--ink-4)' }}
           >
-            {story.title}
+            &#8599;
           </a>
-        ) : (
-          story.title
         )}
       </span>
       <span className="hidden sm:inline-flex">

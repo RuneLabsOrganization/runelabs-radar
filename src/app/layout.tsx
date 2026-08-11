@@ -1,9 +1,22 @@
 import type { Metadata } from 'next';
+import { config } from '@/lib/config';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'Runelabs Radar',
-  description: 'AI intelligence hub for Runelabs',
+  metadataBase: new URL(config.siteUrl),
+  title: {
+    default: 'Runelabs Radar — AI stack & opportunity intelligence',
+    template: '%s · Runelabs Radar',
+  },
+  description:
+    'Independent, continuously-updated intelligence on the AI landscape: the best stack for each job right now, cost-benefit boards per domain, and monetizable openings detected from the noise.',
+  openGraph: {
+    siteName: 'Runelabs Radar',
+    type: 'website',
+  },
+  twitter: {
+    card: 'summary_large_image',
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

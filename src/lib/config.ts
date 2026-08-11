@@ -28,6 +28,19 @@ export const config = {
   get publicMode(): boolean {
     return process.env.PUBLIC_MODE === 'true';
   },
+  /**
+   * AA_PUBLIC=true shows Artificial Analysis-derived sections to anonymous
+   * visitors. Default false: AA's terms treat republication as data
+   * redistribution (requires a commercial agreement). Logged-in team members
+   * always see them.
+   */
+  get aaPublic(): boolean {
+    return process.env.AA_PUBLIC === 'true';
+  },
+  /** Canonical public URL — used for metadataBase, sitemap, OG, MCP attribution. */
+  get siteUrl(): string {
+    return process.env.SITE_URL ?? 'http://localhost:3000';
+  },
   /** Optional: raises GitHub API rate limits for the velocity job. */
   get githubToken(): string {
     return process.env.GITHUB_TOKEN ?? '';

@@ -22,6 +22,12 @@ function parseSub(json: string): SubScores {
   }
 }
 
+export const metadata = {
+  title: 'Opportunities — monetizable openings',
+  description:
+    'Business openings detected by crossing unmet pains, newly-cheap capability, launch gaps and attention surges — flip/hold scored with launch dossiers.',
+};
+
 function parseEvidence(json: string): { type: string; label: string }[] {
   try {
     const parsed: unknown = JSON.parse(json);

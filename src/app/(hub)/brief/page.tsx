@@ -19,6 +19,12 @@ const briefStyles = `
 .brief-md > :last-child { margin-bottom: 0; }
 `;
 
+export const metadata = {
+  title: 'Daily Brief',
+  description:
+    'The daily AI intelligence brief: top stories, board changes and what the machine noticed — written at the 07:00 sweep.',
+};
+
 export default async function BriefPage({
   searchParams,
 }: {

@@ -20,6 +20,16 @@ import SectionHeader from '@/components/SectionHeader';
 import SectorStrip, { type SectorStat } from '@/components/SectorStrip';
 import SignalEntry from '@/components/SignalEntry';
 
+export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }) {
+  const { slug } = await params;
+  if (!isDomain(slug)) return {};
+  const label = DOMAIN_LABELS[slug];
+  return {
+    title: `${label} — sector scan`,
+    description: `AI signals scored for ${label}: top stories, sector activity and what changed — updated continuously.`,
+  };
+}
+
 export default async function DomainPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
   if (!isDomain(slug)) notFound();
