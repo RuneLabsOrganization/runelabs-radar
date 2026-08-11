@@ -39,8 +39,12 @@ async function callTool(name: string, args: Record<string, unknown> = {}): Promi
 }
 
 async function main() {
-  const health = await fetch(`${BASE}/health`).then((r) => r.json());
-  console.log('health:', JSON.stringify(health));
+  try {
+    const health = await fetch(`${BASE}/health`).then((r) => r.json());
+    console.log('health:', JSON.stringify(health));
+  } catch {
+    console.log('health: (not exposed on this URL — internal endpoint, skipping)');
+  }
 
   await rpc('initialize', {
     protocolVersion: '2025-03-26',
