@@ -16,9 +16,11 @@ import ForecastChart from '@/components/ForecastChart';
 import LagPanel from '@/components/LagPanel';
 import { requireViewer } from '@/lib/auth/user';
 import { config } from '@/lib/config';
+import { getIdentity } from '@/lib/identity';
 import { getDb } from '@/lib/db';
 import { boardEntries, boardHistory } from '@/lib/db/schema';
 import { DOMAIN_COLORS, DOMAIN_LABELS, DOMAINS, isDomain } from '@/lib/domains';
+import ChartFrame from '@/components/ChartFrame';
 
 type BoardEntry = typeof boardEntries.$inferSelect;
 
@@ -48,6 +50,7 @@ export default async function BoardPage() {
   const showAA = !!user || config.aaPublic;
   const aa = showAA ? aaModels() : null;
   const media = showAA ? aaMedia() : null;
+  const chartBrand = `${getIdentity().productName} · ${new URL(config.siteUrl).host}`;
 
   const entries = db
     .select()
@@ -83,17 +86,23 @@ export default async function BoardPage() {
         <>
           <section id="market" className="scroll-mt-24">
             <SectionHeader label="The market — quality vs price" />
-            <ModelScatter models={aa.models} fetchedAt={aa.fetchedAt} />
+            <ChartFrame title="quality vs price" brand={chartBrand}>
+              <ModelScatter models={aa.models} fetchedAt={aa.fetchedAt} />
+            </ChartFrame>
           </section>
 
           <section id="race" className="scroll-mt-24">
             <SectionHeader label="The race — intelligence over time" />
-            <FrontierTimeline models={aa.models} />
+            <ChartFrame title="intelligence over time" brand={chartBrand}>
+              <FrontierTimeline models={aa.models} />
+            </ChartFrame>
           </section>
 
           <section id="forecast" className="scroll-mt-24">
             <SectionHeader label="Forecast — price of frontier intelligence" tone="phosphor" />
-            <ForecastChart forecast={forecastFrontierPrice()} />
+            <ChartFrame title="frontier price forecast" brand={chartBrand}>
+              <ForecastChart forecast={forecastFrontierPrice()} />
+            </ChartFrame>
             <div className="mt-6">
               <div className="readout mb-2">timing lab — release&rarr;launch windows</div>
               <LagPanel readiness={lagReadiness()} findings={lagFindings()} />
@@ -110,7 +119,9 @@ export default async function BoardPage() {
 
           <section id="value" className="scroll-mt-24">
             <SectionHeader label="Value — intelligence per dollar" />
-            <ValueBars models={aa.models} />
+            <ChartFrame title="intelligence per dollar" brand={chartBrand}>
+              <ValueBars models={aa.models} />
+            </ChartFrame>
           </section>
         </>
       )}

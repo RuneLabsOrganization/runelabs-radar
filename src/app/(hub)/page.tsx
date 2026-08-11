@@ -19,7 +19,10 @@ import { isDomain } from '@/lib/domains';
 import { splitFeed, timeAgo } from '@/lib/feed';
 import { safeHttpUrl } from '@/lib/safe-url';
 import { visitAnchor } from '@/lib/visits';
+import { config } from '@/lib/config';
+import { getIdentity } from '@/lib/identity';
 import { parseDomainScores } from '@/components/DomainChips';
+import ChartFrame from '@/components/ChartFrame';
 import ActivityTrace from '@/components/ActivityTrace';
 import AnalystNotes from '@/components/AnalystNotes';
 import AnomalyFeed from '@/components/AnomalyFeed';
@@ -167,6 +170,7 @@ export default async function BriefingPage() {
   const { top, scan, lowCount } = splitFeed(contacts);
 
   const momentum = new Map(domainMomentum().map((m) => [m.domain, m.deltaPct]));
+  const chartBrand = `${getIdentity().productName} · ${new URL(config.siteUrl).host}`;
   const stats: SectorStat[] = DOMAINS.map((domain) => {
     let n = 0;
     let fresh = 0;
@@ -232,7 +236,9 @@ export default async function BriefingPage() {
       <SectionHeader label="Activity — 14-day sweep" />
       <div className="flex flex-col gap-7 md:flex-row">
         <div className="min-w-0 flex-1">
-          <ActivityTrace days={days} />
+          <ChartFrame title="activity — 14-day sweep" brand={chartBrand}>
+            <ActivityTrace days={days} />
+          </ChartFrame>
         </div>
         <div className="w-full shrink-0 md:w-[240px]">
           <div className="readout mb-2.5">most mentioned &middot; 7d</div>

@@ -133,6 +133,19 @@ a {
   background: rgba(151, 180, 205, 0.045);
 }
 
+/* chart export affordance — whisper until hovered, always there on touch */
+.chart-frame > button {
+  opacity: 0.55;
+}
+.chart-frame:hover > button {
+  opacity: 1;
+}
+@media (hover: none) {
+  .chart-frame > button {
+    opacity: 0.85;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .anim-bar,
   .anim-in {
