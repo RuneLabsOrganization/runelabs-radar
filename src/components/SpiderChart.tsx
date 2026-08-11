@@ -98,7 +98,7 @@ export default function SpiderChart({ sub, grade }: { sub: SubScores; grade?: nu
                 x={labelP.x}
                 y={labelP.y + 2.5}
                 textAnchor="middle"
-                fontSize={7.5}
+                fontSize={9}
                 fontFamily="var(--font-readout)"
                 fill={active ? 'var(--ink-2)' : 'var(--ink-4)'}
                 style={{ textTransform: 'uppercase', letterSpacing: '0.06em' }}

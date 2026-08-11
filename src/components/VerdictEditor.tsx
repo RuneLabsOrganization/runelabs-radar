@@ -75,16 +75,23 @@ export default function VerdictEditor({
           rows={3}
           value={text}
           onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) save();
+            if (e.key === 'Escape') setEditing(false);
+          }}
           disabled={saving}
           autoFocus
         />
-        <div style={{ display: 'flex', gap: 6 }}>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
           <button type="button" className="btn btn-primary" onClick={save} disabled={saving}>
             {saving ? 'Saving…' : 'Save'}
           </button>
           <button type="button" className="btn" onClick={() => setEditing(false)} disabled={saving}>
             Cancel
           </button>
+          <span className="mono text-[10px]" style={{ color: 'var(--ink-4)' }}>
+            ctrl+enter saves
+          </span>
         </div>
         {error && <span style={{ color: 'var(--down)', fontSize: 12 }}>{error}</span>}
       </div>
@@ -96,6 +103,7 @@ export default function VerdictEditor({
       type="button"
       onClick={startEditing}
       title="Edit verdict"
+      className="verdict-edit"
       style={{
         background: 'none',
         border: 'none',
@@ -115,7 +123,10 @@ export default function VerdictEditor({
         </>
       ) : (
         <span className="muted">add verdict</span>
-      )}
+      )}{' '}
+      <span className="verdict-pencil" aria-hidden>
+        ✎
+      </span>
     </button>
   );
 }

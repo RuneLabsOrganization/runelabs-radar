@@ -35,13 +35,13 @@ export default function FactoryPipeline({ funnel }: { funnel: FactoryFunnel }) {
               <div className="readout mt-1" style={{ color: s.accent ? 'var(--phosphor)' : undefined }}>
                 {s.label}
               </div>
-              <div className="mono mt-0.5 text-[9px]" style={{ color: 'var(--ink-4)' }}>
+              <div className="mono mt-0.5 text-[10px]" style={{ color: 'var(--ink-4)' }}>
                 {s.sub}
               </div>
             </Link>
           </React.Fragment>
         ))}
-        <span className="mono ml-auto hidden max-w-[190px] text-right text-[9.5px] leading-relaxed lg:block" style={{ color: 'var(--ink-4)' }}>
+        <span className="mono ml-auto hidden max-w-[190px] text-right text-[10px] leading-relaxed lg:block" style={{ color: 'var(--ink-4)' }}>
           the factory path — every stage feeds the next, detection to evergreen revenue
         </span>
       </div>

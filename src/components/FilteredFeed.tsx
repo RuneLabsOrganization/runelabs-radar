@@ -1,7 +1,8 @@
 'use client';
 
 import * as React from 'react';
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import {
   DOMAINS,
   DOMAIN_COLORS,
@@ -41,7 +42,9 @@ export function filterBySector(entries: FeedEntry[], sector: Domain | null): Fee
 
 /**
  * The briefing feed with in-place sector cross-filtering: one click scopes
- * both Top signals and the Scan log without leaving the page.
+ * both Top signals and the Scan log without leaving the page. The active
+ * sector lives in the `?sector=` search param so filters survive refresh
+ * and are shareable.
  */
 export default function FilteredFeed({
   top,
@@ -52,7 +55,19 @@ export default function FilteredFeed({
   scan: FeedEntry[];
   readOnly: boolean;
 }) {
-  const [sector, setSector] = useState<Domain | null>(null);
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const raw = searchParams.get('sector');
+  const sector: Domain | null = raw && (DOMAINS as readonly string[]).includes(raw) ? (raw as Domain) : null;
+
+  function setSector(next: Domain | null) {
+    const params = new URLSearchParams(searchParams.toString());
+    if (next) params.set('sector', next);
+    else params.delete('sector');
+    const qs = params.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+  }
 
   const counts = useMemo(() => {
     const all = [...top, ...scan];

@@ -87,7 +87,7 @@ export default function ModelScatter({ models, fetchedAt }: { models: AaModel[];
         {yTicks.map((t) => (
           <g key={`y${t}`}>
             <line x1={PAD.left} x2={PAD.left + PLOT_W} y1={yOf(t)} y2={yOf(t)} stroke="var(--grat-soft)" />
-            <text x={PAD.left - 5} y={yOf(t) + 3} textAnchor="end" fontSize={9} fill="var(--ink-4)" fontFamily="var(--font-readout)">
+            <text x={PAD.left - 5} y={yOf(t) + 3} textAnchor="end" fontSize={10} fill="var(--ink-4)" fontFamily="var(--font-readout)">
               {t}
             </text>
           </g>
@@ -98,7 +98,7 @@ export default function ModelScatter({ models, fetchedAt }: { models: AaModel[];
         }).map((t) => (
           <g key={`x${t}`}>
             <line x1={xOf(t)} x2={xOf(t)} y1={PAD.top} y2={PAD.top + PLOT_H} stroke="var(--grat-soft)" strokeWidth={0.5} />
-            <text x={xOf(t)} y={H - 10} textAnchor="middle" fontSize={9} fill="var(--ink-4)" fontFamily="var(--font-readout)">
+            <text x={xOf(t)} y={H - 10} textAnchor="middle" fontSize={10} fill="var(--ink-4)" fontFamily="var(--font-readout)">
               ${t}
             </text>
           </g>
@@ -140,7 +140,7 @@ export default function ModelScatter({ models, fetchedAt }: { models: AaModel[];
                 x={xOf(p.m.price) + 6}
                 // alternate above/below so clustered frontier labels don't collide
                 y={yOf(p.y) + (pts.slice(0, i).filter((_, j) => frontier[j]).length % 2 === 0 ? -6 : 12)}
-                fontSize={8.5}
+                fontSize={9.5}
                 fill="var(--ink-3)"
                 fontFamily="var(--font-readout)"
               >

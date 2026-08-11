@@ -3,6 +3,7 @@ import { requireViewer } from '@/lib/auth/user';
 import { getStaleness, lastOkAt } from '@/lib/jobs';
 import { timeAgo } from '@/lib/feed';
 import NavLinks from '@/components/NavLinks';
+import MobileNav from '@/components/MobileNav';
 import LogoutButton from '@/components/LogoutButton';
 import RadarBackdrop from '@/components/RadarBackdrop';
 
@@ -25,7 +26,7 @@ export default async function HubLayout({ children }: { children: React.ReactNod
         <RadarBackdrop intensity={0.06} />
       </div>
       <header className="sticky top-0 z-20 border-b border-[var(--grat)] bg-[rgba(10,14,19,0.88)] backdrop-blur">
-        <div className="mx-auto flex h-12 max-w-[860px] items-center gap-7 px-6">
+        <div className="mx-auto flex h-12 max-w-[860px] items-center gap-4 px-4 sm:px-6 md:gap-7">
           <Link
             href="/"
             className="mono flex shrink-0 items-center gap-2 text-[11.5px] font-semibold tracking-[0.16em] text-[var(--ink)]"
@@ -33,8 +34,10 @@ export default async function HubLayout({ children }: { children: React.ReactNod
             <span aria-hidden className="inline-block h-[10px] w-[3px]" style={{ background: 'var(--phosphor)' }} />
             RUNELABS RADAR
           </Link>
-          <NavLinks isAdmin={user?.role === 'admin'} />
-          <div className="mono ml-auto flex items-center gap-4 text-[10.5px] tracking-[0.08em] uppercase">
+          <div className="hidden md:block">
+            <NavLinks isAdmin={user?.role === 'admin'} />
+          </div>
+          <div className="mono ml-auto hidden items-center gap-4 text-[10.5px] tracking-[0.08em] uppercase md:flex">
             <span
               className="hidden items-center gap-1.5 sm:flex"
               style={{ color: stale ? 'var(--amber)' : 'var(--ink-4)' }}
@@ -61,6 +64,13 @@ export default async function HubLayout({ children }: { children: React.ReactNod
               </Link>
             )}
           </div>
+          <MobileNav
+            isAdmin={user?.role === 'admin'}
+            userName={user?.name ?? null}
+            sweepLabel={lastSweep ? timeAgo(lastSweep) : '—'}
+            sweepStale={stale}
+            sweepTitle={sweepTitle}
+          />
         </div>
       </header>
       <main>{children}</main>

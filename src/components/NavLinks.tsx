@@ -4,9 +4,14 @@ import * as React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
-export default function NavLinks({ isAdmin }: { isAdmin: boolean }) {
-  const pathname = usePathname();
-  const links = [
+export interface NavLinkItem {
+  href: string;
+  label: string;
+  active: boolean;
+}
+
+export function buildLinks(pathname: string, isAdmin: boolean): NavLinkItem[] {
+  return [
     { href: '/', label: 'Briefing', active: pathname === '/' || pathname.startsWith('/domain') },
     { href: '/opportunities', label: 'Openings', active: pathname.startsWith('/opportunities') },
     { href: '/map', label: 'Map', active: pathname.startsWith('/map') },
@@ -15,6 +20,11 @@ export default function NavLinks({ isAdmin }: { isAdmin: boolean }) {
     { href: '/brief', label: 'Brief', active: pathname.startsWith('/brief') },
     ...(isAdmin ? [{ href: '/admin', label: 'Admin', active: pathname.startsWith('/admin') }] : []),
   ];
+}
+
+export default function NavLinks({ isAdmin }: { isAdmin: boolean }) {
+  const pathname = usePathname();
+  const links = buildLinks(pathname, isAdmin);
   return (
     <nav className="mono flex h-12 items-center gap-5 text-[11px] tracking-[0.1em] uppercase">
       {links.map((l) => (

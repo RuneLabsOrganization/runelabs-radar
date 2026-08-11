@@ -34,7 +34,7 @@ function LaunchChecks({ sub }: { sub: SubScores }) {
       role="img"
       aria-label={`${passed} of ${SUB_KEYS.length} launch checks clear`}
     >
-      <span className="readout text-[9px]">checks</span>
+      <span className="readout text-[10px]">checks</span>
       <span className="mono text-[11px]" style={{ color: gradeColor((passed / SUB_KEYS.length) * 100) }}>
         {passed}/{SUB_KEYS.length}
       </span>
@@ -102,7 +102,7 @@ function ScoreBar({ label, value, emphasized }: { label: string; value: number; 
 function KpiTile({ label, value }: { label: string; value: string | null }) {
   return (
     <div className="min-w-[86px]">
-      <div className="readout text-[9px]">{label}</div>
+      <div className="readout text-[10px]">{label}</div>
       <div className="mono mt-0.5 text-[13px]" style={{ color: value ? 'var(--ink)' : 'var(--ink-4)' }}>
         {value ?? '—'}
       </div>
@@ -116,7 +116,7 @@ function RiskMeter({ label, sub, note }: { label: string; sub: number; note?: st
   const color = risk <= 6 ? 'var(--phosphor)' : risk <= 12 ? 'var(--amber)' : 'var(--alert)';
   return (
     <div className="flex items-center gap-2" title={note ?? `${label}: risk ${risk}/20`}>
-      <span className="readout w-[86px] shrink-0 text-[9px]">{label}</span>
+      <span className="readout w-[86px] shrink-0 text-[10px]">{label}</span>
       <span className="h-[4px] w-20 rounded-[1px]" style={{ background: 'var(--grat-soft)' }}>
         <span className="anim-bar block h-full rounded-[1px]" style={{ width: `${(risk / 20) * 100}%`, background: color, opacity: 0.8 }} />
       </span>
@@ -131,7 +131,7 @@ function Competition({ kpis, sub }: { kpis: OppKpis | null; sub: SubScores }) {
   const count = kpis?.competitorCount ?? null;
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-      <span className="readout text-[9px]">competition</span>
+      <span className="readout text-[10px]">competition</span>
       {count !== null ? (
         <>
           <span className="mono text-[11px]" aria-label={`${count} direct competitors`}>
@@ -419,7 +419,7 @@ function PortfolioScatter({ opps, sortKey }: { opps: OppView[]; sortKey: 'flip' 
         {[0, 50, 100].map((s) => (
           <g key={s}>
             <line x1={PAD.left} x2={W - PAD.right} y1={y(s)} y2={y(s)} stroke="var(--grat-soft)" />
-            <text x={PAD.left - 5} y={y(s) + 3} textAnchor="end" fontSize={9} fill="var(--ink-4)" fontFamily="var(--font-readout)">
+            <text x={PAD.left - 5} y={y(s) + 3} textAnchor="end" fontSize={10} fill="var(--ink-4)" fontFamily="var(--font-readout)">
               {s}
             </text>
           </g>
@@ -439,7 +439,7 @@ function PortfolioScatter({ opps, sortKey }: { opps: OppView[]; sortKey: 'flip' 
             </circle>
           </a>
         ))}
-        <text x={W - PAD.right} y={H - 6} textAnchor="end" fontSize={9} fill="var(--ink-4)" fontFamily="var(--font-readout)">
+        <text x={W - PAD.right} y={H - 6} textAnchor="end" fontSize={10} fill="var(--ink-4)" fontFamily="var(--font-readout)">
           initial cost (log) →
         </text>
       </svg>

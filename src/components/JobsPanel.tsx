@@ -38,7 +38,7 @@ function statusBadge(status: JobRun['status']): ReactNode {
 
 export default function JobsPanel({ runs }: { runs: JobRun[] }) {
   return (
-    <div className="card">
+    <div className="card overflow-x-auto">
       <table className="table">
         <thead>
           <tr>

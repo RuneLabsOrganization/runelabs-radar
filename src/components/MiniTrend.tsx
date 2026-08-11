@@ -50,7 +50,7 @@ export default function MiniTrend({
         })}
       </svg>
       {caption && (
-        <span className="mono text-[8.5px] tracking-[0.06em] uppercase" style={{ color: 'var(--ink-4)' }}>
+        <span className="mono text-[10px] tracking-[0.06em] uppercase" style={{ color: 'var(--ink-4)' }}>
           {caption}
         </span>
       )}

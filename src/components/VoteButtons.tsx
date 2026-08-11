@@ -3,7 +3,7 @@
 // Namespace import keeps JSX working under vitest's classic transform (jsx: preserve).
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 export default function VoteButtons({
   storyId,
@@ -20,6 +20,14 @@ export default function VoteButtons({
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(false);
+  // optimistic display state — resyncs when server props change after refresh
+  const [view, setView] = useState({ up, down, mine: myVote });
+  const propsRef = useRef({ up, down, myVote });
+  useEffect(() => {
+    propsRef.current = { up, down, myVote };
+    setView({ up, down, mine: myVote });
+  }, [up, down, myVote]);
 
   if (readOnly) {
     return (
@@ -30,45 +38,67 @@ export default function VoteButtons({
     );
   }
 
+  function optimistic(next: 1 | -1 | 0) {
+    const cur = view;
+    const delta = { up: cur.up, down: cur.down };
+    if (cur.mine === 1) delta.up -= 1;
+    if (cur.mine === -1) delta.down -= 1;
+    if (next === 1) delta.up += 1;
+    if (next === -1) delta.down += 1;
+    return { ...delta, mine: next };
+  }
+
   async function vote(value: 1 | -1) {
     if (busy) return;
+    const next = view.mine === value ? 0 : value;
+    const prev = view;
+    setView(optimistic(next));
+    setError(false);
     setBusy(true);
     try {
-      // Clicking my current vote again removes it (value 0).
-      const next = myVote === value ? 0 : value;
       const res = await fetch('/api/votes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ storyId, value: next }),
       });
-      if (res.ok) router.refresh();
+      if (!res.ok) throw new Error(String(res.status));
+      router.refresh();
+    } catch {
+      setView(prev); // rollback
+      setError(true);
+      setTimeout(() => setError(false), 2500);
     } finally {
       setBusy(false);
     }
   }
 
   return (
-    <span className="mono inline-flex items-center gap-2.5 text-[11px]">
+    <span className="mono inline-flex items-center gap-2.5 text-[11px]" aria-live="polite">
       <button
         type="button"
         aria-label="Upvote"
-        aria-pressed={myVote === 1}
+        aria-pressed={view.mine === 1}
         disabled={busy}
         onClick={() => vote(1)}
         className="vote-btn"
       >
-        &#9650;&#8202;{up}
+        &#9650;&#8202;{view.up}
       </button>
       <button
         type="button"
         aria-label="Downvote"
-        aria-pressed={myVote === -1}
+        aria-pressed={view.mine === -1}
         disabled={busy}
         onClick={() => vote(-1)}
         className="vote-btn down"
       >
-        &#9660;{down > 0 ? ` ${down}` : ''}
+        &#9660;{view.down > 0 ? ` ${view.down}` : ''}
       </button>
+      {error && (
+        <span className="text-[10px]" style={{ color: 'var(--alert)' }}>
+          vote failed
+        </span>
+      )}
     </span>
   );
 }

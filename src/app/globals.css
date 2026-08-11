@@ -18,11 +18,11 @@
   --grat: rgba(151, 180, 205, 0.13);
   --grat-strong: rgba(151, 180, 205, 0.26);
 
-  /* ink — text hierarchy */
+  /* ink — text hierarchy (ink-3/ink-4 raised for WCAG AA on scope-0) */
   --ink: #e3eaf0;
   --ink-2: #a6b4c2;
-  --ink-3: #758594;
-  --ink-4: #4d5b69;
+  --ink-3: #8295a6;
+  --ink-4: #68798a;
 
   /* phosphor — the signal */
   --phosphor: #57d9a3;
@@ -169,6 +169,17 @@ a {
   font: inherit;
   transition: color 120ms ease;
 }
+/* touch targets: 44px minimum on coarse pointers */
+@media (pointer: coarse) {
+  .vote-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 44px;
+    min-height: 44px;
+    padding: 4px 8px;
+  }
+}
 .vote-btn:hover {
   color: var(--ink-2);
 }
@@ -255,6 +266,26 @@ a {
   color: var(--ink-4);
 }
 
+/* verdict edit affordance — pencil appears on hover; always visible on touch */
+.verdict-pencil {
+  font-size: 11px;
+  color: var(--ink-4);
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+.verdict-edit:hover .verdict-pencil,
+.verdict-edit:focus-visible .verdict-pencil {
+  opacity: 1;
+}
+.verdict-edit:hover {
+  color: var(--ink);
+}
+@media (hover: none) {
+  .verdict-pencil {
+    opacity: 0.7;
+  }
+}
+
 .badge {
   display: inline-flex;
   align-items: center;
@@ -296,6 +327,47 @@ a {
 
 .muted {
   color: var(--ink-3);
+}
+
+/* responsive tables: below 640px rows become stacked cards.
+   Cells need data-label for the generated row header. */
+@media (max-width: 639px) {
+  .table-cards,
+  .table-cards tbody,
+  .table-cards tr,
+  .table-cards td {
+    display: block;
+  }
+  .table-cards thead {
+    display: none;
+  }
+  .table-cards tr {
+    background: var(--scope-1);
+    border: 1px solid var(--grat-soft);
+    border-radius: 6px;
+    padding: 8px 12px;
+    margin-bottom: 10px;
+  }
+  .table-cards td {
+    display: flex;
+    gap: 10px;
+    align-items: baseline;
+    border-bottom: none;
+    padding: 4px 0;
+  }
+  .table-cards td::before {
+    content: attr(data-label);
+    font-family: var(--font-readout);
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-4);
+    width: 104px;
+    flex-shrink: 0;
+  }
+  .table-cards td > * {
+    min-width: 0;
+  }
 }
 
 .section-title {

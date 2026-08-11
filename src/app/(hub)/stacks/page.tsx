@@ -85,7 +85,7 @@ export default async function StacksPage() {
                 </div>
 
                 {layers.length > 0 && (
-                  <table className="table mt-3">
+                  <table className="table table-cards mt-3">
                     <thead>
                       <tr>
                         <th className="w-[13%]">Layer</th>
@@ -97,12 +97,12 @@ export default async function StacksPage() {
                     <tbody>
                       {layers.map((l) => (
                         <tr key={l.layer}>
-                          <td className="mono text-[10.5px] uppercase" style={{ color: 'var(--ink-4)' }}>
+                          <td data-label="layer" className="mono text-[10.5px] uppercase" style={{ color: 'var(--ink-4)' }}>
                             {l.layer}
                           </td>
-                          <td style={{ color: 'var(--ink)' }}>{l.pick}</td>
-                          <td>{l.alt ?? <span style={{ color: 'var(--ink-4)' }}>—</span>}</td>
-                          <td className="text-[12.5px]">{l.note ?? ''}</td>
+                          <td data-label="pick" style={{ color: 'var(--ink)' }}>{l.pick}</td>
+                          <td data-label="alternative">{l.alt ?? <span style={{ color: 'var(--ink-4)' }}>—</span>}</td>
+                          <td data-label="note" className="text-[12.5px]">{l.note ?? ''}</td>
                         </tr>
                       ))}
                     </tbody>

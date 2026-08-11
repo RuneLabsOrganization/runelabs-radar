@@ -62,7 +62,8 @@ export default function ProposalCard({ id, domain, task, proposed, rationale }: 
         <span className="badge">{task}</span>
       </div>
 
-      <table className="table">
+      <div className="overflow-x-auto">
+        <table className="table">
         <tbody>
           <tr>
             <td className="muted" style={{ width: 140 }}>
@@ -84,6 +85,7 @@ export default function ProposalCard({ id, domain, task, proposed, rationale }: 
           </tr>
         </tbody>
       </table>
+      </div>
 
       <p className="muted" style={{ fontSize: 13 }}>
         {rationale}

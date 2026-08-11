@@ -162,7 +162,7 @@ export default function SourcesPanel({ sources }: { sources: SourceRow[] }) {
   }
 
   return (
-    <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+    <div className="card overflow-x-auto" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       <table className="table">
         <thead>
           <tr>

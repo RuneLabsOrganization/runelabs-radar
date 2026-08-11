@@ -144,7 +144,7 @@ export default async function BoardPage() {
               </span>
               <span aria-hidden className="h-px flex-1" style={{ background: 'var(--grat-soft)' }} />
             </div>
-            <table className="table">
+            <table className="table table-cards">
               <thead>
                 <tr>
                   <th className="w-[16%]">Task</th>
@@ -158,14 +158,14 @@ export default async function BoardPage() {
               <tbody>
                 {rows.map((entry) => (
                   <tr key={entry.id}>
-                    <td className="mono text-[11.5px]" style={{ color: 'var(--ink-3)' }}>
+                    <td data-label="task" className="mono text-[11.5px]" style={{ color: 'var(--ink-3)' }}>
                       {entry.task}
                     </td>
-                    <td style={{ color: 'var(--ink)' }}>{cell(entry.bestOverall)}</td>
-                    <td>{cell(entry.bestValue)}</td>
-                    <td>{cell(entry.cheapestViable)}</td>
-                    <td className="text-[12.5px]">{cell(entry.costNote)}</td>
-                    <td>
+                    <td data-label="best overall" style={{ color: 'var(--ink)' }}>{cell(entry.bestOverall)}</td>
+                    <td data-label="best value">{cell(entry.bestValue)}</td>
+                    <td data-label="cheapest">{cell(entry.cheapestViable)}</td>
+                    <td data-label="cost note" className="text-[12.5px]">{cell(entry.costNote)}</td>
+                    <td data-label="verdict">
                       <VerdictEditor
                         entryId={entry.id}
                         verdict={entry.runelabsVerdict}

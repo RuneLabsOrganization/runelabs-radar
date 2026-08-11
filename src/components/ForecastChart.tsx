@@ -48,7 +48,7 @@ export default function ForecastChart({ forecast }: { forecast: Forecast }) {
         {yTicks.map((t, i) => (
           <g key={i}>
             <line x1={PAD.left} x2={PAD.left + PLOT_W} y1={y(t)} y2={y(t)} stroke="var(--grat-soft)" />
-            <text x={PAD.left - 5} y={y(t) + 3} textAnchor="end" fontSize={9} fill="var(--ink-4)" fontFamily="var(--font-readout)">
+            <text x={PAD.left - 5} y={y(t) + 3} textAnchor="end" fontSize={10} fill="var(--ink-4)" fontFamily="var(--font-readout)">
               {fmtUsd(t)}
             </text>
           </g>
@@ -60,7 +60,7 @@ export default function ForecastChart({ forecast }: { forecast: Forecast }) {
               x={x(d)}
               y={H - 6}
               textAnchor={i === 0 ? 'start' : 'end'}
-              fontSize={9}
+              fontSize={10}
               fill="var(--ink-4)"
               fontFamily="var(--font-readout)"
             >

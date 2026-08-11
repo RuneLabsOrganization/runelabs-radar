@@ -77,7 +77,7 @@ export default function ActivityTrace({ days, focus }: { days: DayCount[]; focus
               x={PAD.left - 5}
               y={y(t) + 3}
               textAnchor="end"
-              fontSize={9}
+              fontSize={10}
               fill="var(--ink-4)"
               fontFamily="var(--font-readout)"
             >
@@ -106,7 +106,7 @@ export default function ActivityTrace({ days, focus }: { days: DayCount[]; focus
               x={x(i)}
               y={H - 4}
               textAnchor={i === 0 ? 'start' : i === days.length - 1 ? 'end' : 'middle'}
-              fontSize={9}
+              fontSize={10}
               fill="var(--ink-4)"
               fontFamily="var(--font-readout)"
             >

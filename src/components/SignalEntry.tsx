@@ -65,6 +65,18 @@ export default function SignalEntry({
               story.title
             )}
           </h3>
+          {/* mobile: the relevance rail collapses into inline chips */}
+          {topFits.length > 0 && (
+            <div className="mono mt-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[10px] tracking-[0.06em] uppercase md:hidden">
+              {topFits.map(({ d, v }) => (
+                <span key={d} className="inline-flex items-center gap-1">
+                  <span aria-hidden className="inline-block h-[8px] w-[2px]" style={{ background: DOMAIN_COLORS[d] }} />
+                  <span style={{ color: 'var(--ink-3)' }}>{DOMAIN_LABELS[d]}</span>
+                  <span style={{ color: 'var(--ink-4)' }}>{v}</span>
+                </span>
+              ))}
+            </div>
+          )}
           {story.tldr && (
             <p className="mt-1.5 text-[13.5px] leading-relaxed" style={{ color: 'var(--ink-2)' }}>
               {story.tldr}
@@ -105,14 +117,14 @@ export default function SignalEntry({
 
         {topFits.length > 0 && (
           <div
-            className="mono hidden w-[128px] shrink-0 flex-col gap-[5px] pt-1.5 md:flex"
+            className="mono hidden w-[150px] shrink-0 flex-col gap-[5px] pt-1.5 md:flex"
             role="img"
             aria-label={`relevance: ${topFits.map((f) => `${DOMAIN_LABELS[f.d]} ${f.v}`).join(', ')}`}
           >
             {topFits.map(({ d, v }) => (
               <div key={d} className="flex items-center gap-1.5" aria-hidden>
                 <span
-                  className="w-[44px] shrink-0 text-right text-[8.5px] tracking-[0.04em] uppercase"
+                  className="w-[44px] shrink-0 text-right text-[10px] tracking-[0.04em] uppercase"
                   style={{ color: highlightDomain === d ? 'var(--ink-2)' : 'var(--ink-4)' }}
                 >
                   {DOMAIN_LABELS[d].length > 7 ? DOMAIN_LABELS[d].slice(0, 6) : DOMAIN_LABELS[d]}
@@ -123,7 +135,7 @@ export default function SignalEntry({
                     style={{ width: `${v}%`, background: DOMAIN_COLORS[d], opacity: 0.85 }}
                   />
                 </span>
-                <span className="w-[18px] shrink-0 text-[9px]" style={{ color: 'var(--ink-3)' }}>
+                <span className="w-[18px] shrink-0 text-[10.5px]" style={{ color: 'var(--ink-3)' }}>
                   {v}
                 </span>
               </div>

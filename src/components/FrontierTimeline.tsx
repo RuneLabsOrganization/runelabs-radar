@@ -79,7 +79,7 @@ export default function FrontierTimeline({ models }: { models: AaModel[] }) {
         {yTicks.map((t) => (
           <g key={t}>
             <line x1={PAD.left} x2={PAD.left + PLOT_W} y1={yOf(t)} y2={yOf(t)} stroke="var(--grat-soft)" />
-            <text x={PAD.left - 5} y={yOf(t) + 3} textAnchor="end" fontSize={9} fill="var(--ink-4)" fontFamily="var(--font-readout)">
+            <text x={PAD.left - 5} y={yOf(t) + 3} textAnchor="end" fontSize={10} fill="var(--ink-4)" fontFamily="var(--font-readout)">
               {t}
             </text>
           </g>
@@ -90,7 +90,7 @@ export default function FrontierTimeline({ models }: { models: AaModel[] }) {
             x={xOf(pts[i].t)}
             y={H - 8}
             textAnchor={i === 0 ? 'start' : i === pts.length - 1 ? 'end' : 'middle'}
-            fontSize={9}
+            fontSize={10}
             fill="var(--ink-4)"
             fontFamily="var(--font-readout)"
           >
@@ -115,7 +115,7 @@ export default function FrontierTimeline({ models }: { models: AaModel[] }) {
                 x={xOf(p.t) + 6}
                 // alternate above/below so clustered frontier labels don't collide
                 y={yOf(p.m.intelligence) + (pts.slice(0, i).filter((_, j) => frontierIdx.has(j)).length % 2 === 0 ? -6 : 12)}
-                fontSize={8.5}
+                fontSize={9.5}
                 fill="var(--ink-3)"
                 fontFamily="var(--font-readout)"
               >
