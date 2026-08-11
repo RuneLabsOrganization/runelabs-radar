@@ -2,6 +2,7 @@ import { and, desc, eq, gte } from 'drizzle-orm';
 import { getDb } from '../db';
 import { benchmarkSnapshots, stacks, stories } from '../db/schema';
 import { aaPromptLines } from '../board/sync';
+import { getIdentity } from '../identity';
 import { chatJSON } from '../llm/minimax';
 
 /** Venture archetypes Runelabs actually ships and sells. */
@@ -112,7 +113,8 @@ export async function runStacks(): Promise<{ updated: number; failed: number }> 
 
   let updated = 0;
   let failed = 0;
-  for (const venture of VENTURES) {
+  const ventures = getIdentity().ventures ?? VENTURES;
+  for (const venture of ventures) {
     try {
       const existing = db.select().from(stacks).where(eq(stacks.venture, venture.slug)).get();
       const currentText = existing
@@ -120,8 +122,7 @@ export async function runStacks(): Promise<{ updated: number; failed: number }> 
         : '(no current recommendation — propose the initial stack)';
 
       const system =
-        'You are the CTO-advisor for Runelabs, a vibecoding startup farm that ships small ' +
-        'software ventures fast and sells them. Recommend the tech stack to ship the given ' +
+        `You are the CTO-advisor for ${getIdentity().brandContext}. Recommend the tech stack to ship the given ` +
         `venture TODAY (${new Date().toISOString().slice(0, 10)}). Optimize for: speed to MVP ` +
         'with AI-assisted development, low monthly run cost at MVP scale, boring-but-proven ' +
         'choices over hype, and easy handover on sale. ' +

@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { requireViewer } from '@/lib/auth/user';
+import { getIdentity } from '@/lib/identity';
 import { getStaleness, lastOkAt } from '@/lib/jobs';
 import { timeAgo } from '@/lib/feed';
 import NavLinks from '@/components/NavLinks';
@@ -32,7 +33,7 @@ export default async function HubLayout({ children }: { children: React.ReactNod
             className="mono flex shrink-0 items-center gap-2 text-[11.5px] font-semibold tracking-[0.16em] text-[var(--ink)]"
           >
             <span aria-hidden className="inline-block h-[10px] w-[3px]" style={{ background: 'var(--phosphor)' }} />
-            RUNELABS RADAR
+            {getIdentity().productName.toUpperCase()}
           </Link>
           <div className="hidden md:block">
             <NavLinks isAdmin={user?.role === 'admin'} />

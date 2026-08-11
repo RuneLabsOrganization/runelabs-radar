@@ -1,0 +1,16 @@
+{
+  "$comment": "Copy to radar.config.json and describe YOUR operation. Every LLM prompt (curation, brief, opportunities, stacks) and the UI branding read from here. All fields optional — defaults shown.",
+  "brandName": "Runelabs",
+  "productName": "Runelabs Radar",
+  "brandContext": "Runelabs — a vibecoding startup farm that ships many small AI-powered products fast",
+  "briefTitle": "Runelabs Morning Brief",
+  "ventures": [
+    { "slug": "saas-b2b", "label": "B2B SaaS", "hint": "multi-tenant dashboard product with subscriptions" },
+    { "slug": "ai-product", "label": "AI product", "hint": "product wrapping LLM/image/video APIs with credit billing" },
+    { "slug": "marketing-site", "label": "Marketing site", "hint": "high-conversion landing/marketing site with light CMS" },
+    { "slug": "mobile-app", "label": "Mobile app", "hint": "cross-platform consumer mobile app" },
+    { "slug": "ecommerce", "label": "E-commerce", "hint": "online store with payments and inventory" },
+    { "slug": "browser-extension", "label": "Browser extension", "hint": "Chrome/Edge extension with a paid tier" },
+    { "slug": "agent-service", "label": "Agent service", "hint": "productized autonomous agent doing work for clients" }
+  ]
+}

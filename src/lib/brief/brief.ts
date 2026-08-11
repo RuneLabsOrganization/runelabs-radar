@@ -2,6 +2,7 @@ import { and, desc, eq, gte } from 'drizzle-orm';
 import { getDb } from '../db';
 import { boardHistory, briefs, insights, stories } from '../db/schema';
 import { DOMAINS, type Domain } from '../domains';
+import { getIdentity } from '../identity';
 import { chatJSON, LlmError } from '../llm/minimax';
 
 interface InsightItem {
@@ -65,7 +66,7 @@ function quietDayMarkdown(date: string, historyLines: string[]): string {
       ? `\n\n## Board changes (last 7 days)\n\n${historyLines.map((l) => `- ${l}`).join('\n')}`
       : '';
   return (
-    `# Runelabs Morning Brief — ${date}\n\n` +
+    `# ${getIdentity().briefTitle} — ${date}\n\n` +
     'Quiet day: fewer than 3 curated stories in the last 24 hours. Nothing major to report.' +
     changes
   );
@@ -116,17 +117,16 @@ export async function runBrief(): Promise<{ wrote: boolean; insights: number }> 
     )
     .join('\n');
 
+  const id = getIdentity();
   const system =
-    'You write the internal morning brief for Runelabs, a vibecoding startup farm that ships small ' +
-    'AI products fast across six domains: coding, copy (marketing writing), image generation, ' +
-    'video generation, ads, and agentic automation. Write a concise markdown brief that starts ' +
-    `with the H1 title "# Runelabs Morning Brief — ${todayStr()}" and has three sections: ` +
+    `You write the internal morning brief for ${id.brandContext}. Write a concise markdown brief that starts ` +
+    `with the H1 title "# ${id.briefTitle} — ${todayStr()}" and has three sections: ` +
     '"## What happened" (the top stories, grouped where sensible), "## Why it matters for ' +
-    'Runelabs" (concrete implications for what the team builds), and "## Board changes" ' +
+    `${id.brandName}" (concrete implications for what the team builds), and "## Board changes" ` +
     '(summarize the recent Best-Right-Now board changes, or state there were none). Keep it ' +
     'tight and factual — a tool, not a newsletter.\n' +
     'Additionally produce "insights": 3-5 analyst notes that go BEYOND summarizing — trends, ' +
-    'shifts and calls to action a sharp analyst would flag for Runelabs. Each is ' +
+    `shifts and calls to action a sharp analyst would flag for ${id.brandName}. Each is ` +
     '{"headline": punchy claim (max ~12 words), "detail": 1-2 sentences of evidence/implication, ' +
     '"direction": "up" (rising, act on it) | "down" (fading, deprioritize) | "watch" (developing), ' +
     '"domain": optionally one of coding|copy|image|video|ads|agentic}.\n' +

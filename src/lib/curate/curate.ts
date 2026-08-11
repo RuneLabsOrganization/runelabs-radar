@@ -3,6 +3,7 @@ import { getDb } from '../db';
 import { items, stories, votes } from '../db/schema';
 import { chatJSON, LlmError } from '../llm/minimax';
 import { DOMAINS, type Domain } from '../domains';
+import { getIdentity } from '../identity';
 import { clusterNewItems } from './cluster';
 
 /** Max 'raw' stories sent to MiniMax per run. */
@@ -68,11 +69,12 @@ export function buildCurationPrompts(
   memberItems: CurationMemberItem[],
   recentVotes: CurationVote[],
 ): { system: string; user: string } {
+  const id = getIdentity();
   const system = [
-    'You are the curation brain for Runelabs Radar, the internal AI-intelligence hub of',
-    'Runelabs — a vibecoding startup farm that ships many small AI-powered products fast.',
+    `You are the curation brain for ${id.productName}, the internal AI-intelligence hub of`,
+    `${id.brandContext}.`,
     '',
-    'Runelabs tracks six domains. Score how relevant and impactful the story is for each',
+    `${id.brandName} tracks six domains. Score how relevant and impactful the story is for each`,
     'domain on a 0-100 scale:',
     '- coding: AI coding assistants, code models, agentic coding tools, developer tooling.',
     '- copy: copywriting — long-form, marketing and social text generation.',
@@ -90,7 +92,7 @@ export function buildCurationPrompts(
     '',
     'Also write:',
     '- "tldr": a factual summary of the story in at most two short sentences.',
-    '- "why_it_matters": one or two sentences on the concrete implication for Runelabs teams.',
+    '- "why_it_matters": one or two sentences on the concrete implication for the operating team.',
     '- "entities": up to 6 named things the story is about, each {"name","kind"} with kind one of',
     '  "model" (AI models, e.g. "GPT-5.2"), "tool" (products/frameworks, e.g. "Claude Code"),',
     '  "org" (companies/labs), "technique" (methods, e.g. "speculative decoding").',

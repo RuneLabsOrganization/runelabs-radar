@@ -3,6 +3,7 @@ import { aaModels, latestPatterns, topEntities } from '../analytics';
 import { getDb } from '../db';
 import { launches, opportunities, painPoints, stories } from '../db/schema';
 import { DOMAINS } from '../domains';
+import { getIdentity } from '../identity';
 import { chatJSON } from '../llm/minimax';
 import { promptLine } from '../prompt-hygiene';
 
@@ -292,7 +293,7 @@ export async function runOpportunities(): Promise<{
       : '(none yet)';
 
   const system =
-    'You are the opportunity scout for Runelabs, a startup farm that ships small AI products in ' +
+    `You are the opportunity scout for ${getIdentity().brandContext} — it ships small AI products in ` +
     '1-3 weeks with AI-assisted development and either sells them (flip) or keeps them for MRR ' +
     '(hold). From the intelligence below, detect concrete MONETIZABLE OPENINGS: an unmet paid ' +
     'need, newly-cheap capability, or under-served launch category a 1-2 person team could ' +

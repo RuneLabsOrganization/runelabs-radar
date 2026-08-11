@@ -1,12 +1,15 @@
 import type { Metadata } from 'next';
 import { config } from '@/lib/config';
+import { getIdentity } from '@/lib/identity';
 import './globals.css';
+
+const identity = getIdentity();
 
 export const metadata: Metadata = {
   metadataBase: new URL(config.siteUrl),
   title: {
-    default: 'Runelabs Radar — AI stack & opportunity intelligence',
-    template: '%s · Runelabs Radar',
+    default: `${identity.productName} — AI stack & opportunity intelligence`,
+    template: `%s · ${identity.productName}`,
   },
   description:
     'Independent, continuously-updated intelligence on the AI landscape: the best stack for each job right now, cost-benefit boards per domain, and monetizable openings detected from the noise.',
