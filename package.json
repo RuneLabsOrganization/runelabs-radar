@@ -10,10 +10,12 @@
     "job": "tsx worker/run.ts",
     "seed": "tsx scripts/seed.ts",
     "test": "vitest run",
-    "db:generate": "drizzle-kit generate"
+    "db:generate": "drizzle-kit generate",
+    "mcp": "tsx mcp/server.ts"
   },
   "dependencies": {
     "@huggingface/transformers": "^4.2.0",
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "@types/d3-hierarchy": "^3.1.7",
     "@types/three": "^0.185.1",
     "bcryptjs": "^3.0.2",
@@ -26,7 +28,8 @@
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "server-only": "^0.0.1",
-    "three": "^0.185.1"
+    "three": "^0.185.1",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.1.10",

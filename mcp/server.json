@@ -1,0 +1,16 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-09-29/server.schema.json",
+  "name": "io.github.RuneLabsOrganization/runelabs-radar",
+  "description": "AI stack & opportunity intelligence: daily brief, top scored signals, best-right-now cost-benefit board, stack playbooks and monetizable openings — from a self-hosted curation pipeline.",
+  "version": "0.1.0",
+  "repository": {
+    "url": "https://github.com/RuneLabsOrganization/runelabs-radar",
+    "source": "github"
+  },
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://mcp.runelabs.org/mcp"
+    }
+  ]
+}

@@ -26,3 +26,20 @@ services:
     restart: unless-stopped
     depends_on:
       - web
+
+  mcp:
+    build:
+      context: .
+      target: worker # full source + node_modules; different entrypoint
+    command: ['npx', 'tsx', 'mcp/server.ts']
+    ports:
+      - '127.0.0.1:3122:3122' # reverse proxy: mcp.<domain> or /<prefix> → here
+    env_file: .env
+    environment:
+      DATABASE_PATH: /data/radar.db
+      MCP_PORT: 3122
+    volumes:
+      - ./data:/data:ro # read-only mount — the MCP server never writes
+    restart: unless-stopped
+    depends_on:
+      - web

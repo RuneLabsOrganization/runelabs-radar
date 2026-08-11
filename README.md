@@ -1,8 +1,12 @@
 # Runelabs Radar
 
-Self-hosted AI intelligence hub for Runelabs: automated news ingestion → MiniMax curation per domain (coding, copy, image gen, video gen, ads, agentic) → web hub with team votes, a "Best Right Now" cost-benefit board, and a daily brief.
+Self-hosted AI intelligence hub: automated news ingestion → LLM curation per domain (coding, copy, image gen, video gen, ads, agentic) → web hub with team votes, a "Best Right Now" cost-benefit board, stack playbooks, opportunity dossiers and a daily brief. **MIT licensed — self-host it, point it at your own operation.**
 
 Design: [docs/superpowers/specs/2026-07-10-runelabs-radar-design.md](docs/superpowers/specs/2026-07-10-runelabs-radar-design.md)
+
+## Make it yours
+
+`cp radar.config.example.json radar.config.json` and describe **your** operation — every LLM prompt (curation, brief, opportunity scout, stack advisor) and the UI branding read from it. Sources are DB rows editable in Admin → Sources (adding a feed is a form, not a deploy).
 
 ## How it works
 
