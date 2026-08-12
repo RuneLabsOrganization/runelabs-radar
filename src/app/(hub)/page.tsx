@@ -16,9 +16,10 @@ import {
 } from '@/lib/analytics';
 import { seriesFor } from '@/lib/metrics';
 import { isDomain } from '@/lib/domains';
-import { splitFeed, timeAgo } from '@/lib/feed';
+import { domainAffinity, personalScore, splitFeed, timeAgo } from '@/lib/feed';
 import { safeHttpUrl } from '@/lib/safe-url';
 import { visitAnchor } from '@/lib/visits';
+import { canonicalEntityKey } from '@/lib/entity';
 import { config } from '@/lib/config';
 import { getIdentity } from '@/lib/identity';
 import { parseDomainScores } from '@/components/DomainChips';
@@ -158,12 +159,24 @@ export default async function BriefingPage() {
   );
 
   const anchor = user ? visitAnchor(user) : null;
+  // personalized re-ranking: logged-in users get scores nudged by their own
+  // vote history (anonymous viewers get the machine's raw ranking)
+  const affinity = user
+    ? domainAffinity(
+        db
+          .select({ value: votes.value, domainScores: stories.domainScores })
+          .from(votes)
+          .innerJoin(stories, eq(votes.storyId, stories.id))
+          .where(eq(votes.userId, user.id))
+          .all(),
+      )
+    : {};
   const contacts = curated.map((story) => {
     const scores = parseDomainScores(story.domainScores);
     return {
       story,
       scores,
-      score: story.topScore,
+      score: personalScore(story.topScore, story.domainScores, affinity),
       createdAt: story.createdAt,
       isNew: anchor ? story.createdAt > anchor : false,
     };
@@ -206,7 +219,7 @@ export default async function BriefingPage() {
   );
   const trendFor = (p: PatternRow): number[] | null => {
     if (!p.subject) return null;
-    if (p.kind === 'entity-surge') return surgeSeries.get(p.subject.toLowerCase()) ?? null;
+    if (p.kind === 'entity-surge') return surgeSeries.get(canonicalEntityKey(p.subject)) ?? null;
     if (p.kind === 'sector-spike' && isDomain(p.subject)) {
       const key = p.subject;
       return days.map((d) => d.byDomain[key]);

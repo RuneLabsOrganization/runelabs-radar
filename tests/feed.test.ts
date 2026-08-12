@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { signalLevel, splitFeed, timeAgo, TOP_MAX } from '@/lib/feed';
+import { domainAffinity, personalScore, signalLevel, splitFeed, timeAgo, AFFINITY_MAX_BOOST, TOP_MAX } from '@/lib/feed';
 import { filterBySector, type FeedEntry } from '@/components/FilteredFeed';
 
 function contact(score: number, minutesAgo: number) {
@@ -76,6 +76,62 @@ describe('filterBySector', () => {
     expect(filterBySector(entries, 'coding').map((e) => e.story.id)).toEqual([1]);
     expect(filterBySector(entries, 'video').map((e) => e.story.id)).toEqual([2, 3]);
     expect(filterBySector(entries, 'ads')).toEqual([]);
+  });
+});
+
+describe('domainAffinity', () => {
+  it('builds a taste vector from up/down votes', () => {
+    const affinity = domainAffinity([
+      { value: 1, domainScores: JSON.stringify({ coding: 80, agentic: 60 }) },
+      { value: 1, domainScores: JSON.stringify({ coding: 60 }) },
+      { value: -1, domainScores: JSON.stringify({ video: 90 }) },
+    ]);
+    expect(affinity.coding).toBeCloseTo(0.7); // mean upvote 70, no downvotes
+    expect(affinity.agentic).toBeCloseTo(0.6);
+    expect(affinity.video).toBeCloseTo(-0.9);
+  });
+
+  it('nets upvotes against downvotes per domain', () => {
+    const affinity = domainAffinity([
+      { value: 1, domainScores: JSON.stringify({ coding: 80 }) },
+      { value: -1, domainScores: JSON.stringify({ coding: 40 }) },
+    ]);
+    expect(affinity.coding).toBeCloseTo(0.4); // (80 − 40) / 100
+  });
+
+  it('ignores zero values and malformed JSON', () => {
+    expect(domainAffinity([{ value: 0, domainScores: JSON.stringify({ coding: 80 }) }])).toEqual({});
+    expect(domainAffinity([{ value: 1, domainScores: 'not json' }])).toEqual({});
+  });
+});
+
+describe('personalScore', () => {
+  it('boosts stories in domains the user upvotes', () => {
+    const affinity = domainAffinity([{ value: 1, domainScores: JSON.stringify({ coding: 100 }) }]);
+    // affinity coding = 1 → boost = 1 × 0.8 × 12 ≈ 10
+    expect(personalScore(50, JSON.stringify({ coding: 80 }), affinity)).toBe(60);
+  });
+
+  it('penalizes domains the user only downvotes', () => {
+    const affinity = domainAffinity([{ value: -1, domainScores: JSON.stringify({ video: 100 }) }]);
+    expect(personalScore(50, JSON.stringify({ video: 100 }), affinity)).toBe(50 - AFFINITY_MAX_BOOST);
+  });
+
+  it('caps the boost and never leaves [0, 100]', () => {
+    expect(personalScore(97, JSON.stringify({ coding: 100 }), { coding: 1 })).toBe(100);
+    expect(personalScore(3, JSON.stringify({ coding: 100 }), { coding: -1 })).toBe(0);
+  });
+
+  it('uses the single best-matching domain rather than stacking', () => {
+    const affinity = { coding: 1, agentic: 1 };
+    const one = personalScore(50, JSON.stringify({ coding: 50 }), affinity);
+    const two = personalScore(50, JSON.stringify({ coding: 50, agentic: 50 }), affinity);
+    expect(two).toBe(one);
+  });
+
+  it('is a no-op with empty affinity or malformed scores', () => {
+    expect(personalScore(50, JSON.stringify({ coding: 80 }), {})).toBe(50);
+    expect(personalScore(50, 'junk', { coding: 1 })).toBe(50);
   });
 });
 

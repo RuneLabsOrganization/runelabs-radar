@@ -62,3 +62,74 @@ export function splitFeed<T extends Scored>(list: T[]): FeedSplit<T> {
   const lowCount = byScore.filter((e) => e.score < SCAN_MIN).length;
   return { top, scan, lowCount };
 }
+
+/**
+ * Personalized re-ranking (heuristic v1): a per-domain taste vector derived
+ * from the user's own votes.
+ *
+ * affinity_d = (mean domain score of upvoted stories) − (mean of downvoted),
+ * expressed in [-1, 1]. Upvoting high-coding stories raises `coding`; a domain
+ * the user only ever downvotes sinks below zero.
+ */
+export function domainAffinity(
+  rows: { value: number; domainScores: string | null }[],
+): Partial<Record<string, number>> {
+  const up = new Map<string, { sum: number; n: number }>();
+  const down = new Map<string, { sum: number; n: number }>();
+  for (const row of rows) {
+    let scores: Record<string, number> = {};
+    try {
+      scores = JSON.parse(row.domainScores ?? '{}') as Record<string, number>;
+    } catch {
+      continue;
+    }
+    const acc = row.value === 1 ? up : row.value === -1 ? down : null;
+    if (!acc) continue;
+    for (const [d, v] of Object.entries(scores)) {
+      if (typeof v !== 'number' || v <= 0) continue;
+      const e = acc.get(d) ?? { sum: 0, n: 0 };
+      e.sum += v;
+      e.n += 1;
+      acc.set(d, e);
+    }
+  }
+  const out: Partial<Record<string, number>> = {};
+  for (const d of new Set([...up.keys(), ...down.keys()])) {
+    const u = up.get(d);
+    const dn = down.get(d);
+    const meanUp = u ? u.sum / u.n : 0;
+    const meanDown = dn ? dn.sum / dn.n : 0;
+    out[d] = Math.max(-1, Math.min(1, (meanUp - meanDown) / 100));
+  }
+  return out;
+}
+
+/** Cap on the absolute personalization shift, in score points. */
+export const AFFINITY_MAX_BOOST = 12;
+
+/**
+ * Applies the taste vector to a story's top score. The boost uses the
+ * single best-matching domain (max, not sum) so broad stories don't stack
+ * boosts; result stays within ±AFFINITY_MAX_BOOST and [0, 100].
+ */
+export function personalScore(
+  topScore: number,
+  domainScores: string | null,
+  affinity: Partial<Record<string, number>>,
+): number {
+  let scores: Record<string, number> = {};
+  try {
+    scores = JSON.parse(domainScores ?? '{}') as Record<string, number>;
+  } catch {
+    return topScore;
+  }
+  let best = 0;
+  for (const [d, v] of Object.entries(scores)) {
+    const a = affinity[d] ?? 0;
+    if (a === 0 || typeof v !== 'number') continue;
+    const contribution = a * (v / 100);
+    if (Math.abs(contribution) > Math.abs(best)) best = contribution;
+  }
+  const boost = Math.round(best * AFFINITY_MAX_BOOST);
+  return Math.max(0, Math.min(100, topScore + boost));
+}
