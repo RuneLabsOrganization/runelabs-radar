@@ -116,14 +116,13 @@ export default function ScopeHero({
     let width = 0;
     let height = 0;
     let dpr = 1;
-    let drawStatic: (() => void) | null = null;
     const resize = () => {
       const w = wrap.clientWidth;
       const h = wrap.clientHeight;
       if (w === 0 || h === 0) return;
       const nextDpr = Math.min(window.devicePixelRatio || 1, 1.5);
       // touching canvas.width/height wipes the backing store — only resize on
-      // real change, and repaint the static frame afterwards (reduced motion)
+      // real change (the next RAF frame repaints immediately after)
       if (w === width && h === height && nextDpr === dpr) return;
       width = w;
       height = h;
@@ -132,7 +131,6 @@ export default function ScopeHero({
       canvas.height = Math.round(height * dpr);
       canvas.style.width = `${width}px`;
       canvas.style.height = `${height}px`;
-      if (drawStatic) drawStatic();
     };
     resize();
     const ro = new ResizeObserver(resize);
@@ -220,10 +218,11 @@ export default function ScopeHero({
       ctx.globalAlpha = 1;
 
       // blips: brighten as the beam passes, then decay; new contacts pulse
+      // (pulse is the flashy bit — it stays behind the reduced-motion gate)
       for (const p of placed) {
         const d = ((sweepAngle - p.angle) % TWO_PI + TWO_PI) % TWO_PI;
         let bright = 0.26 + Math.exp(-d * 2.6) * 0.95;
-        if (p.b.isNew) bright *= 0.82 + 0.18 * Math.sin(t * 2.4 + p.b.id);
+        if (p.b.isNew && !reduced) bright *= 0.82 + 0.18 * Math.sin(t * 2.4 + p.b.id);
         bright = Math.min(1, bright);
         const { x, y } = px(p);
         const rPx = 2.4 + (p.b.score / 100) * 3;
@@ -265,16 +264,18 @@ export default function ScopeHero({
       draw(sweepAngle, now / 1000);
     };
     const loop = (now: number) => {
-      frame(now);
+      // a single bad frame must never kill the sweep — reschedule first
       raf = requestAnimationFrame(loop);
+      try {
+        frame(now);
+      } catch (e) {
+        console.error('[scope] frame failed:', e);
+      }
     };
-    if (reduced) {
-      // single static frame: beam parked, blips mid-glow; repainted on resize
-      drawStatic = () => draw(1.2, 0);
-      drawStatic();
-    } else {
-      raf = requestAnimationFrame(loop);
-    }
+    // The sweep is slow ambient motion (a revolution every ~8s, like a clock
+    // hand) — it runs even under prefers-reduced-motion; only the new-contact
+    // pulse, counters, draw-ins and staggers are gated by it.
+    raf = requestAnimationFrame(loop);
 
     const onVisibility = () => {
       if (reduced) return;
