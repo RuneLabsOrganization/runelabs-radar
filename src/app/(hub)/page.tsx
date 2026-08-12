@@ -22,6 +22,7 @@ import { visitAnchor } from '@/lib/visits';
 import { config } from '@/lib/config';
 import { getIdentity } from '@/lib/identity';
 import { parseDomainScores } from '@/components/DomainChips';
+import { hypeIndex } from '@/lib/science/hype';
 import ChartFrame from '@/components/ChartFrame';
 import ActivityTrace from '@/components/ActivityTrace';
 import AnalystNotes from '@/components/AnalystNotes';
@@ -186,6 +187,7 @@ export default async function BriefingPage() {
 
   const days = dailyDomainCounts(14);
   const entities = topEntities(8);
+  const hype = new Map(hypeIndex(12).map((h) => [h.name.toLowerCase(), h.score]));
   const notes = latestInsights();
   const echoes = echoStats();
   const noticed = latestPatterns(6);
@@ -249,7 +251,7 @@ export default async function BriefingPage() {
         </div>
         <div className="w-full shrink-0 md:w-[240px]">
           <div className="readout mb-2.5">most mentioned &middot; 7d</div>
-          <EntityBars entities={entities} />
+          <EntityBars entities={entities} hype={hype} />
         </div>
       </div>
 

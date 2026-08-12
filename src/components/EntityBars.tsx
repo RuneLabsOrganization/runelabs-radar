@@ -11,7 +11,14 @@ function delta(e: EntityCount): { text: string; color: string } {
 }
 
 /** Most-mentioned models/tools this week, with week-over-week movement. */
-export default function EntityBars({ entities }: { entities: EntityCount[] }) {
+export default function EntityBars({
+  entities,
+  hype,
+}: {
+  entities: EntityCount[];
+  /** name (lowercase) → hype-vs-substance score 0-100, from lib/science/hype */
+  hype?: Map<string, number>;
+}) {
   if (entities.length === 0) {
     return (
       <p className="mono text-[11px]" style={{ color: 'var(--ink-4)' }}>
@@ -24,13 +31,20 @@ export default function EntityBars({ entities }: { entities: EntityCount[] }) {
     <ul className="flex flex-col gap-[7px]">
       {entities.map((e) => {
         const d = delta(e);
+        const h = hype?.get(e.name.toLowerCase());
+        const hColor = h === undefined ? '' : h > 70 ? 'var(--amber)' : h < 30 ? 'var(--phosphor)' : 'var(--ink-4)';
         return (
-          <li key={`${e.kind}:${e.name.toLowerCase()}`} title={`${e.name} (${e.kind}) — ${e.count} mentions this week, ${e.prev} last week`}>
+          <li key={`${e.kind}:${e.name.toLowerCase()}`} title={`${e.name} (${e.kind}) — ${e.count} mentions this week, ${e.prev} last week${h !== undefined ? ` · hype/substance ${h}` : ''}`}>
             <div className="flex items-baseline justify-between gap-2">
               <span className="mono min-w-0 truncate text-[11px]" style={{ color: 'var(--ink-2)' }}>
                 {e.name}
               </span>
               <span className="mono shrink-0 text-[10.5px]" style={{ color: 'var(--ink-3)' }}>
+                {h !== undefined && (
+                  <span className="mr-1.5" style={{ color: hColor }} title="hype vs substance — high = loud, low = shipping">
+                    H/S {h}
+                  </span>
+                )}
                 {e.count}
                 <span className="ml-1.5" style={{ color: d.color }}>
                   {d.text}

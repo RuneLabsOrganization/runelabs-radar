@@ -190,6 +190,30 @@ describe('anomaly detectors', () => {
     expect(hits.some((h) => h.subject === 'coding' && h.score >= 2)).toBe(true);
   });
 
+  it('weekday-aware baseline catches a same-weekday spike the flat baseline dilutes', () => {
+    const db = useTestDb();
+    const dowOf = (daysAgo: number) => new Date(Date.now() - daysAgo * 864e5).getUTCDay();
+    const yesterdayDow = dowOf(1);
+    const insert = (daysAgo: number, n: number) => {
+      for (let i = 0; i < n; i++) {
+        db.insert(stories)
+          .values({
+            title: `w${daysAgo}-${i}`,
+            status: 'curated',
+            topScore: 50,
+            domainScores: JSON.stringify({ coding: 80, copy: 0, image: 0, video: 0, ads: 0, agentic: 0 }),
+            createdAt: new Date(Date.now() - daysAgo * 864e5),
+          })
+          .run();
+      }
+    };
+    // other weekdays busy (12), yesterday's weekday quiet (2) for 3 weeks
+    for (let d = 2; d <= 21; d++) insert(d, dowOf(d) === yesterdayDow ? 2 : 12);
+    insert(1, 10); // yesterday: huge for ITS weekday (10 vs 2,2,2), invisible vs the flat ~11 mean
+    const hits = detectSectorSpikes();
+    expect(hits.some((h) => h.subject === 'coding' && h.score >= 2)).toBe(true);
+  });
+
   it('detectEntitySurges fires on new and surging entities', () => {
     const db = useTestDb();
     const add = (name: string, daysAgo: number) =>

@@ -29,9 +29,17 @@ export function detectSectorSpikes(): RawDetection[] {
   if (days.length < 7) return [];
   const out: RawDetection[] = [];
   const target = days[days.length - 2]; // yesterday, complete
+  const targetDow = new Date(`${target.date}T00:00:00Z`).getUTCDay();
   for (const [domain, count] of Object.entries(target.byDomain)) {
-    const baseline = days.slice(0, -2).map((d) => d.byDomain[domain as keyof typeof d.byDomain]);
-    const nonzeroDays = baseline.filter((v) => v > 0).length;
+    const flat = days.slice(0, -2).map((d) => d.byDomain[domain as keyof typeof d.byDomain]);
+    // Weekday-aware baseline: weekends run quiet, so compare a Saturday to
+    // Saturdays. Falls back to the flat 3-week baseline with <3 samples.
+    const sameWeekday = days
+      .slice(0, -2)
+      .filter((d) => new Date(`${d.date}T00:00:00Z`).getUTCDay() === targetDow)
+      .map((d) => d.byDomain[domain as keyof typeof d.byDomain]);
+    const baseline = sameWeekday.length >= 3 ? sameWeekday : flat;
+    const nonzeroDays = flat.filter((v) => v > 0).length;
     if (nonzeroDays < 5 || count < 3) continue;
     const z = zScore(count, baseline);
     if (z >= 2) {
