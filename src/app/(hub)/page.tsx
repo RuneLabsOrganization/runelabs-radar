@@ -7,6 +7,7 @@ import { DOMAINS, DOMAIN_COLORS, DOMAIN_LABELS, DOMAIN_MEMBERSHIP_THRESHOLD, typ
 import {
   dailyDomainCounts,
   domainMomentum,
+  echoStats,
   entityDailySeries,
   latestInsights,
   latestPatterns,
@@ -34,6 +35,7 @@ import ScanRow from '@/components/ScanRow';
 import MarkSeen from '@/components/MarkSeen';
 import SectionHeader from '@/components/SectionHeader';
 import SectorStrip, { type SectorStat } from '@/components/SectorStrip';
+import ScopeHero from '@/components/ScopeHero';
 
 type ItemAgg = { count: number; firstUrl: string | null; sourceName: string | null };
 type VoteAgg = { up: number; down: number; mine: 1 | -1 | 0 };
@@ -240,25 +242,62 @@ export default async function BriefingPage() {
   const noticedTrends = patternTrends.slice(0, 3);
   const worthKnowingDate = notes?.date ?? noticed[0]?.date ?? null;
 
+  // ── hero scope data: real contacts, counters, rotating insights ──
+  const tracked24h =
+    db
+      .select({ c: count() })
+      .from(stories)
+      .where(and(eq(stories.status, 'curated'), gt(stories.createdAt, new Date(now - 24 * 36e5))))
+      .get()?.c ?? 0;
+  const scopeBlips = contacts.slice(0, 40).map((c) => ({
+    id: c.story.id,
+    title: c.story.title,
+    domain: topDomain(c.scores),
+    score: c.story.topScore,
+    isNew: c.isNew,
+  }));
+  const scopeInsights = notes
+    ? notes.items.slice(0, 3).map((n) => ({ headline: n.headline, detail: n.detail, direction: n.direction }))
+    : noticed.slice(0, 3).map((p) => ({
+        headline: p.headline,
+        detail: p.detail,
+        direction: 'watch' as const,
+      }));
+
   return (
     <div className="mx-auto max-w-[860px] px-6 py-7">
       {user && <MarkSeen />}
 
-      <div className="readout">
-        {dateLine(new Date())} &middot; {contacts.length} stories tracked
-        {freshTotal > 0 && (
-          <span style={{ color: 'var(--phosphor)' }}> &middot; {freshTotal} new since your last visit</span>
-        )}
-      </div>
-      <h1 className="mt-1 text-[17px] font-semibold tracking-[-0.01em]">Today</h1>
+      <div className="readout">{dateLine(new Date())}</div>
+      <h1 className="mb-5 mt-1 text-[17px] font-semibold tracking-[-0.01em]">Today</h1>
+
+      <ScopeHero
+        blips={scopeBlips}
+        kpis={[
+          {
+            label: 'stories tracked · 24h',
+            value: tracked24h,
+            series: days.map((d) => d.total),
+          },
+          { label: 'new since your last visit', value: freshTotal },
+          { label: 'confirmed by 2+ sources · 7d', value: echoStats().multiSource },
+        ]}
+        insights={scopeInsights}
+      />
+
+      <div className="mt-8" />
 
       {/* the news leads — hero + featured top signals */}
       <SectionHeader label="Top signals" count={top.length} />
       {hero ? (
         <div>
-          <SignalEntry {...entryProps(hero)} hero />
-          {featured.map((c) => (
-            <SignalEntry key={c.story.id} {...entryProps(c)} />
+          <div className="anim-in">
+            <SignalEntry {...entryProps(hero)} hero />
+          </div>
+          {featured.map((c, i) => (
+            <div key={c.story.id} className="anim-in" style={{ animationDelay: `${(i + 1) * 50}ms` }}>
+              <SignalEntry {...entryProps(c)} />
+            </div>
           ))}
         </div>
       ) : (

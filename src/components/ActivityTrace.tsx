@@ -30,6 +30,28 @@ export default function ActivityTrace({
     () => new Set(focus ? DOMAINS.filter((d) => d !== focus) : []),
   );
   const [hoverI, setHoverI] = useState<number | null>(null);
+  // draw-in on first scroll into view (instant under reduced motion)
+  const [drawn, setDrawn] = useState(false);
+  const rootRef = React.useRef<HTMLDivElement>(null);
+  React.useEffect(() => {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      setDrawn(true);
+      return;
+    }
+    const el = rootRef.current;
+    if (!el) return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) {
+          setDrawn(true);
+          io.disconnect();
+        }
+      },
+      { threshold: 0.25 },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
 
   const maxY = useMemo(() => Math.max(1, ...days.map((d) => d.total)), [days]);
   const x = (i: number) => PAD.left + (days.length <= 1 ? 0 : (i / (days.length - 1)) * PLOT_W);
@@ -63,7 +85,7 @@ export default function ActivityTrace({
   const yTicks = [0, Math.ceil(maxY / 2), maxY];
 
   return (
-    <div className="relative">
+    <div className="relative" ref={rootRef}>
       <svg
         viewBox={`0 0 ${W} ${H}`}
         className="block w-full"
@@ -143,10 +165,14 @@ export default function ActivityTrace({
           ))}
 
         {/* total volume as context area */}
-        <polygon points={totalArea} fill="var(--grat-soft)" />
+        <polygon
+          points={totalArea}
+          fill="var(--grat-soft)"
+          style={{ opacity: drawn ? 1 : 0, transition: 'opacity 500ms ease 450ms' }}
+        />
 
         {/* sector traces */}
-        {DOMAINS.filter((d) => !hidden.has(d)).map((d) => (
+        {DOMAINS.filter((d) => !hidden.has(d)).map((d, di) => (
           <polyline
             key={d}
             points={days.map((day, i) => `${x(i)},${y(day.byDomain[d])}`).join(' ')}
@@ -155,6 +181,12 @@ export default function ActivityTrace({
             strokeWidth={1.5}
             strokeLinejoin="round"
             opacity={0.9}
+            pathLength={1}
+            strokeDasharray={1}
+            strokeDashoffset={drawn ? 0 : 1}
+            style={{
+              transition: `stroke-dashoffset 900ms cubic-bezier(0.22, 1, 0.36, 1) ${di * 90}ms`,
+            }}
           />
         ))}
 

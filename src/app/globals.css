@@ -115,6 +115,30 @@ a {
   animation: fade-up 360ms ease-out both;
 }
 
+/* hero insight rotation — crossfade on content swap (re-keyed element) */
+@keyframes insight-in {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+}
+
+.scope-insight {
+  animation: insight-in 400ms ease-out both;
+}
+
+/* SectionHeader hairline grows in on view */
+@keyframes hairline-grow {
+  from {
+    transform: scaleX(0);
+  }
+}
+
+.hairline-grow {
+  transform-origin: left;
+  animation: hairline-grow 600ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
 .hover-raise {
   transition:
     transform 140ms ease,
@@ -170,7 +194,9 @@ a {
 
 @media (prefers-reduced-motion: reduce) {
   .anim-bar,
-  .anim-in {
+  .anim-in,
+  .scope-insight,
+  .hairline-grow {
     animation: none;
   }
   .hover-raise,

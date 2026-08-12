@@ -17,7 +17,7 @@ export default function SectionHeader({
         {tone === 'phosphor' && <span aria-hidden>&#9646; </span>}
         {label}
       </span>
-      <span aria-hidden className="h-px flex-1" style={{ background: 'var(--grat-soft)' }} />
+      <span aria-hidden className="hairline-grow h-px flex-1" style={{ background: 'var(--grat-soft)' }} />
       {count !== undefined && (
         <span className="mono text-[10.5px]" style={{ color: 'var(--ink-4)' }}>
           {count}
