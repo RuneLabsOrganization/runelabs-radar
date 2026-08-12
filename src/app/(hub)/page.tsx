@@ -27,6 +27,7 @@ import { parseDomainScores, topDomain } from '@/components/DomainChips';
 import { hypeIndex } from '@/lib/science/hype';
 import ChartFrame from '@/components/ChartFrame';
 import ActivityTrace from '@/components/ActivityTrace';
+import ActivityPanel from '@/components/ActivityPanel';
 import AnalystNotes from '@/components/AnalystNotes';
 import AnomalyFeed from '@/components/AnomalyFeed';
 import EntityBars from '@/components/EntityBars';
@@ -388,8 +389,12 @@ export default async function BriefingPage() {
       />
       <div className="mt-5 flex flex-col gap-7 md:flex-row">
         <div className="min-w-0 flex-1">
-          <ChartFrame title="activity — 14-day sweep" brand={chartBrand}>
-            <ActivityTrace days={days} spikes={spikes} />
+          <ChartFrame
+            title="activity — 14-day sweep"
+            brand={chartBrand}
+            caption={`volume = curated stories/day · sector membership ≥ 40 · as-of ${new Date().toISOString().slice(0, 10)} UTC`}
+          >
+            <ActivityPanel days={days} spikes={spikes} />
           </ChartFrame>
         </div>
         <div className="w-full shrink-0 md:w-[240px]">

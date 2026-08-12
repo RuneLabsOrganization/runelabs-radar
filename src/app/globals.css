@@ -139,6 +139,17 @@ a {
   animation: hairline-grow 600ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
+/* heatmap cell entrance (staggered via inline animation-delay) */
+@keyframes heat-in {
+  from {
+    opacity: 0;
+  }
+}
+
+.heat-cell {
+  animation: heat-in 300ms ease both;
+}
+
 .hover-raise {
   transition:
     transform 140ms ease,
@@ -196,7 +207,8 @@ a {
   .anim-bar,
   .anim-in,
   .scope-insight,
-  .hairline-grow {
+  .hairline-grow,
+  .heat-cell {
     animation: none;
   }
   .hover-raise,

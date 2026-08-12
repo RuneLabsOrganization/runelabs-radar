@@ -141,7 +141,11 @@ export default async function BoardPage() {
 
           <section id="forecast" className="scroll-mt-24">
             <SectionHeader label="Forecast — price of frontier intelligence" tone="phosphor" />
-            <ChartFrame title="frontier price forecast" brand={chartBrand}>
+            <ChartFrame
+              title="frontier price forecast"
+              brand={chartBrand}
+              caption={`forecast = frontier blended price, 30d horizon · linear trend over realized prices · as-of ${aa.fetchedAt}`}
+            >
               <ForecastChart forecast={forecastFrontierPrice()} />
             </ChartFrame>
             <div className="mt-6">

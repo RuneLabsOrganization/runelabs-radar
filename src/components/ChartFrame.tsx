@@ -12,10 +12,13 @@ import { exportChartAsPng } from '@/lib/export-png';
 export default function ChartFrame({
   title,
   brand,
+  caption,
   children,
 }: {
   title: string;
   brand: string;
+  /** derivation formula / as-of line under the chart (TAPE-style honesty) */
+  caption?: string;
   children: React.ReactNode;
 }) {
   const id = useId().replace(/[^a-zA-Z0-9_-]/g, '');
@@ -51,6 +54,11 @@ export default function ChartFrame({
         {label}
       </button>
       <div id={id}>{children}</div>
+      {caption && (
+        <p className="mono mt-1 text-[10px]" style={{ color: 'var(--ink-4)' }}>
+          {caption}
+        </p>
+      )}
     </div>
   );
 }

@@ -18,6 +18,7 @@ import { allEntityNames, matchEntity } from '@/lib/stacks/match';
 import { topEntitiesInDomain } from '@/lib/entity-extras';
 import { parseDomainScores } from '@/components/DomainChips';
 import ActivityTrace from '@/components/ActivityTrace';
+import ActivityPanel from '@/components/ActivityPanel';
 import ScanRow from '@/components/ScanRow';
 import SectionHeader from '@/components/SectionHeader';
 import SectorStrip, { type SectorStat } from '@/components/SectorStrip';
@@ -162,7 +163,7 @@ export default async function DomainPage({ params }: { params: Promise<{ slug: s
       </div>
 
       <SectionHeader label="Sector activity — 14-day sweep" />
-      <ActivityTrace days={dailyDomainCounts(14)} focus={slug} />
+      <ActivityPanel days={dailyDomainCounts(14)} focus={slug} />
 
       <div className="grid gap-10 lg:grid-cols-[minmax(0,1fr)_240px]">
         <div className="min-w-0">
