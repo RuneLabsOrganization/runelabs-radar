@@ -11,7 +11,7 @@ Design: [docs/superpowers/specs/2026-07-10-runelabs-radar-design.md](docs/superp
 ## How it works
 
 - **worker** (node-cron): ingests ~19 sources every 30 min (RSS, Hacker News, Reddit, arXiv, Hugging Face, GitHub trending), clusters + scores stories hourly with MiniMax, drafts weekly board proposals (Artificial Analysis API + benchmark snapshots), writes a daily brief at 07:00.
-- **web** (Next.js): the hub — Today feed with "since your last visit", per-domain tabs, board with editable Runelabs verdicts, brief archive, admin (sources health, job runs, proposal review).
+- **web** (Next.js): the hub — Today feed with "since your last visit", per-domain tabs, board with editable Runelabs verdicts, brief archive, admin (sources health, job runs, proposal review). Public surfaces: `/changelog.xml` + `/brief.xml` RSS feeds, `/embed/board` iframe widget, `/story/[id]` + `/entity/[name]` SEO pages, and a read-only MCP server at `/mcp`.
 - **SQLite** (WAL) shared by both, one file under `data/`.
 
 Stories are never blackholed: if MiniMax is down or the daily call cap is hit, items still appear in the raw feed.
