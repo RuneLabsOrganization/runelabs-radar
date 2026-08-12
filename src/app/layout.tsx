@@ -13,8 +13,16 @@ export const metadata: Metadata = {
   },
   description:
     'Independent, continuously-updated intelligence on the AI landscape: the best stack for each job right now, cost-benefit boards per domain, and monetizable openings detected from the noise.',
+  alternates: {
+    types: {
+      'application/rss+xml': [
+        { url: '/changelog.xml', title: `${identity.productName} — Changelog` },
+        { url: '/brief.xml', title: identity.briefTitle },
+      ],
+    },
+  },
   openGraph: {
-    siteName: 'Runelabs Radar',
+    siteName: identity.productName,
     type: 'website',
   },
   twitter: {
