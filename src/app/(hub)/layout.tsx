@@ -37,10 +37,10 @@ export default async function HubLayout({ children }: { children: React.ReactNod
             <span aria-hidden className="inline-block h-[10px] w-[3px]" style={{ background: 'var(--phosphor)' }} />
             {getIdentity().productName.toUpperCase()}
           </Link>
-          <div className="hidden md:block">
+          <div className="hidden lg:block">
             <NavLinks isAdmin={user?.role === 'admin'} />
           </div>
-          <div className="mono ml-auto hidden items-center gap-4 text-[10.5px] tracking-[0.08em] uppercase md:flex">
+          <div className="mono ml-auto hidden items-center gap-4 text-[10.5px] tracking-[0.08em] uppercase lg:flex">
             <Link href="/search" className="transition-colors hover:text-[var(--ink-2)]" style={{ color: 'var(--ink-3)' }}>
               search
             </Link>

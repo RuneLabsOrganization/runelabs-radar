@@ -44,7 +44,7 @@ export default function MobileNav({
   }, [open]);
 
   return (
-    <div className="ml-auto md:hidden">
+    <div className="ml-auto lg:hidden">
       <button
         type="button"
         aria-label={open ? 'Close menu' : 'Open menu'}

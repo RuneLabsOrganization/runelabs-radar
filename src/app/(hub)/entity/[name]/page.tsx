@@ -8,7 +8,7 @@ import { entityDailySeries } from '@/lib/analytics';
 import { hypeIndex } from '@/lib/science/hype';
 import { timeAgo } from '@/lib/feed';
 import { getIdentity } from '@/lib/identity';
-import { resolveEntity } from '@/lib/entity';
+import { resolveEntity, canonicalEntityKey } from '@/lib/entity';
 import MiniTrend from '@/components/MiniTrend';
 
 interface EntityRow {
@@ -41,7 +41,7 @@ export default async function EntityPage({ params }: { params: Promise<{ name: s
   const db = getDb();
   const needle = entity.name.toLowerCase();
 
-  const series = entityDailySeries([entity.name], 14).get(needle) ?? [];
+  const series = entityDailySeries([entity.name], 14).get(canonicalEntityKey(entity.name)) ?? [];
   const hype = hypeIndex(25).find((h) => h.name.toLowerCase() === needle);
 
   // velocity metrics for series whose entity contains the name (github/hf/npm)
@@ -73,8 +73,11 @@ export default async function EntityPage({ params }: { params: Promise<{ name: s
     })
     .from(stories)
     .where(
+      // canonical-key match in SQL: strip the separators canonicalEntityKey strips,
+      // so "GPT 5" / "GPT-5" variants of the entity all match
       sql`${stories.status} = 'curated' AND EXISTS (
-        SELECT 1 FROM json_each(${stories.entities}) e WHERE lower(e.value->>'name') = ${needle}
+        SELECT 1 FROM json_each(${stories.entities}) e
+        WHERE replace(replace(replace(replace(replace(lower(e.value->>'name'),' ',''),'-',''),'.',''),'_',''),'/','') = ${canonicalEntityKey(entity.name)}
       )`,
     )
     .orderBy(desc(stories.createdAt))
@@ -85,7 +88,7 @@ export default async function EntityPage({ params }: { params: Promise<{ name: s
     hype === undefined ? 'var(--ink-4)' : hype.score > 70 ? 'var(--amber)' : hype.score < 30 ? 'var(--phosphor)' : 'var(--ink-3)';
 
   return (
-    <>
+    <div className="mx-auto max-w-[760px] px-6 py-7">
       <p className="readout">entity watch</p>
       <h1 className="mt-1 text-[17px] font-semibold tracking-[-0.01em]">{entity.name}</h1>
       <div className="mono mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10.5px]" style={{ color: 'var(--ink-4)' }}>
@@ -148,6 +151,6 @@ export default async function EntityPage({ params }: { params: Promise<{ name: s
           )}
         </div>
       </div>
-    </>
+    </div>
   );
 }
