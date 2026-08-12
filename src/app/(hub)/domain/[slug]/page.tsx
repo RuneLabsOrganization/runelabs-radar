@@ -1,8 +1,9 @@
 import { notFound } from 'next/navigation';
+import Link from 'next/link';
 import { and, desc, eq, gt, inArray } from 'drizzle-orm';
 import { requireViewer } from '@/lib/auth/user';
 import { getDb } from '@/lib/db';
-import { items, sources, stories, votes, domainDigests } from '@/lib/db/schema';
+import { boardEntries, items, sources, stories, votes, domainDigests } from '@/lib/db/schema';
 import {
   DOMAINS,
   DOMAIN_COLORS,
@@ -11,8 +12,10 @@ import {
   isDomain,
 } from '@/lib/domains';
 import { dailyDomainCounts, domainMomentum } from '@/lib/analytics';
-import { splitFeed } from '@/lib/feed';
+import { domainAffinity, personalScore, splitFeed } from '@/lib/feed';
 import { visitAnchor } from '@/lib/visits';
+import { allEntityNames, matchEntity } from '@/lib/stacks/match';
+import { topEntitiesInDomain } from '@/lib/entity-extras';
 import { parseDomainScores } from '@/components/DomainChips';
 import ActivityTrace from '@/components/ActivityTrace';
 import ScanRow from '@/components/ScanRow';
@@ -56,12 +59,24 @@ export default async function DomainPage({ params }: { params: Promise<{ slug: s
     .orderBy(desc(domainDigests.date))
     .limit(1)
     .get();
+  // same vote-affinity re-ranking as the home feed (logged-in users only)
+  const affinity = user
+    ? domainAffinity(
+        db
+          .select({ value: votes.value, domainScores: stories.domainScores })
+          .from(votes)
+          .innerJoin(stories, eq(votes.storyId, stories.id))
+          .where(eq(votes.userId, user.id))
+          .all(),
+      )
+    : {};
   const all = curated.map((story) => {
     const scores = parseDomainScores(story.domainScores);
+    const raw = scores?.[slug] ?? 0;
     return {
       story,
       scores,
-      score: scores?.[slug] ?? 0,
+      score: user ? personalScore(raw, story.domainScores, affinity) : raw,
       createdAt: story.createdAt,
       isNew: anchor ? story.createdAt > anchor : false,
     };
@@ -119,8 +134,13 @@ export default async function DomainPage({ params }: { params: Promise<{ slug: s
 
   const fresh = member.filter((c) => c.isNew).length;
 
+  // the sector rail: board summary + hot entities (desktop right column)
+  const board = db.select().from(boardEntries).where(eq(boardEntries.domain, slug)).all();
+  const entityNames = allEntityNames();
+  const hot = topEntitiesInDomain(slug, 6);
+
   return (
-    <div className="mx-auto max-w-[760px] px-6 py-7">
+    <div className="mx-auto max-w-[860px] px-6 py-7">
       <div className="readout">
         sector scan &middot; {member.length} contacts
         {fresh > 0 && <span style={{ color: 'var(--phosphor)' }}> &middot; {fresh} new</span>}
@@ -144,56 +164,115 @@ export default async function DomainPage({ params }: { params: Promise<{ slug: s
       <SectionHeader label="Sector activity — 14-day sweep" />
       <ActivityTrace days={dailyDomainCounts(14)} focus={slug} />
 
-      <SectionHeader label="Top signals" count={top.length} tone="phosphor" />
-      {top.length === 0 ? (
-        <p className="mono py-4 text-[12px]" style={{ color: 'var(--ink-4)' }}>
-          No strong {DOMAIN_LABELS[slug]} signals in the last 72h.
-        </p>
-      ) : (
-        <div>
-          {top.map((c) => {
-            const it = itemAgg.get(c.story.id) ?? { count: 0, firstUrl: null, sourceName: null };
-            const vt = voteAgg.get(c.story.id) ?? { up: 0, down: 0, mine: 0 as const };
-            return (
-              <SignalEntry
-                key={c.story.id}
-                story={c.story}
-                itemCount={it.count}
-                firstUrl={it.firstUrl}
-                sourceName={it.sourceName}
-                up={vt.up}
-                down={vt.down}
-                myVote={vt.mine}
-                isNew={c.isNew}
-                highlightDomain={slug}
-                readOnly={!user}
-              />
-            );
-          })}
+      <div className="grid gap-10 lg:grid-cols-[minmax(0,1fr)_240px]">
+        <div className="min-w-0">
+          <SectionHeader label="Top signals" count={top.length} tone="phosphor" />
+          {top.length === 0 ? (
+            <p className="mono py-4 text-[12px]" style={{ color: 'var(--ink-4)' }}>
+              No strong {DOMAIN_LABELS[slug]} signals in the last 72h.
+            </p>
+          ) : (
+            <div>
+              {top.map((c, i) => {
+                const it = itemAgg.get(c.story.id) ?? { count: 0, firstUrl: null, sourceName: null };
+                const vt = voteAgg.get(c.story.id) ?? { up: 0, down: 0, mine: 0 as const };
+                return (
+                  <SignalEntry
+                    key={c.story.id}
+                    story={c.story}
+                    itemCount={it.count}
+                    firstUrl={it.firstUrl}
+                    sourceName={it.sourceName}
+                    up={vt.up}
+                    down={vt.down}
+                    myVote={vt.mine}
+                    isNew={c.isNew}
+                    highlightDomain={slug}
+                    readOnly={!user}
+                    hero={i === 0}
+                  />
+                );
+              })}
+            </div>
+          )}
+
+          {scan.length > 0 && (
+            <>
+              <SectionHeader label="Scan log" count={scan.length} />
+              <ul>
+                {scan.map((c) => (
+                  <ScanRow
+                    key={c.story.id}
+                    story={c.story}
+                    firstUrl={itemAgg.get(c.story.id)?.firstUrl ?? null}
+                    score={c.score}
+                    domain={slug}
+                    isNew={c.isNew}
+                  />
+                ))}
+              </ul>
+            </>
+          )}
+
+          {lowCount > 0 && (
+            <p className="readout mt-9">{lowCount} low-signal contacts below the scan threshold</p>
+          )}
         </div>
-      )}
 
-      {scan.length > 0 && (
-        <>
-          <SectionHeader label="Scan log" count={scan.length} />
-          <ul>
-            {scan.map((c) => (
-              <ScanRow
-                key={c.story.id}
-                story={c.story}
-                firstUrl={itemAgg.get(c.story.id)?.firstUrl ?? null}
-                score={c.score}
-                domain={slug}
-                isNew={c.isNew}
-              />
-            ))}
-          </ul>
-        </>
-      )}
+        <aside className="min-w-0">
+          {board.length > 0 && (
+            <div>
+              <div className="readout mb-2">best right now &middot; {DOMAIN_LABELS[slug]}</div>
+              <ul>
+                {board.map((e) => (
+                  <li key={e.id} className="border-b border-[var(--grat-soft)] py-[6px] text-[13px] last:border-b-0">
+                    <span className="mono block text-[10px] uppercase tracking-[0.06em]" style={{ color: 'var(--ink-4)' }}>
+                      {e.task}
+                    </span>
+                    {e.bestOverall ? (
+                      (() => {
+                        const m = matchEntity(e.bestOverall, entityNames);
+                        return m ? (
+                          <Link href={`/entity/${m.slug}`} className="hover:underline" style={{ color: 'var(--ink-2)' }}>
+                            {e.bestOverall}
+                          </Link>
+                        ) : (
+                          <span style={{ color: 'var(--ink-2)' }}>{e.bestOverall}</span>
+                        );
+                      })()
+                    ) : (
+                      <span style={{ color: 'var(--ink-4)' }}>—</span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+              <p className="mono mt-1.5 text-[10px]" style={{ color: 'var(--ink-4)' }}>
+                <Link href="/board" className="hover:underline">
+                  the full board &rarr;
+                </Link>
+              </p>
+            </div>
+          )}
 
-      {lowCount > 0 && (
-        <p className="readout mt-9">{lowCount} low-signal contacts below the scan threshold</p>
-      )}
+          {hot.length > 0 && (
+            <div className="mt-7">
+              <div className="readout mb-2">hot in {DOMAIN_LABELS[slug]}</div>
+              <div className="flex flex-wrap gap-1.5">
+                {hot.map((h) => (
+                  <Link
+                    key={h.slug}
+                    href={`/entity/${h.slug}`}
+                    className="mono rounded-[3px] border border-[var(--grat-soft)] px-2 py-1 text-[10.5px] transition-colors hover:border-[var(--grat-strong)]"
+                    style={{ color: 'var(--ink-3)' }}
+                  >
+                    {h.name} <span style={{ color: 'var(--ink-4)' }}>{h.count}</span>
+                  </Link>
+                ))}
+              </div>
+            </div>
+          )}
+        </aside>
+      </div>
     </div>
   );
 }

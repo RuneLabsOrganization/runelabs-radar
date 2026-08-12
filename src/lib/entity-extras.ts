@@ -129,3 +129,32 @@ export function humanizeMetricKey(key: string): string {
     metric === 'weekly_downloads' ? 'weekly downloads' : metric === 'downloads' ? 'downloads' : metric ?? '';
   return `${source} ${metricLabel} · ${entity}`;
 }
+
+/**
+ * Top entities inside one sector: entities from curated stories whose score for
+ * the domain clears the membership threshold (>= 40), canonical-merged, ranked
+ * by distinct story count, latest-72h+ scope (whole corpus — sectors trend).
+ */
+export function topEntitiesInDomain(domain: string, limit = 6): CoMentioned[] {
+  const db = getDb();
+  const rows = db.all<{ name: string; count: number }>(
+    sql`SELECT e.value->>'name' AS name, count(DISTINCT s.id) AS count
+        FROM stories s, json_each(s.entities) e
+        WHERE s.status = 'curated'
+          AND CAST(coalesce(json_extract(s.domain_scores, '$.' || ${domain}), 0) AS INTEGER) >= 40
+        GROUP BY lower(e.value->>'name')
+        ORDER BY count DESC`,
+  );
+  const merged = new Map<string, { name: string; count: number }>();
+  for (const row of rows) {
+    const k = canonicalEntityKey(row.name);
+    if (k === '') continue;
+    const cur = merged.get(k);
+    if (cur) cur.count += row.count;
+    else merged.set(k, { name: canonicalEntityName(row.name), count: row.count });
+  }
+  return [...merged.values()]
+    .sort((a, b) => b.count - a.count)
+    .slice(0, limit)
+    .map((m) => ({ name: m.name, slug: entitySlug(m.name), count: m.count }));
+}
