@@ -34,6 +34,42 @@ export function toArray<T>(v: T | T[] | null | undefined): T[] {
   return Array.isArray(v) ? v : [v];
 }
 
+const NAMED_ENTITIES: Record<string, string> = {
+  nbsp: ' ',
+  amp: '&',
+  lt: '<',
+  gt: '>',
+  quot: '"',
+  apos: "'",
+  mdash: '—',
+  ndash: '–',
+  hellip: '…',
+  lsquo: '\u2018',
+  rsquo: '\u2019',
+  ldquo: '\u201C',
+  rdquo: '\u201D',
+};
+
+/**
+ * Decode HTML entities: all numeric (&#8217; / &#x2019;) plus the common
+ * named set. Feeds love leaving these in titles — decode at ingest, never
+ * at render.
+ */
+export function decodeEntities(s: string): string {
+  return s
+    .replace(/&#(x?[0-9a-fA-F]+);/g, (m, n: string) => {
+      const isHex = n.toLowerCase().startsWith('x');
+      const code = parseInt(isHex ? n.slice(1) : n, isHex ? 16 : 10);
+      if (Number.isNaN(code) || code > 0x10ffff) return m;
+      try {
+        return String.fromCodePoint(code);
+      } catch {
+        return m;
+      }
+    })
+    .replace(/&([a-z]+);/gi, (m, name: string) => NAMED_ENTITIES[name.toLowerCase()] ?? m);
+}
+
 /**
  * Extract the text of a parsed XML node. With attributes enabled, fast-xml-parser
  * represents `<title type="html">x</title>` as `{ '#text': 'x', '@_type': 'html' }`
@@ -42,7 +78,7 @@ export function toArray<T>(v: T | T[] | null | undefined): T[] {
 export function textOf(v: unknown): string | null {
   if (v == null) return null;
   if (typeof v === 'string') {
-    const s = v.trim();
+    const s = decodeEntities(v.trim());
     return s.length > 0 ? s : null;
   }
   if (typeof v === 'number' || typeof v === 'boolean') return String(v);
@@ -52,19 +88,14 @@ export function textOf(v: unknown): string | null {
   return null;
 }
 
-/** Strip HTML tags, decode common entities, collapse whitespace. */
+/** Strip HTML tags, decode entities, collapse whitespace. */
 export function stripHtml(html: string): string {
-  return html
-    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
-    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/&nbsp;/gi, ' ')
-    .replace(/&amp;/gi, '&')
-    .replace(/&lt;/gi, '<')
-    .replace(/&gt;/gi, '>')
-    .replace(/&quot;/gi, '"')
-    .replace(/&#0*39;/g, "'")
-    .replace(/&apos;/gi, "'")
+  return decodeEntities(
+    html
+      .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+      .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+      .replace(/<[^>]+>/g, ' '),
+  )
     .replace(/\s+/g, ' ')
     .trim();
 }
