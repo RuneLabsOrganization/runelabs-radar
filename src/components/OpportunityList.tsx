@@ -250,6 +250,9 @@ function fmtDays(v: number | null): string | null {
 }
 
 function Card({ opp, canGenerate, sortKey }: { opp: OppView; canGenerate: boolean; sortKey: 'flip' | 'hold' }) {
+  // collapsed by default — the full dossier is an expand-away (Turo accordion
+  // pattern); 39 expanded dossiers made a 22k px wall
+  const [dossier, setDossier] = useState(false);
   const [open, setOpen] = useState(false);
   const [brief, setBrief] = useState<OppBrief | null>(opp.brief);
   const [loading, setLoading] = useState(false);
@@ -279,112 +282,140 @@ function Card({ opp, canGenerate, sortKey }: { opp: OppView; canGenerate: boolea
   }
 
   return (
-    <article id={`opp-${opp.id}`} className="card hover-raise scroll-mt-20 !p-5">
-      <div className="gap-6 md:grid md:grid-cols-[218px_minmax(0,1fr)]">
-        {/* the shape of the launch, at a glance */}
-        <div className="mx-auto max-w-[240px] md:mx-0">
-          {opp.legacy ? (
-            <p className="mono py-8 text-center text-[10.5px]" style={{ color: 'var(--ink-4)' }}>
-              full 10-axis dossier
-              <br />
-              arrives on the next sweep
+    <article id={`opp-${opp.id}`} className="card hover-raise scroll-mt-20 !p-0">
+      {/* the digest row: everything you need to triage, one glance */}
+      <button
+        type="button"
+        onClick={() => setDossier((d) => !d)}
+        aria-expanded={dossier}
+        className="block w-full cursor-pointer p-5 text-left"
+      >
+        <div className="flex items-start gap-4">
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+              {opp.isNew && (
+                <span className="readout" style={{ color: 'var(--phosphor)' }}>
+                  ● new
+                </span>
+              )}
+              <h2 className="text-[15px] font-semibold tracking-[-0.01em]">{opp.title}</h2>
+              {opp.sector && isDomain(opp.sector) && (
+                <span className="mono inline-flex items-center gap-[5px] text-[10px] tracking-[0.06em]" style={{ color: 'var(--ink-3)' }}>
+                  <span aria-hidden className="inline-block h-[9px] w-[2px]" style={{ background: DOMAIN_COLORS[opp.sector] }} />
+                  {DOMAIN_LABELS[opp.sector].toUpperCase()}
+                </span>
+              )}
+            </div>
+            <p className="mt-1.5 line-clamp-2 text-[13px] leading-relaxed" style={{ color: 'var(--ink-3)' }}>
+              {opp.thesis}
             </p>
-          ) : (
-            <SpiderChart sub={opp.sub} grade={sortKey === 'flip' ? opp.flipScore : opp.holdScore} />
-          )}
-          <div className="mt-1 flex flex-col gap-1.5">
+            <div className="mono mt-2.5 flex flex-wrap gap-x-4 gap-y-1 text-[10.5px]" style={{ color: 'var(--ink-4)' }}>
+              {k?.initialCostUsd != null && <span>cost {fmtUsd(k.initialCostUsd)}</span>}
+              {k?.priceUsd != null && <span>price {fmtUsd(k.priceUsd)}/mo</span>}
+              {k?.timeToMvpDays != null && <span>mvp {fmtDays(k.timeToMvpDays)}</span>}
+              {opp.window && <span>window {opp.window}</span>}
+              <span>first seen {opp.firstSeenLabel}</span>
+            </div>
+          </div>
+          <div className="flex w-[132px] shrink-0 flex-col gap-1.5">
             <ScoreBar label="flip" value={opp.flipScore} emphasized={sortKey === 'flip'} />
             <ScoreBar label="hold" value={opp.holdScore} emphasized={sortKey === 'hold'} />
-          </div>
-          {!opp.legacy && <LaunchChecks sub={opp.sub} />}
-        </div>
-
-        <div className="mt-4 min-w-0 md:mt-0">
-          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-            {opp.isNew && (
-              <span className="readout" style={{ color: 'var(--phosphor)' }}>
-                ● new
-              </span>
-            )}
-            <h2 className="text-[15px] font-semibold tracking-[-0.01em]">{opp.title}</h2>
-            {opp.sector && isDomain(opp.sector) && (
-              <span className="mono inline-flex items-center gap-[5px] text-[10px] tracking-[0.06em]" style={{ color: 'var(--ink-3)' }}>
-                <span aria-hidden className="inline-block h-[9px] w-[2px]" style={{ background: DOMAIN_COLORS[opp.sector] }} />
-                {DOMAIN_LABELS[opp.sector].toUpperCase()}
-              </span>
-            )}
-          </div>
-
-          <p className="mt-2 text-[13.5px] leading-relaxed" style={{ color: 'var(--ink-2)' }}>
-            {opp.thesis}
-          </p>
-
-          {/* hard numbers */}
-          <div className="mt-3.5 flex flex-wrap gap-x-7 gap-y-2.5 border-t border-[var(--grat-soft)] pt-3">
-            <KpiTile label="initial cost" value={k?.initialCostUsd !== null && k ? fmtUsd(k.initialCostUsd!) : null} />
-            <KpiTile label="run / mo" value={k?.monthlyCostUsd !== null && k ? fmtUsd(k.monthlyCostUsd!) : null} />
-            <KpiTile label="price / mo" value={k?.priceUsd !== null && k ? fmtUsd(k.priceUsd!) : null} />
-            <KpiTile label="time to mvp" value={fmtDays(k?.timeToMvpDays ?? null)} />
-            <KpiTile label="break-even" value={k?.breakEvenCustomers != null ? `${Math.round(k.breakEvenCustomers)} cust` : null} />
-            <KpiTile label="window" value={opp.window} />
-          </div>
-
-          {/* risk panel */}
-          {!opp.legacy && (
-            <div className="mt-3 flex flex-wrap gap-x-8 gap-y-1.5">
-              <RiskMeter label="regulation" sub={opp.sub.regClear} note={k?.regulatoryNote} />
-              <RiskMeter label="platform dep" sub={opp.sub.platformSafe} />
-              <RiskMeter label="quality effort" sub={opp.sub.qualityBar} />
-            </div>
-          )}
-          {k?.regulatoryNote && (
-            <p className="mono mt-1.5 text-[10.5px]" style={{ color: 'var(--amber)' }}>
-              ◆ {k.regulatoryNote}
-            </p>
-          )}
-
-          <div className="mt-3 border-t border-[var(--grat-soft)] pt-2.5">
-            <Competition kpis={k} sub={opp.sub} />
-          </div>
-
-          {opp.evidence.length > 0 && (
-            <div className="mono mt-2.5 flex flex-wrap gap-x-3 gap-y-1 text-[10.5px]" style={{ color: 'var(--ink-3)' }}>
-              {opp.evidence.slice(0, 4).map((e, i) => (
-                <span key={i} title={e.type}>
-                  <span aria-hidden style={{ color: 'var(--ink-4)' }}>
-                    {EVIDENCE_GLYPH[e.type] ?? '·'}{' '}
-                  </span>
-                  {e.label}
-                </span>
-              ))}
-              {opp.evidence.length > 4 && <span style={{ color: 'var(--ink-4)' }}>+{opp.evidence.length - 4}</span>}
-            </div>
-          )}
-
-          <div className="mt-3.5 flex items-center gap-4">
-            <button type="button" onClick={expand} className={open ? 'btn' : 'btn btn-primary'}>
-              {open ? 'collapse' : brief ? 'launch brief' : canGenerate ? 'draft launch brief' : 'launch brief (sign in)'}
-            </button>
-            <span className="mono text-[10px]" style={{ color: 'var(--ink-4)' }}>
-              first seen {opp.firstSeenLabel}
+            <span className="mono mt-0.5 text-right text-[11px]" style={{ color: 'var(--ink-4)' }}>
+              {dossier ? '▾ dossier' : '▸ dossier'}
             </span>
           </div>
         </div>
-      </div>
+      </button>
 
-      {open &&
+      {dossier && (
+        <div className="anim-in border-t border-[var(--grat-soft)] p-5">
+          <div className="gap-6 md:grid md:grid-cols-[218px_minmax(0,1fr)]">
+            {/* the shape of the launch, at a glance */}
+            <div className="mx-auto max-w-[240px] md:mx-0">
+              {opp.legacy ? (
+                <p className="mono py-8 text-center text-[10.5px]" style={{ color: 'var(--ink-4)' }}>
+                  full 10-axis dossier
+                  <br />
+                  arrives on the next sweep
+                </p>
+              ) : (
+                <SpiderChart sub={opp.sub} grade={sortKey === 'flip' ? opp.flipScore : opp.holdScore} />
+              )}
+              {!opp.legacy && <LaunchChecks sub={opp.sub} />}
+            </div>
+
+            <div className="mt-4 min-w-0 md:mt-0">
+              <p className="text-[13.5px] leading-relaxed" style={{ color: 'var(--ink-2)' }}>
+                {opp.thesis}
+              </p>
+
+              {/* hard numbers */}
+              <div className="mt-3.5 flex flex-wrap gap-x-7 gap-y-2.5 border-t border-[var(--grat-soft)] pt-3">
+                <KpiTile label="initial cost" value={k?.initialCostUsd !== null && k ? fmtUsd(k.initialCostUsd!) : null} />
+                <KpiTile label="run / mo" value={k?.monthlyCostUsd !== null && k ? fmtUsd(k.monthlyCostUsd!) : null} />
+                <KpiTile label="price / mo" value={k?.priceUsd !== null && k ? fmtUsd(k.priceUsd!) : null} />
+                <KpiTile label="time to mvp" value={fmtDays(k?.timeToMvpDays ?? null)} />
+                <KpiTile label="break-even" value={k?.breakEvenCustomers != null ? `${Math.round(k.breakEvenCustomers)} cust` : null} />
+                <KpiTile label="window" value={opp.window} />
+              </div>
+
+              {/* risk panel */}
+              {!opp.legacy && (
+                <div className="mt-3 flex flex-wrap gap-x-8 gap-y-1.5">
+                  <RiskMeter label="regulation" sub={opp.sub.regClear} note={k?.regulatoryNote} />
+                  <RiskMeter label="platform dep" sub={opp.sub.platformSafe} />
+                  <RiskMeter label="quality effort" sub={opp.sub.qualityBar} />
+                </div>
+              )}
+              {k?.regulatoryNote && (
+                <p className="mono mt-1.5 text-[10.5px]" style={{ color: 'var(--amber)' }}>
+                  ◆ {k.regulatoryNote}
+                </p>
+              )}
+
+              <div className="mt-3 border-t border-[var(--grat-soft)] pt-2.5">
+                <Competition kpis={k} sub={opp.sub} />
+              </div>
+
+              {opp.evidence.length > 0 && (
+                <div className="mono mt-2.5 flex flex-wrap gap-x-3 gap-y-1 text-[10.5px]" style={{ color: 'var(--ink-3)' }}>
+                  {opp.evidence.slice(0, 4).map((e, i) => (
+                    <span key={i} title={e.type}>
+                      <span aria-hidden style={{ color: 'var(--ink-4)' }}>
+                        {EVIDENCE_GLYPH[e.type] ?? '·'}{' '}
+                      </span>
+                      {e.label}
+                    </span>
+                  ))}
+                  {opp.evidence.length > 4 && <span style={{ color: 'var(--ink-4)' }}>+{opp.evidence.length - 4}</span>}
+                </div>
+              )}
+
+              <div className="mt-3.5 flex items-center gap-4">
+                <button type="button" onClick={expand} className={open ? 'btn' : 'btn btn-primary'}>
+                  {open ? 'collapse' : brief ? 'launch brief' : canGenerate ? 'draft launch brief' : 'launch brief (sign in)'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {dossier && open &&
         (brief ? (
-          <BriefView brief={brief} />
+          <div className="px-5 pb-5">
+            <BriefView brief={brief} />
+          </div>
         ) : loading ? (
-          <p className="mono mt-4 text-[11px]" style={{ color: 'var(--phosphor)' }}>
+          <p className="mono px-5 pb-5 text-[11px]" style={{ color: 'var(--phosphor)' }}>
             drafting brief from live market data&hellip;
           </p>
         ) : error ? (
-          <p className="mono mt-4 text-[11px]" style={{ color: 'var(--alert)' }}>
+          <p className="mono px-5 pb-5 text-[11px]" style={{ color: 'var(--alert)' }}>
             {error}
           </p>
         ) : !canGenerate ? (
-          <p className="mono mt-4 text-[11px]" style={{ color: 'var(--ink-3)' }}>
+          <p className="mono px-5 pb-5 text-[11px]" style={{ color: 'var(--ink-3)' }}>
             sign in to generate the launch brief
           </p>
         ) : null)}
