@@ -6,6 +6,7 @@ import { timeAgo } from '@/lib/feed';
 import NavLinks from '@/components/NavLinks';
 import MobileNav from '@/components/MobileNav';
 import AnonFresh from '@/components/AnonFresh';
+import FeedKeys from '@/components/FeedKeys';
 import LogoutButton from '@/components/LogoutButton';
 import RadarBackdrop from '@/components/RadarBackdrop';
 
@@ -80,6 +81,7 @@ export default async function HubLayout({ children }: { children: React.ReactNod
       </header>
       <main>{children}</main>
       <AnonFresh enabled={!user} />
+      <FeedKeys />
     </div>
   );
 }

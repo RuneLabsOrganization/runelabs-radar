@@ -161,6 +161,13 @@ a {
   background: var(--phosphor);
 }
 
+/* keyboard cursor over feed entries (stamped by FeedKeys: j/k to move, Enter to open) */
+.feed-focus {
+  background: var(--scope-1);
+  outline: 1px solid var(--grat);
+  outline-offset: -1px;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .anim-bar,
   .anim-in {
