@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import { useMemo, useState } from 'react';
-import { DOMAINS, DOMAIN_COLORS, DOMAIN_LABELS, type Domain } from '@/lib/domains';
+import { DOMAINS, DOMAIN_COLORS, DOMAIN_LABELS, isDomain, type Domain } from '@/lib/domains';
 import type { DayCount } from '@/lib/analytics';
 
 const W = 640;
@@ -13,9 +13,19 @@ const PLOT_H = H - PAD.top - PAD.bottom;
 
 /**
  * 14-day sector activity trace — phosphor lines on a graticule. Click legend
- * ticks to isolate sectors; hover for the per-day readout.
+ * ticks to isolate sectors; hover for the per-day readout. Weekends are
+ * shaded; sector-spike detections ("machine noticed") mark the day they fired.
  */
-export default function ActivityTrace({ days, focus }: { days: DayCount[]; focus?: Domain }) {
+export default function ActivityTrace({
+  days,
+  focus,
+  spikes,
+}: {
+  days: DayCount[];
+  focus?: Domain;
+  /** sector-spike detections: the day the spike happened + which sector */
+  spikes?: { date: string; domain: string }[];
+}) {
   const [hidden, setHidden] = useState<Set<Domain>>(
     () => new Set(focus ? DOMAINS.filter((d) => d !== focus) : []),
   );
@@ -62,6 +72,24 @@ export default function ActivityTrace({ days, focus }: { days: DayCount[]; focus
         onMouseMove={onMove}
         onMouseLeave={() => setHoverI(null)}
       >
+        {/* weekend shading — Sat/Sun bands behind everything */}
+        {days.map((d, i) => {
+          const dow = new Date(`${d.date}T00:00:00Z`).getUTCDay();
+          if (dow !== 0 && dow !== 6) return null;
+          const half = days.length > 1 ? PLOT_W / (days.length - 1) / 2 : PLOT_W / 2;
+          return (
+            <rect
+              key={`wk-${d.date}`}
+              x={Math.max(PAD.left, x(i) - half)}
+              y={PAD.top}
+              width={Math.min(half * 2, PAD.left + PLOT_W - Math.max(PAD.left, x(i) - half))}
+              height={PLOT_H}
+              fill="var(--grat-soft)"
+              opacity={0.5}
+            />
+          );
+        })}
+
         {/* graticule */}
         {yTicks.map((t) => (
           <g key={t}>
@@ -129,6 +157,30 @@ export default function ActivityTrace({ days, focus }: { days: DayCount[]; focus
             opacity={0.9}
           />
         ))}
+
+        {/* anomaly markers — where the machine noticed a sector spike */}
+        {(spikes ?? []).map((s, idx) => {
+          if (!isDomain(s.domain)) return null;
+          const di = days.findIndex((d) => d.date === s.date);
+          if (di === -1 || hidden.has(s.domain)) return null;
+          const cx = x(di);
+          const cy = y(days[di].byDomain[s.domain]);
+          return (
+            <g key={`spike-${idx}`}>
+              <rect
+                x={cx - 3.4}
+                y={cy - 3.4}
+                width={6.8}
+                height={6.8}
+                transform={`rotate(45 ${cx} ${cy})`}
+                fill="var(--scope-0)"
+                stroke="var(--phosphor)"
+                strokeWidth={1.2}
+              />
+              <title>{`${DOMAIN_LABELS[s.domain]} spike — machine noticed`}</title>
+            </g>
+          );
+        })}
 
         {/* hover crosshair */}
         {hoverI !== null && (

@@ -189,6 +189,13 @@ export default async function BriefingPage() {
   const notes = latestInsights();
   const echoes = echoStats();
   const noticed = latestPatterns(6);
+  // sector-spike patterns were detected evaluating "yesterday" — mark that day
+  const spikes = noticed
+    .filter((p) => p.kind === 'sector-spike' && p.subject)
+    .map((p) => ({
+      date: new Date(new Date(`${p.date}T00:00:00Z`).getTime() - 864e5).toISOString().slice(0, 10),
+      domain: p.subject!,
+    }));
   const topics = topicHierarchy();
 
   // the curve behind each claim: per-pattern 14-day series for the right rail
@@ -237,7 +244,7 @@ export default async function BriefingPage() {
       <div className="flex flex-col gap-7 md:flex-row">
         <div className="min-w-0 flex-1">
           <ChartFrame title="activity — 14-day sweep" brand={chartBrand}>
-            <ActivityTrace days={days} />
+            <ActivityTrace days={days} spikes={spikes} />
           </ChartFrame>
         </div>
         <div className="w-full shrink-0 md:w-[240px]">
