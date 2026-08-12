@@ -1,8 +1,8 @@
-import { desc, eq } from 'drizzle-orm';
+import { and, desc, eq, gte, lt } from 'drizzle-orm';
 import Link from 'next/link';
 import { requireViewer } from '@/lib/auth/user';
 import { getDb } from '@/lib/db';
-import { briefs } from '@/lib/db/schema';
+import { briefs, stories } from '@/lib/db/schema';
 import { renderMarkdown } from '@/lib/markdown';
 
 const briefStyles = `
@@ -24,6 +24,19 @@ export const metadata = {
   description:
     'The daily AI intelligence brief: top stories, board changes and what the machine noticed — written at the 07:00 sweep.',
 };
+
+const WEEKDAYS = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+const MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+
+function editionLabel(date: string): string {
+  const d = new Date(`${date}T12:00:00Z`);
+  return `${WEEKDAYS[d.getUTCDay()]} ${String(d.getUTCDate()).padStart(2, '0')} ${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
+}
+
+/** The brief's own H1 duplicates the edition header — drop the first heading line. */
+function stripLeadingH1(md: string): string {
+  return md.replace(/^#\s+[^\n]+\n+/, '');
+}
 
 export default async function BriefPage({
   searchParams,
@@ -52,6 +65,28 @@ export default async function BriefPage({
 
   const currentDate = selected?.date ?? date;
 
+  // the stories behind the edition: that day's strongest curated contacts
+  const behindTheBrief = selected
+    ? db
+        .select({ id: stories.id, title: stories.title, topScore: stories.topScore })
+        .from(stories)
+        .where(
+          and(
+            eq(stories.status, 'curated'),
+            gte(stories.createdAt, new Date(`${selected.date}T00:00:00Z`)),
+            lt(stories.createdAt, new Date(new Date(`${selected.date}T00:00:00Z`).getTime() + 864e5)),
+          ),
+        )
+        .orderBy(desc(stories.topScore))
+        .limit(5)
+        .all()
+    : [];
+
+  const readMinutes = selected
+    ? Math.max(1, Math.round(selected.markdown.split(/\s+/).length / 200))
+    : 0;
+  const isToday = currentDate === new Date().toISOString().slice(0, 10);
+
   return (
     <div className="mx-auto max-w-[760px] px-6 py-7">
       <style>{briefStyles}</style>
@@ -68,6 +103,7 @@ export default async function BriefPage({
           <div className="mono mt-4 flex flex-wrap items-center gap-1.5 text-[10.5px]">
             {recentDates.map(({ date: d }) => {
               const active = d === currentDate;
+              const wd = WEEKDAYS[new Date(`${d}T12:00:00Z`).getUTCDay()];
               return (
                 <Link
                   key={d}
@@ -78,18 +114,60 @@ export default async function BriefPage({
                       : 'border-[var(--grat)] text-[var(--ink-3)] hover:border-[var(--grat-strong)]'
                   }`}
                 >
-                  {d}
+                  {wd} {d.slice(8)}
                 </Link>
               );
             })}
           </div>
 
           {selected ? (
-            <article
-              className="brief-md mt-6 text-[13.5px] leading-relaxed"
-              // Safe: renderMarkdown escapes all input HTML before formatting.
-              dangerouslySetInnerHTML={{ __html: renderMarkdown(selected.markdown) }}
-            />
+            <>
+              {/* edition header: the date IS the identity (Bloomberg/MFP pattern) */}
+              <div className="mt-7 border-b border-[var(--grat)] pb-3">
+                <div className="mono text-[19px] font-semibold tracking-[0.06em]" style={{ color: 'var(--ink)' }}>
+                  {editionLabel(selected.date)}
+                  {isToday && (
+                    <span className="ml-2.5 text-[10.5px] uppercase tracking-[0.1em]" style={{ color: 'var(--phosphor)' }}>
+                      ● today
+                    </span>
+                  )}
+                </div>
+                <div className="mono mt-1 text-[10.5px] tracking-[0.06em] uppercase" style={{ color: 'var(--ink-4)' }}>
+                  written at the 07:00 sweep &middot; {readMinutes} min read
+                </div>
+              </div>
+
+              <article
+                className="brief-md mt-6 text-[13.5px] leading-relaxed"
+                // Safe: renderMarkdown escapes all input HTML before formatting.
+                dangerouslySetInnerHTML={{ __html: renderMarkdown(stripLeadingH1(selected.markdown)) }}
+              />
+
+              {behindTheBrief.length > 0 && (
+                <div className="mt-9">
+                  <div className="readout mb-2">the stories behind the brief &middot; {behindTheBrief.length}</div>
+                  <ul>
+                    {behindTheBrief.map((s) => (
+                      <li
+                        key={s.id}
+                        className="row-hover flex items-baseline gap-3 border-b border-[var(--grat-soft)] py-[7px] text-[13px] last:border-b-0"
+                      >
+                        <span className="mono w-8 shrink-0 text-right text-[10.5px]" style={{ color: 'var(--ink-4)' }}>
+                          {s.topScore}
+                        </span>
+                        <Link
+                          href={`/story/${s.id}`}
+                          className="min-w-0 flex-1 truncate decoration-[var(--grat-strong)] underline-offset-2 hover:underline"
+                          style={{ color: 'var(--ink-2)' }}
+                        >
+                          {s.title}
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </>
           ) : (
             <p className="mono mt-6 text-[12px]" style={{ color: 'var(--ink-4)' }}>
               No brief for {date}.
