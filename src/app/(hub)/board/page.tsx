@@ -18,6 +18,8 @@ import LagPanel from '@/components/LagPanel';
 import { requireViewer } from '@/lib/auth/user';
 import { config } from '@/lib/config';
 import { getIdentity } from '@/lib/identity';
+import { formatBoardChange, isNoopChange } from '@/lib/board/change';
+import Link from 'next/link';
 import { getDb } from '@/lib/db';
 import { boardEntries, boardHistory } from '@/lib/db/schema';
 import { DOMAIN_COLORS, DOMAIN_LABELS, DOMAINS, isDomain } from '@/lib/domains';
@@ -30,6 +32,15 @@ export const metadata = {
   description:
     'The best AI model/tool for each task right now: best overall, best value, cheapest viable, with verdicts — synced weekly from benchmarks and the news.',
 };
+
+/** Cost notes are ';'-separated per-model strings — render one line per model. */
+function costLines(note: string | null): string[] {
+  if (!note) return [];
+  return note
+    .split(/;\s*/)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+}
 
 function cell(value: string | null): ReactNode {
   return value ? value : <span style={{ color: 'var(--ink-4)' }}>—</span>;
@@ -97,6 +108,11 @@ export default async function BoardPage() {
     list.push(entry);
     byDomain.set(entry.domain, list);
   }
+
+  // the verdict column only earns its width when someone can edit or read one
+  const showVerdict = !!user || entries.some((e) => e.runelabsVerdict);
+  // history minus "no field changes" noise, capped — full log lives on /changelog
+  const meaningfulHistory = history.filter((h) => !isNoopChange(h.change)).slice(0, 8);
 
   return (
     <div className="mx-auto max-w-[860px] px-6 py-7">
@@ -193,12 +209,12 @@ export default async function BoardPage() {
             <table className="table table-cards">
               <thead>
                 <tr>
-                  <th className="w-[16%]">Task</th>
-                  <th className="w-[15%]">Best overall</th>
+                  <th className="w-[17%]">Task</th>
+                  <th className="w-[16%]">Best overall</th>
                   <th className="w-[15%]">Best value</th>
                   <th className="w-[15%]">Cheapest viable</th>
-                  <th className="w-[19%]">Cost note</th>
-                  <th>Runelabs verdict</th>
+                  <th className="w-[21%]">Cost note</th>
+                  {showVerdict && <th>Runelabs verdict</th>}
                 </tr>
               </thead>
               <tbody>
@@ -207,18 +223,40 @@ export default async function BoardPage() {
                     <td data-label="task" className="mono text-[11.5px]" style={{ color: 'var(--ink-3)' }}>
                       {entry.task}
                     </td>
-                    <td data-label="best overall" style={{ color: 'var(--ink)' }}>{cell(entry.bestOverall)}</td>
+                    {/* winner marking: phosphor tick on best overall (recommended pattern) */}
+                    <td data-label="best overall" style={{ color: 'var(--ink)' }}>
+                      <span className="inline-flex items-start gap-1.5">
+                        {entry.bestOverall && (
+                          <span aria-hidden className="mt-[5px] inline-block h-[9px] w-[2px] shrink-0" style={{ background: 'var(--phosphor)' }} />
+                        )}
+                        <span>{cell(entry.bestOverall)}</span>
+                      </span>
+                    </td>
                     <td data-label="best value">{cell(entry.bestValue)}</td>
                     <td data-label="cheapest">{cell(entry.cheapestViable)}</td>
-                    <td data-label="cost note" className="text-[12.5px]">{cell(entry.costNote)}</td>
-                    <td data-label="verdict">
-                      <VerdictEditor
-                        entryId={entry.id}
-                        verdict={entry.runelabsVerdict}
-                        author={entry.verdictAuthor}
-                        canEdit={!!user}
-                      />
+                    <td data-label="cost note" className="text-[12.5px]">
+                      {costLines(entry.costNote).length > 0 ? (
+                        <span className="flex flex-col gap-0.5">
+                          {costLines(entry.costNote).map((l, i) => (
+                            <span key={i} className="mono text-[11px] leading-snug" style={{ color: 'var(--ink-3)' }}>
+                              {l}
+                            </span>
+                          ))}
+                        </span>
+                      ) : (
+                        cell(null)
+                      )}
                     </td>
+                    {showVerdict && (
+                      <td data-label="verdict">
+                        <VerdictEditor
+                          entryId={entry.id}
+                          verdict={entry.runelabsVerdict}
+                          author={entry.verdictAuthor}
+                          canEdit={!!user}
+                        />
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
@@ -228,30 +266,46 @@ export default async function BoardPage() {
       })}
 
       <div id="changes" className="scroll-mt-24" />
-      <SectionHeader label="Changed recently" count={history.length} />
-      {history.length === 0 ? (
+      <SectionHeader label="Changed recently" count={meaningfulHistory.length} />
+      {meaningfulHistory.length === 0 ? (
         <p className="mono text-[12px]" style={{ color: 'var(--ink-4)' }}>
           No board changes in the last 14 days.
         </p>
       ) : (
-        <ul className="flex flex-col">
-          {history.map((h) => (
-            <li
-              key={h.id}
-              className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 border-b border-[var(--grat-soft)] py-[7px] text-[13px] last:border-b-0"
-            >
-              <span className="mono shrink-0 text-[10.5px]" style={{ color: 'var(--ink-4)' }}>
-                {fmtDate(h.appliedAt)}
-              </span>
-              <span className="mono shrink-0 text-[11px]" style={{ color: 'var(--ink-3)' }}>
-                {domainLabel(h.domain)} / {h.task}
-              </span>
-              <span className="min-w-0" style={{ color: 'var(--ink-2)' }}>
-                {h.change}
-              </span>
-            </li>
-          ))}
-        </ul>
+        <>
+          <ul className="flex flex-col">
+            {meaningfulHistory.map((h) => (
+              <li
+                key={h.id}
+                className="border-b border-[var(--grat-soft)] py-[7px] text-[13px] last:border-b-0"
+              >
+                <div className="flex items-baseline gap-3">
+                  <span className="mono shrink-0 text-[10.5px]" style={{ color: 'var(--ink-4)' }}>
+                    {fmtDate(h.appliedAt)}
+                  </span>
+                  <span className="mono shrink-0 text-[11px]" style={{ color: 'var(--ink-3)' }}>
+                    {domainLabel(h.domain)} / {h.task}
+                  </span>
+                </div>
+                <div className="mt-0.5 flex flex-col gap-0.5 pl-[4.7rem]">
+                  {formatBoardChange(h.change).map((f, i) => (
+                    <span key={i} className="min-w-0 truncate" style={{ color: 'var(--ink-2)' }}>
+                      <span className="mono text-[10.5px] uppercase tracking-[0.06em]" style={{ color: 'var(--ink-4)' }}>
+                        {f.field}{' '}
+                      </span>
+                      {f.text}
+                    </span>
+                  ))}
+                </div>
+              </li>
+            ))}
+          </ul>
+          <p className="mono mt-2 text-[10.5px]" style={{ color: 'var(--ink-4)' }}>
+            <Link href="/changelog" className="hover:underline">
+              the full log lives on the changelog &rarr;
+            </Link>
+          </p>
+        </>
       )}
 
       <div className="mt-8 border-t border-[var(--grat-soft)] pt-3">
