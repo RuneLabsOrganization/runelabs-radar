@@ -25,7 +25,8 @@ export interface RawDetection {
  * would bias the z-score toward permanent false negatives.
  */
 export function detectSectorSpikes(): RawDetection[] {
-  const days = dailyDomainCounts(21);
+  // 28d window: yesterday's weekday then has 3 same-weekday samples (d=8,15,22)
+  const days = dailyDomainCounts(28);
   if (days.length < 7) return [];
   const out: RawDetection[] = [];
   const target = days[days.length - 2]; // yesterday, complete
@@ -47,7 +48,7 @@ export function detectSectorSpikes(): RawDetection[] {
       out.push({
         kind: 'sector-spike',
         subject: domain,
-        fallback: `${label} sector ran ${z.toFixed(1)}σ above its 3-week baseline yesterday (${count} stories).`,
+        fallback: `${label} sector ran ${z.toFixed(1)}σ above its weekday baseline yesterday (${count} stories).`,
         score: z,
         evidence: [{ label: `${count} stories yesterday vs baseline` }],
       });
