@@ -28,12 +28,12 @@ export default function NavLinks({ isAdmin }: { isAdmin: boolean }) {
   const pathname = usePathname();
   const links = buildLinks(pathname, isAdmin);
   return (
-    <nav className="mono flex h-12 items-center gap-5 text-[11px] tracking-[0.1em] uppercase">
+    <nav className="mono flex h-12 items-center gap-4 text-[11px] tracking-[0.1em] uppercase">
       {links.map((l) => (
         <Link
           key={l.href}
           href={l.href}
-          className={`flex h-full items-center border-b-2 transition-colors ${
+          className={`flex h-full shrink-0 items-center whitespace-nowrap border-b-2 transition-colors ${
             l.active
               ? 'border-[var(--phosphor)] text-[var(--ink)]'
               : 'border-transparent text-[var(--ink-3)] hover:text-[var(--ink-2)]'

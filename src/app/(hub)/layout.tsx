@@ -29,7 +29,7 @@ export default async function HubLayout({ children }: { children: React.ReactNod
         <RadarBackdrop intensity={0.06} />
       </div>
       <header className="sticky top-0 z-20 border-b border-[var(--grat)] bg-[rgba(10,14,19,0.88)] backdrop-blur">
-        <div className="mx-auto flex h-12 max-w-[860px] items-center gap-4 px-4 sm:px-6 md:gap-7">
+        <div className="mx-auto flex h-12 max-w-[1100px] items-center gap-3 px-4 sm:px-6 lg:gap-5">
           <Link
             href="/"
             className="mono flex shrink-0 items-center gap-2 text-[11.5px] font-semibold tracking-[0.16em] text-[var(--ink)]"
@@ -40,12 +40,12 @@ export default async function HubLayout({ children }: { children: React.ReactNod
           <div className="hidden lg:block">
             <NavLinks isAdmin={user?.role === 'admin'} />
           </div>
-          <div className="mono ml-auto hidden items-center gap-4 text-[10.5px] tracking-[0.08em] uppercase lg:flex">
-            <Link href="/search" className="transition-colors hover:text-[var(--ink-2)]" style={{ color: 'var(--ink-3)' }}>
+          <div className="mono ml-auto hidden items-center gap-3 text-[10.5px] tracking-[0.08em] uppercase lg:flex">
+            <Link href="/search" className="whitespace-nowrap transition-colors hover:text-[var(--ink-2)]" style={{ color: 'var(--ink-3)' }}>
               search
             </Link>
             <span
-              className="hidden items-center gap-1.5 sm:flex"
+              className="hidden items-center gap-1.5 whitespace-nowrap xl:flex"
               style={{ color: stale ? 'var(--amber)' : 'var(--ink-4)' }}
               title={sweepTitle}
             >
@@ -58,13 +58,13 @@ export default async function HubLayout({ children }: { children: React.ReactNod
             </span>
             {user ? (
               <>
-                <span className="hidden text-[var(--ink-4)] md:inline">{user.name}</span>
+                <span className="hidden text-[var(--ink-4)] xl:inline">{user.name}</span>
                 <LogoutButton />
               </>
             ) : (
               <Link
                 href="/login"
-                className="text-[var(--ink-3)] transition-colors hover:text-[var(--ink-2)]"
+                className="whitespace-nowrap text-[var(--ink-3)] transition-colors hover:text-[var(--ink-2)]"
               >
                 sign in
               </Link>

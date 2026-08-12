@@ -49,7 +49,7 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
   }
 
   return (
-    <>
+    <div className="mx-auto max-w-[760px] px-6 py-7">
       <h1 className="text-[17px] font-semibold tracking-[-0.01em]">Search the scope</h1>
       <form method="GET" action="/search" className="mt-4">
         <input
@@ -91,6 +91,6 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
           </Link>
         ))}
       </div>
-    </>
+    </div>
   );
 }
