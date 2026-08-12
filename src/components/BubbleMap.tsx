@@ -185,6 +185,8 @@ export default function BubbleMap({ data, compact = false }: { data: TopicNode[]
 
   const focusedTopic = focus?.data.node ?? null;
   const parentTopic = focus?.parent?.data.node ?? null;
+  const leafStories =
+    focus && isLeaf(focus) && focus.data.node ? (stories.get(focus.data.node.id) ?? null) : null;
 
   const circleFill = (n: TopicNode) =>
     n.sector ? DOMAIN_COLORS[n.sector] : 'var(--phosphor)';
@@ -211,7 +213,12 @@ export default function BubbleMap({ data, compact = false }: { data: TopicNode[]
         onMouseEnter={(e) => {
           setHoverId(t.id);
           const rect = (e.currentTarget.ownerSVGElement as SVGSVGElement).getBoundingClientRect();
-          setHoverCluster({ node: t, x: (cx / W) * rect.width, y: (cy / height) * rect.height });
+          // clamp so the 300px tooltip stays on-screen (tap fires hover on touch)
+          setHoverCluster({
+            node: t,
+            x: Math.min((cx / W) * rect.width, Math.max(0, rect.width - 310)),
+            y: (cy / height) * rect.height,
+          });
         }}
         onMouseLeave={() => {
           setHoverId(null);
@@ -307,7 +314,11 @@ export default function BubbleMap({ data, compact = false }: { data: TopicNode[]
             onClick={(e) => e.stopPropagation()}
             onMouseEnter={(e) => {
               const rect = (e.currentTarget.ownerSVGElement as SVGSVGElement).getBoundingClientRect();
-              setHoverStory({ s: story, x: ((cx / W) * rect.width), y: ((cy / height) * rect.height) });
+              setHoverStory({
+                s: story,
+                x: Math.min((cx / W) * rect.width, Math.max(0, rect.width - 310)),
+                y: (cy / height) * rect.height,
+              });
             }}
             onMouseLeave={() => setHoverStory(null)}
             style={{ cursor: story.url ? 'pointer' : 'default' }}
@@ -427,6 +438,70 @@ export default function BubbleMap({ data, compact = false }: { data: TopicNode[]
 
       <div className="rounded-[6px] border border-[var(--grat-soft)] bg-[var(--scope-1)]">{svg}</div>
       {clusterTooltip}
+
+      {/* mobile bottom sheet: a focused subtopic's stories as a readable list —
+          bubbles + hover tooltips don't work on touch */}
+      {focusedTopic && focus && isLeaf(focus) && (
+        <div
+          className="fixed inset-x-0 bottom-0 z-30 md:hidden"
+          role="dialog"
+          aria-label={`stories in ${focusedTopic.label}`}
+        >
+          <div className="max-h-[50vh] overflow-y-auto rounded-t-[8px] border border-b-0 border-[var(--grat)] bg-[var(--scope-1)] px-4 pb-5 pt-2">
+            <div aria-hidden className="mx-auto mb-2 h-[3px] w-9 rounded-full" style={{ background: 'var(--grat-strong)' }} />
+            <div className="mb-1.5 flex items-baseline justify-between gap-3">
+              <span className="readout" style={{ color: 'var(--phosphor)' }}>
+                {focusedTopic.label} &middot; {focusedTopic.size}
+              </span>
+              <button
+                type="button"
+                onClick={up}
+                className="mono cursor-pointer border-0 bg-transparent p-0 text-[10.5px] uppercase tracking-[0.08em]"
+                style={{ color: 'var(--ink-3)' }}
+              >
+                close
+              </button>
+            </div>
+            {loadingLeaf !== null && (
+              <p className="mono text-[11px]" style={{ color: 'var(--ink-4)' }}>
+                loading stories&hellip;
+              </p>
+            )}
+            {storyError && (
+              <p className="mono text-[11px]" style={{ color: 'var(--alert)' }}>
+                {storyError}
+              </p>
+            )}
+            {leafStories && leafStories.length === 0 && loadingLeaf === null && (
+              <p className="mono text-[11px]" style={{ color: 'var(--ink-4)' }}>
+                No stories in this topic yet.
+              </p>
+            )}
+            <ul>
+              {(leafStories ?? []).map((s) => (
+                <li
+                  key={s.id}
+                  className="flex items-baseline gap-3 border-b border-[var(--grat-soft)] py-[7px] text-[13px] last:border-b-0"
+                >
+                  <span className="mono w-8 shrink-0 text-right text-[10.5px]" style={{ color: 'var(--ink-4)' }}>
+                    {s.score}
+                  </span>
+                  <Link
+                    href={`/story/${s.id}`}
+                    className="min-w-0 flex-1 hover:underline"
+                    style={{ color: 'var(--ink-2)' }}
+                  >
+                    {s.title}
+                  </Link>
+                  <span className="mono shrink-0 text-[10.5px]" style={{ color: 'var(--ink-4)' }}>
+                    {s.ageDays}d
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      )}
 
       {hoverStory && (
         <div
