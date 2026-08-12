@@ -1,6 +1,11 @@
 // Client-safe module: assessment axes + score math, no DB/LLM imports
 // (OpportunityList renders in the browser).
 
+/** Simply-Wall-St rule: the fill COLOR is the verdict; the shape is the detail. */
+export function gradeColor(score: number): string {
+  return score >= 70 ? 'var(--phosphor)' : score >= 45 ? 'var(--amber)' : 'var(--alert)';
+}
+
 export const SUB_KEYS = [
   'demand',
   'buildability',

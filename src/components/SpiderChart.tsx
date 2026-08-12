@@ -3,11 +3,9 @@
 import * as React from 'react';
 import { useEffect, useId, useState } from 'react';
 import type { SubScores } from '@/lib/opportunities/engine';
+import { gradeColor } from '@/lib/opportunities/axes';
 
-/** Simply-Wall-St rule: the fill COLOR is the verdict; the shape is the detail. */
-export function gradeColor(score: number): string {
-  return score >= 70 ? 'var(--phosphor)' : score >= 45 ? 'var(--amber)' : 'var(--alert)';
-}
+export { gradeColor };
 
 /** The eight axes whose SHAPE tells the launch story at a glance. */
 const RADAR_AXES: { key: keyof SubScores; label: string }[] = [

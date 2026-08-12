@@ -1,7 +1,7 @@
 import type { MetadataRoute } from 'next';
 import { and, desc, eq, gt } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
-import { stories } from '@/lib/db/schema';
+import { opportunities, stories } from '@/lib/db/schema';
 import { config } from '@/lib/config';
 import { DOMAINS } from '@/lib/domains';
 import { topEntitySlugs } from '@/lib/entity';
@@ -25,6 +25,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
 
   let storyRoutes: MetadataRoute.Sitemap = [];
   let entityRoutes: MetadataRoute.Sitemap = [];
+  let opportunityRoutes: MetadataRoute.Sitemap = [];
   try {
     const recent = getDb()
       .select({ id: stories.id, createdAt: stories.createdAt })
@@ -47,9 +48,20 @@ export default function sitemap(): MetadataRoute.Sitemap {
       changeFrequency: 'daily' as const,
       priority: 0.6,
     }));
+    opportunityRoutes = getDb()
+      .select({ id: opportunities.id, firstSeenAt: opportunities.firstSeenAt })
+      .from(opportunities)
+      .where(eq(opportunities.status, 'active'))
+      .all()
+      .map((o) => ({
+        url: `${base}/opportunities/${o.id}`,
+        lastModified: o.firstSeenAt,
+        changeFrequency: 'daily' as const,
+        priority: 0.7,
+      }));
   } catch {
     // no database yet (fresh install) — static routes only
   }
 
-  return [...staticRoutes, ...domainRoutes, ...entityRoutes, ...storyRoutes];
+  return [...staticRoutes, ...domainRoutes, ...entityRoutes, ...opportunityRoutes, ...storyRoutes];
 }
