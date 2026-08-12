@@ -45,7 +45,7 @@ export default async function HubLayout({ children }: { children: React.ReactNod
               search
             </Link>
             <span
-              className="hidden items-center gap-1.5 whitespace-nowrap xl:flex"
+              className="hidden items-center gap-1.5 whitespace-nowrap lg:flex"
               style={{ color: stale ? 'var(--amber)' : 'var(--ink-4)' }}
               title={sweepTitle}
             >
