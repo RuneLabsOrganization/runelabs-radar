@@ -39,6 +39,44 @@ function easeInOut(t: number): number {
 }
 
 /**
+ * Fits a cluster label inside its circle: up to two word-wrapped lines that
+ * never exceed the circle's chord, ellipsized when clipped. null when the
+ * circle is too small for text at all (hover tooltip carries those).
+ * Mono readout ≈ 0.62em per char; usable chord ≈ 1.5r for text.
+ */
+export function fitLabel(label: string, r: number, fontSize: number): string[] | null {
+  if (r < 30) return null;
+  const maxChars = Math.floor((r * 1.5) / (fontSize * 0.62));
+  if (maxChars < 6) return null;
+  if (label.length <= maxChars) return [label];
+  const words = label.split(' ');
+  const lines: string[] = [];
+  let i = 0;
+  while (lines.length < 2 && i < words.length) {
+    let line = '';
+    while (i < words.length) {
+      const next = line ? `${line} ${words[i]}` : words[i];
+      if (next.length <= maxChars) {
+        line = next;
+        i++;
+      } else if (line === '') {
+        // single word longer than the chord — hard-truncate it
+        line = `${words[i].slice(0, maxChars - 1)}…`;
+        i++;
+        break;
+      } else break;
+    }
+    lines.push(line);
+    if (line.endsWith('…')) break;
+  }
+  // words left over → the last line must admit it with an ellipsis
+  if (i < words.length && lines.length > 0 && !lines[lines.length - 1].endsWith('…')) {
+    lines[lines.length - 1] = `${lines[lines.length - 1].slice(0, Math.max(1, maxChars - 1))}…`;
+  }
+  return lines.filter((l) => l.length > 0);
+}
+
+/**
  * The topic map as a zoomable circle-pack: macro categories → click to zoom
  * into subtopics → click a subtopic and its stories appear as bubbles that
  * open the news itself. Every level labeled, nothing overlaps.
@@ -199,8 +237,9 @@ export default function BubbleMap({ data, compact = false }: { data: TopicNode[]
     const cy = sy(n.y);
     const isFocus = focus === n;
     const hovered = hoverId === t.id;
-    const fontSize = Math.max(9, Math.min(17, r * 0.16));
-    const showLabel = labelVisible && r > 26;
+    const fontSize = Math.max(10, Math.min(15, r * 0.13));
+    const lines = labelVisible ? fitLabel(t.label, r, fontSize) : null;
+    const showLabel = lines !== null;
     return (
       <g
         key={t.id}
@@ -231,7 +270,7 @@ export default function BubbleMap({ data, compact = false }: { data: TopicNode[]
           cy={cy}
           r={mounted ? (hovered && !isFocus ? r * 1.03 : r) : 0.001}
           fill={circleFill(t)}
-          fillOpacity={isFocus ? 0.04 : hovered ? 0.16 : 0.08}
+          fillOpacity={isFocus ? 0.04 : hovered ? 0.18 : 0.05 + t.heat * 0.11}
           stroke={circleFill(t)}
           strokeOpacity={0.18 + t.heat * 0.4 + (hovered ? 0.25 : 0)}
           strokeWidth={hovered || isFocus ? 1.5 : 1}
@@ -241,28 +280,31 @@ export default function BubbleMap({ data, compact = false }: { data: TopicNode[]
         />
         {showLabel && (
           <>
+            {lines.map((line, li) => (
+              <text
+                key={li}
+                x={cx}
+                y={cy + (lines.length === 1 ? 0 : li === 0 ? -(fontSize * 0.62) : fontSize * 0.62) - (n.children && !isFocus ? 0 : r * 0.02)}
+                textAnchor="middle"
+                fontSize={fontSize}
+                fontFamily="var(--font-readout)"
+                fill={hovered ? 'var(--ink)' : t.heat > 0.7 ? 'var(--ink)' : 'var(--ink-2)'}
+                style={{
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.08em',
+                  pointerEvents: 'none',
+                  opacity: mounted ? 1 : 0,
+                  transition: `opacity 500ms ease ${300 + delayIdx * 45}ms`,
+                }}
+              >
+                {line}
+              </text>
+            ))}
             <text
               x={cx}
-              y={cy - (n.children && !isFocus ? 0 : r * 0.02)}
+              y={cy + (lines.length === 1 ? fontSize + 2 : fontSize * 0.62 + fontSize * 0.9)}
               textAnchor="middle"
-              fontSize={fontSize}
-              fontFamily="var(--font-readout)"
-              fill={hovered ? 'var(--ink)' : t.heat > 0.7 ? 'var(--ink)' : 'var(--ink-2)'}
-              style={{
-                textTransform: 'uppercase',
-                letterSpacing: '0.08em',
-                pointerEvents: 'none',
-                opacity: mounted ? 1 : 0,
-                transition: `opacity 500ms ease ${300 + delayIdx * 45}ms`,
-              }}
-            >
-              {t.label.length > 26 ? `${t.label.slice(0, 25)}…` : t.label}
-            </text>
-            <text
-              x={cx}
-              y={cy + fontSize + 2}
-              textAnchor="middle"
-              fontSize={Math.max(8, fontSize * 0.7)}
+              fontSize={Math.max(10, fontSize * 0.72)}
               fontFamily="var(--font-readout)"
               fill="var(--ink-4)"
               style={{
@@ -291,8 +333,11 @@ export default function BubbleMap({ data, compact = false }: { data: TopicNode[]
     >
       <rect x={0} y={0} width={W} height={height} fill="transparent" />
 
-      {/* macros always give spatial context; labels only in the overview */}
-      {macros.map((m, i) => renderCluster(m, true, focus === null, i))}
+      {/* macros always give spatial context in the overview; when zoomed,
+          only the focused lineage stays — no dim giants bleeding at the edges */}
+      {macros.map((m, i) =>
+        renderCluster(m, focus === null || focus === m || focus?.parent === m, focus === null, i),
+      )}
 
       {/* subs: shown when their macro is focused (labeled) or a sibling sub is focused */}
       {(focus && !isLeaf(focus)
@@ -302,12 +347,14 @@ export default function BubbleMap({ data, compact = false }: { data: TopicNode[]
           : []
       ).map(({ s, labeled }, i) => renderCluster(s, true, labeled, i))}
 
-      {/* stories inside the focused leaf */}
+      {/* stories inside the focused leaf — text-free bubbles; titles live in
+          the hover tooltip, the desktop inspector, and the mobile sheet */}
       {storyBubbles.map(({ story, x, y, r }) => {
         const rr = r * k;
         const cx = sx(x);
         const cy = sy(y);
         if (rr < 2) return null;
+        const storyHovered = hoverStory?.s.id === story.id;
         const bubble = (
           <g
             key={story.id}
@@ -321,29 +368,19 @@ export default function BubbleMap({ data, compact = false }: { data: TopicNode[]
               });
             }}
             onMouseLeave={() => setHoverStory(null)}
-            style={{ cursor: story.url ? 'pointer' : 'default' }}
+            style={{ cursor: 'pointer' }}
           >
             <circle
               cx={cx}
               cy={cy}
               r={rr}
               fill="var(--phosphor)"
-              fillOpacity={0.1 + (story.score / 100) * 0.25}
+              fillOpacity={storyHovered ? 0.3 : 0.1 + (story.score / 100) * 0.25}
               stroke="var(--phosphor)"
-              strokeOpacity={0.5}
+              strokeOpacity={storyHovered ? 0.95 : 0.5}
+              strokeWidth={storyHovered ? 1.5 : 1}
+              style={{ transition: 'fill-opacity 150ms ease, stroke-opacity 150ms ease' }}
             />
-            {rr > 34 && (
-              <text
-                x={cx}
-                y={cy}
-                textAnchor="middle"
-                fontSize={Math.max(8.5, Math.min(12, rr * 0.16))}
-                fill="var(--ink-2)"
-                style={{ pointerEvents: 'none' }}
-              >
-                {story.title.length > 24 ? `${story.title.slice(0, 23)}…` : story.title}
-              </text>
-            )}
           </g>
         );
         return (
@@ -436,7 +473,49 @@ export default function BubbleMap({ data, compact = false }: { data: TopicNode[]
         </p>
       )}
 
-      <div className="rounded-[6px] border border-[var(--grat-soft)] bg-[var(--scope-1)]">{svg}</div>
+      <div className="flex items-start gap-4">
+        <div className="min-w-0 flex-1 rounded-[6px] border border-[var(--grat-soft)] bg-[var(--scope-1)]">{svg}</div>
+
+        {/* desktop inspector (Twenty/Weavy pattern): the focused topic's
+            stories docked right — bubbles stay text-free */}
+        {focusedTopic && focus && isLeaf(focus) && (
+          <aside className="hidden w-[280px] shrink-0 rounded-[6px] border border-[var(--grat-soft)] bg-[var(--scope-1)] p-3.5 md:block">
+            <div className="readout mb-2" style={{ color: 'var(--phosphor)' }}>
+              {focusedTopic.label}
+            </div>
+            {loadingLeaf !== null && (
+              <p className="mono text-[11px]" style={{ color: 'var(--ink-4)' }}>
+                loading stories&hellip;
+              </p>
+            )}
+            {storyError && (
+              <p className="mono text-[11px]" style={{ color: 'var(--alert)' }}>
+                {storyError}
+              </p>
+            )}
+            {leafStories && leafStories.length === 0 && loadingLeaf === null && (
+              <p className="mono text-[11px]" style={{ color: 'var(--ink-4)' }}>
+                No stories in this topic yet.
+              </p>
+            )}
+            <ul>
+              {(leafStories ?? []).map((s) => (
+                <li
+                  key={s.id}
+                  className="border-b border-[var(--grat-soft)] py-[7px] text-[13px] last:border-b-0"
+                >
+                  <Link href={`/story/${s.id}`} className="block leading-snug hover:underline" style={{ color: 'var(--ink-2)' }}>
+                    {s.title}
+                  </Link>
+                  <span className="mono text-[10px]" style={{ color: 'var(--ink-4)' }}>
+                    signal {s.score} &middot; {s.ageDays}d ago
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </aside>
+        )}
+      </div>
       {clusterTooltip}
 
       {/* mobile bottom sheet: a focused subtopic's stories as a readable list —
