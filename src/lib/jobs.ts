@@ -15,7 +15,8 @@ export type JobName =
   | 'embed'
   | 'pain'
   | 'science'
-  | 'opportunities';
+  | 'opportunities'
+  | 'second-look';
 
 // In-process overlap guard: a slow run (e.g. curate during a MiniMax incident)
 // must not overlap the next cron tick — overlapping curates would double-score

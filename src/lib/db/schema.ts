@@ -43,6 +43,10 @@ export const stories = sqliteTable('stories', {
   // (echoes, launches, follow-ups) — feeds the accuracy page + calibration
   hindsight: integer('hindsight'),
   hindsightAt: integer('hindsight_at', { mode: 'timestamp' }),
+  // contrarian "second look" — why this might NOT matter + one second-order
+  // effect, written once per high-score story by the second-look job
+  secondLook: text('second_look'),
+  secondLookAt: integer('second_look_at', { mode: 'timestamp' }),
   status: text('status', { enum: ['raw', 'curated'] }).notNull().default('raw'),
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
 });

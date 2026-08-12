@@ -14,6 +14,7 @@ import { runEmbed } from '../src/lib/embed';
 import { runPain } from '../src/lib/pain';
 import { runScience } from '../src/lib/science/run';
 import { runOpportunities } from '../src/lib/opportunities/engine';
+import { runSecondLook } from '../src/lib/science/second-look';
 
 loadDotEnv();
 
@@ -33,6 +34,7 @@ const tasks = [
   cron.schedule('0 7 * * *', () => void withJobRun('brief', runBrief)),
   cron.schedule('0 8 * * *', () => void withJobRun('rescore', runRescore)),
   cron.schedule('10 7 * * *', () => void withJobRun('opportunities', runOpportunities)),
+  cron.schedule('20 7 * * *', () => void withJobRun('second-look', runSecondLook)),
 ];
 
 // Populate immediately on boot instead of waiting for the first tick

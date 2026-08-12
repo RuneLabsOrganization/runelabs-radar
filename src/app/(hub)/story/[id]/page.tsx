@@ -5,6 +5,7 @@ import { requireViewer } from '@/lib/auth/user';
 import { getDb } from '@/lib/db';
 import { items, sources, stories } from '@/lib/db/schema';
 import { config } from '@/lib/config';
+import { getIdentity } from '@/lib/identity';
 import { DOMAIN_COLORS, DOMAIN_LABELS, DOMAINS, type Domain } from '@/lib/domains';
 import { timeAgo } from '@/lib/feed';
 import { safeHttpUrl } from '@/lib/safe-url';
@@ -76,7 +77,7 @@ export default async function StoryPage({ params }: { params: Promise<{ id: stri
     datePublished: story.createdAt.toISOString(),
     mainEntityOfPage: canonical,
     isBasedOn: srcs.map((s) => s.url).filter(Boolean),
-    author: { '@type': 'Organization', name: 'Runelabs Radar' },
+    author: { '@type': 'Organization', name: getIdentity().productName },
   };
 
   return (
@@ -138,6 +139,18 @@ export default async function StoryPage({ params }: { params: Promise<{ id: stri
       {story.whyShown && (
         <p className="mono mt-2 text-[10.5px] tracking-[0.04em]" style={{ color: 'var(--ink-4)' }}>
           scoped because <span style={{ color: 'var(--ink-3)' }}>{story.whyShown}</span>
+        </p>
+      )}
+
+      {story.secondLook && (
+        <p
+          className="mt-4 border-l-2 pl-3 text-[13.5px] leading-relaxed"
+          style={{ borderColor: 'var(--amber)', color: 'var(--ink-2)' }}
+        >
+          <span className="readout" style={{ color: 'var(--amber)' }}>
+            second look
+          </span>{' '}
+          &mdash; {story.secondLook}
         </p>
       )}
 
