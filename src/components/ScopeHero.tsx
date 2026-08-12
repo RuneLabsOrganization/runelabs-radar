@@ -107,7 +107,10 @@ export default function ScopeHero({
 
     const placed = blips.map((b) => ({ b, ...blipPosition(b.domain, b.score, b.id) }));
     const topIds = new Set(
-      [...blips].sort((a, b2) => b2.score - a.score).slice(0, 3).map((b) => b.id),
+      [...new Map(blips.map((b) => [b.id, b])).values()]
+        .sort((a, b2) => b2.score - a.score)
+        .slice(0, 3)
+        .map((b) => b.id),
     );
 
     let width = 0;
@@ -195,21 +198,21 @@ export default function ScopeHero({
       }
 
       // sweep: trailing wedge of thin slices + leading edge line
-      for (let s = 0; s < 26; s++) {
-        const frac = s / 26;
-        const a0 = sweepAngle - 0.75 * (1 - frac) - Math.PI / 2;
+      for (let s = 0; s < 34; s++) {
+        const frac = s / 34;
+        const a0 = sweepAngle - 1.0 * (1 - frac) - Math.PI / 2;
         ctx.beginPath();
         ctx.moveTo(cx, cy);
         ctx.arc(cx, cy, R, a0, a0 + 0.03);
         ctx.closePath();
-        ctx.globalAlpha = 0.16 * frac * frac;
+        ctx.globalAlpha = 0.22 * frac * frac;
         ctx.fillStyle = colors.phosphor;
         ctx.fill();
       }
       ctx.globalAlpha = 1;
       ctx.strokeStyle = colors.phosphor;
-      ctx.globalAlpha = 0.55;
-      ctx.lineWidth = 1.5;
+      ctx.globalAlpha = 0.85;
+      ctx.lineWidth = 2;
       ctx.beginPath();
       ctx.moveTo(cx, cy);
       ctx.lineTo(cx + Math.cos(sweepAngle - Math.PI / 2) * R, cy + Math.sin(sweepAngle - Math.PI / 2) * R);
@@ -219,7 +222,7 @@ export default function ScopeHero({
       // blips: brighten as the beam passes, then decay; new contacts pulse
       for (const p of placed) {
         const d = ((sweepAngle - p.angle) % TWO_PI + TWO_PI) % TWO_PI;
-        let bright = 0.22 + Math.exp(-d * 2.2) * 0.85;
+        let bright = 0.26 + Math.exp(-d * 2.6) * 0.95;
         if (p.b.isNew) bright *= 0.82 + 0.18 * Math.sin(t * 2.4 + p.b.id);
         bright = Math.min(1, bright);
         const { x, y } = px(p);
@@ -258,7 +261,7 @@ export default function ScopeHero({
     const frame = (now: number) => {
       const dt = Math.min(0.05, (now - last) / 1000);
       last = now;
-      sweepAngle = (sweepAngle + dt * 0.5) % TWO_PI;
+      sweepAngle = (sweepAngle + dt * 0.75) % TWO_PI;
       draw(sweepAngle, now / 1000);
     };
     const loop = (now: number) => {
@@ -354,9 +357,9 @@ export default function ScopeHero({
             </span>
           </div>
         )}
-        {/* a11y: the blips as a plain list */}
+        {/* a11y: the blips as a plain list (deduped — a story can sit in several wedges) */}
         <ul className="sr-only">
-          {blips.map((b) => (
+          {[...new Map(blips.map((b) => [b.id, b])).values()].map((b) => (
             <li key={b.id}>
               <a href={`/story/${b.id}`}>{b.title}</a>
             </li>

@@ -249,13 +249,23 @@ export default async function BriefingPage() {
       .from(stories)
       .where(and(eq(stories.status, 'curated'), gt(stories.createdAt, new Date(now - 24 * 36e5))))
       .get()?.c ?? 0;
-  const scopeBlips = contacts.slice(0, 40).map((c) => ({
-    id: c.story.id,
-    title: c.story.title,
-    domain: topDomain(c.scores),
-    score: c.story.topScore,
-    isNew: c.isNew,
-  }));
+  // plot by domain MEMBERSHIP (score >= 40), not just top-domain — otherwise
+  // quiet sectors (ads, copy) render empty although stories exist. Per-domain
+  // cap keeps loud sectors from flooding the scope.
+  const SCOPE_PER_DOMAIN = 12;
+  const scopeBlips = DOMAINS.flatMap((d) =>
+    contacts
+      .filter((c) => (c.scores?.[d] ?? 0) >= DOMAIN_MEMBERSHIP_THRESHOLD)
+      .sort((a, b) => (b.scores?.[d] ?? 0) - (a.scores?.[d] ?? 0))
+      .slice(0, SCOPE_PER_DOMAIN)
+      .map((c) => ({
+        id: c.story.id,
+        title: c.story.title,
+        domain: d,
+        score: c.scores?.[d] ?? 0,
+        isNew: c.isNew,
+      })),
+  );
   const scopeInsights = notes
     ? notes.items.slice(0, 3).map((n) => ({ headline: n.headline, detail: n.detail, direction: n.direction }))
     : noticed.slice(0, 3).map((p) => ({
