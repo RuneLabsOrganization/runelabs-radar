@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { domainAffinity, personalScore, signalLevel, splitFeed, timeAgo, AFFINITY_MAX_BOOST, TOP_MAX } from '@/lib/feed';
+import { domainAffinity, groupByDomain, personalScore, signalLevel, splitFeed, timeAgo, AFFINITY_MAX_BOOST, TOP_MAX } from '@/lib/feed';
 import { filterBySector, type FeedEntry } from '@/components/FilteredFeed';
 
 function contact(score: number, minutesAgo: number) {
@@ -132,6 +132,27 @@ describe('personalScore', () => {
   it('is a no-op with empty affinity or malformed scores', () => {
     expect(personalScore(50, JSON.stringify({ coding: 80 }), {})).toBe(50);
     expect(personalScore(50, 'junk', { coding: 1 })).toBe(50);
+  });
+});
+
+describe('groupByDomain', () => {
+  it('chunks by primary domain, strongest-scoring group first, uncategorized last', () => {
+    const items = [
+      { id: 1, d: 'video', s: 45 },
+      { id: 2, d: 'coding', s: 68 },
+      { id: 3, d: null, s: 55 },
+      { id: 4, d: 'video', s: 72 },
+      { id: 5, d: 'coding', s: 50 },
+    ];
+    const groups = groupByDomain(items, (i) => i.d, (i) => i.s);
+    expect(groups.map((g) => g.domain)).toEqual(['video', 'coding', null]);
+    expect(groups[0].items.map((i) => i.id)).toEqual([1, 4]); // input order preserved
+    expect(groups[1].items.map((i) => i.id)).toEqual([2, 5]);
+    expect(groups[2].items.map((i) => i.id)).toEqual([3]);
+  });
+
+  it('handles an empty list', () => {
+    expect(groupByDomain([], (i: { d: string | null }) => i.d, () => 0)).toEqual([]);
   });
 });
 

@@ -22,6 +22,7 @@ export default function SignalEntry({
   highlightDomain,
   readOnly = false,
   timeLabel,
+  hero = false,
 }: {
   story: FeedStory;
   itemCount: number;
@@ -35,6 +36,8 @@ export default function SignalEntry({
   readOnly?: boolean;
   /** precomputed server-side when rendered under a client boundary (hydration-stable) */
   timeLabel?: string;
+  /** lead-story treatment: larger title, more air — one per page */
+  hero?: boolean;
 }) {
   const scores = parseDomainScores(story.domainScores);
   const href = safeHttpUrl(firstUrl);
@@ -46,13 +49,22 @@ export default function SignalEntry({
         .slice(0, 3)
     : [];
   return (
-    <article className="border-b border-[var(--grat-soft)] py-5 last:border-b-0" data-created={story.createdAt.getTime()}>
+    <article
+      className={`border-b border-[var(--grat-soft)] last:border-b-0 ${hero ? 'py-7' : 'py-5'}`}
+      data-created={story.createdAt.getTime()}
+    >
       <div className="flex items-start gap-3.5">
         <div className="pt-[5px]">
           <SignalMeter score={story.topScore} />
         </div>
         <div className="min-w-0 flex-1">
-          <h3 className="text-[15px] leading-snug font-semibold tracking-[-0.01em]">
+          <h3
+            className={
+              hero
+                ? 'text-[19px] leading-snug font-semibold tracking-[-0.01em]'
+                : 'text-[15px] leading-snug font-semibold tracking-[-0.01em]'
+            }
+          >
             <Link
               href={`/story/${story.id}`}
               className="decoration-[var(--grat-strong)] underline-offset-2 hover:underline"

@@ -106,7 +106,6 @@ export function domainAffinity(
 
 /** Cap on the absolute personalization shift, in score points. */
 export const AFFINITY_MAX_BOOST = 12;
-
 /**
  * Applies the taste vector to a story's top score. The boost uses the
  * single best-matching domain (max, not sum) so broad stories don't stack
@@ -132,4 +131,37 @@ export function personalScore(
   }
   const boost = Math.round(best * AFFINITY_MAX_BOOST);
   return Math.max(0, Math.min(100, topScore + boost));
+}
+
+export interface DomainGroup<T> {
+  /** primary domain of every item in the group; null = unscored/uncategorized */
+  domain: string | null;
+  items: T[];
+}
+
+/**
+ * Chunks the scan log by each contact's primary domain so a long list gets
+ * labeled anchor points. Groups are ordered by their highest-scoring item
+ * (strongest sector first); items keep their input (newest-first) order.
+ * Domain-less contacts collect in one trailing null group.
+ */
+export function groupByDomain<T>(
+  list: T[],
+  domainOf: (item: T) => string | null,
+  scoreOf: (item: T) => number,
+): DomainGroup<T>[] {
+  const groups = new Map<string | null, T[]>();
+  for (const item of list) {
+    const d = domainOf(item);
+    const g = groups.get(d) ?? [];
+    g.push(item);
+    groups.set(d, g);
+  }
+  return [...groups.entries()]
+    .map(([domain, items]) => ({ domain, items }))
+    .sort((a, b) => {
+      if (a.domain === null) return 1; // uncategorized always last
+      if (b.domain === null) return -1;
+      return Math.max(...b.items.map(scoreOf)) - Math.max(...a.items.map(scoreOf));
+    });
 }

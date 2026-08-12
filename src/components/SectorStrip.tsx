@@ -2,6 +2,7 @@
 import * as React from 'react';
 import Link from 'next/link';
 import { DOMAIN_COLORS, DOMAIN_LABELS, type Domain } from '@/lib/domains';
+import MiniTrend from './MiniTrend';
 
 export interface SectorStat {
   domain: Domain;
@@ -9,13 +10,15 @@ export interface SectorStat {
   fresh: number;
   /** Week-over-week volume change (%); null hides the momentum readout. */
   deltaPct?: number | null;
+  /** 14-day daily story counts — rendered as an inline sparkline when present. */
+  series?: number[] | null;
 }
 
 /** Sweep readout across the six sectors — doubles as domain navigation. */
 export default function SectorStrip({ stats, active }: { stats: SectorStat[]; active?: Domain }) {
   return (
     <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
-      {stats.map(({ domain, count, fresh, deltaPct }) => (
+      {stats.map(({ domain, count, fresh, deltaPct, series }) => (
         <Link
           key={domain}
           href={`/domain/${domain}`}
@@ -50,6 +53,11 @@ export default function SectorStrip({ stats, active }: { stats: SectorStat[]; ac
               </span>
             )}
           </span>
+          {series && series.length > 0 && (
+            <span className="mt-1.5 block" aria-hidden>
+              <MiniTrend values={series} color={DOMAIN_COLORS[domain]} height={20} fluid />
+            </span>
+          )}
         </Link>
       ))}
     </div>

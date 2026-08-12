@@ -1,12 +1,12 @@
 import { and, count, desc, eq, gt, inArray } from 'drizzle-orm';
+import Link from 'next/link';
 import { requireViewer } from '@/lib/auth/user';
 import { getDb } from '@/lib/db';
 import { items, launches, sources, stories, votes } from '@/lib/db/schema';
-import { DOMAINS, DOMAIN_MEMBERSHIP_THRESHOLD } from '@/lib/domains';
+import { DOMAINS, DOMAIN_COLORS, DOMAIN_LABELS, DOMAIN_MEMBERSHIP_THRESHOLD, type Domain } from '@/lib/domains';
 import {
   dailyDomainCounts,
   domainMomentum,
-  echoStats,
   entityDailySeries,
   latestInsights,
   latestPatterns,
@@ -16,21 +16,21 @@ import {
 } from '@/lib/analytics';
 import { seriesFor } from '@/lib/metrics';
 import { isDomain } from '@/lib/domains';
-import { domainAffinity, personalScore, splitFeed, timeAgo } from '@/lib/feed';
+import { domainAffinity, groupByDomain, personalScore, splitFeed, timeAgo } from '@/lib/feed';
 import { safeHttpUrl } from '@/lib/safe-url';
 import { visitAnchor } from '@/lib/visits';
 import { canonicalEntityKey } from '@/lib/entity';
 import { config } from '@/lib/config';
 import { getIdentity } from '@/lib/identity';
-import { parseDomainScores } from '@/components/DomainChips';
+import { parseDomainScores, topDomain } from '@/components/DomainChips';
 import { hypeIndex } from '@/lib/science/hype';
 import ChartFrame from '@/components/ChartFrame';
 import ActivityTrace from '@/components/ActivityTrace';
 import AnalystNotes from '@/components/AnalystNotes';
 import AnomalyFeed from '@/components/AnomalyFeed';
 import EntityBars from '@/components/EntityBars';
-import BubbleMap from '@/components/BubbleMap';
-import FilteredFeed, { type FeedEntry } from '@/components/FilteredFeed';
+import SignalEntry from '@/components/SignalEntry';
+import ScanRow from '@/components/ScanRow';
 import MarkSeen from '@/components/MarkSeen';
 import SectionHeader from '@/components/SectionHeader';
 import SectorStrip, { type SectorStat } from '@/components/SectorStrip';
@@ -85,38 +85,11 @@ function voteAggByStory(storyIds: number[], userId: number): Map<number, VoteAgg
 
 type Contact = {
   story: import('@/lib/feed').Story;
+  scores: Partial<Record<Domain, number>> | null;
   score: number;
+  createdAt: Date;
   isNew: boolean;
 };
-
-/** Slim, Buffer-free serialization for the client-side filtered feed. */
-function toFeedEntry(itemAgg: Map<number, ItemAgg>, voteAgg: Map<number, VoteAgg>) {
-  return (c: Contact): FeedEntry => {
-    const it = itemAgg.get(c.story.id) ?? { count: 0, firstUrl: null, sourceName: null };
-    const vt = voteAgg.get(c.story.id) ?? { up: 0, down: 0, mine: 0 as const };
-    return {
-      story: {
-        id: c.story.id,
-        title: c.story.title,
-        tldr: c.story.tldr,
-        whyItMatters: c.story.whyItMatters,
-        whyShown: c.story.whyShown,
-        domainScores: c.story.domainScores,
-        topScore: c.story.topScore,
-        createdAt: c.story.createdAt,
-      },
-      itemCount: it.count,
-      firstUrl: it.firstUrl,
-      sourceName: it.sourceName,
-      up: vt.up,
-      down: vt.down,
-      myVote: vt.mine,
-      isNew: c.isNew,
-      score: c.score,
-      timeLabel: timeAgo(c.story.createdAt),
-    };
-  };
-}
 
 const WEEKDAYS = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
 const MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
@@ -202,7 +175,6 @@ export default async function BriefingPage() {
   const entities = topEntities(8);
   const hype = new Map(hypeIndex(12).map((h) => [h.name.toLowerCase(), h.score]));
   const notes = latestInsights();
-  const echoes = echoStats();
   const noticed = latestPatterns(6);
   // sector-spike patterns were detected evaluating "yesterday" — mark that day
   const spikes = noticed
@@ -238,25 +210,134 @@ export default async function BriefingPage() {
     .limit(8)
     .all();
 
+  // feed presentation: hero (#1) → up to 4 featured → everything else folds
+  // into the scan log, re-sorted newest-first and chunked by primary domain
+  const hero = top[0] ?? null;
+  const featured = top.slice(1, 5);
+  const scanAll = [...top.slice(5), ...scan].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+  const scanGroups = groupByDomain(scanAll, (c) => topDomain(c.scores), (c) => c.score);
+  const SCAN_GROUP_CAP = 6;
+
+  const entryProps = (c: Contact) => {
+    const it = itemAgg.get(c.story.id) ?? { count: 0, firstUrl: null, sourceName: null };
+    const vt = voteAgg.get(c.story.id) ?? { up: 0, down: 0, mine: 0 as const };
+    return {
+      story: c.story,
+      itemCount: it.count,
+      firstUrl: it.firstUrl,
+      sourceName: it.sourceName,
+      up: vt.up,
+      down: vt.down,
+      myVote: vt.mine,
+      isNew: c.isNew,
+      timeLabel: timeAgo(c.story.createdAt),
+      readOnly: !user,
+    };
+  };
+
+  const notesShown = notes ? notes.items.slice(0, 2) : [];
+  const noticedShown = noticed.slice(0, 3);
+  const noticedTrends = patternTrends.slice(0, 3);
+  const worthKnowingDate = notes?.date ?? noticed[0]?.date ?? null;
+
   return (
     <div className="mx-auto max-w-[860px] px-6 py-7">
       {user && <MarkSeen />}
 
       <div className="readout">
-        {dateLine(new Date())} &middot; {contacts.length} contacts on scope
+        {dateLine(new Date())} &middot; {contacts.length} stories tracked
         {freshTotal > 0 && (
-          <span style={{ color: 'var(--phosphor)' }}> &middot; {freshTotal} new</span>
+          <span style={{ color: 'var(--phosphor)' }}> &middot; {freshTotal} new since your last visit</span>
         )}
-        {echoes.multiSource > 0 && <span> &middot; {echoes.multiSource} multi-source echoes</span>}
       </div>
       <h1 className="mt-1 text-[17px] font-semibold tracking-[-0.01em]">Today</h1>
 
-      <div className="mt-4">
-        <SectorStrip stats={stats} />
-      </div>
+      {/* the news leads — hero + featured top signals */}
+      <SectionHeader label="Top signals" count={top.length} />
+      {hero ? (
+        <div>
+          <SignalEntry {...entryProps(hero)} hero />
+          {featured.map((c) => (
+            <SignalEntry key={c.story.id} {...entryProps(c)} />
+          ))}
+        </div>
+      ) : (
+        <p className="mono text-[12px]" style={{ color: 'var(--ink-4)' }}>
+          No strong signals on the scope yet — the sweep runs every 30 minutes.
+        </p>
+      )}
 
-      <SectionHeader label="Activity — 14-day sweep" />
-      <div className="flex flex-col gap-7 md:flex-row">
+      {/* machine detections + analyst calls, one merged block (they were twins) */}
+      {(noticedShown.length > 0 || notesShown.length > 0) && (
+        <>
+          <SectionHeader
+            label={`Worth knowing — ${worthKnowingDate}`}
+            tone="phosphor"
+            count={noticedShown.length + notesShown.length}
+          />
+          {noticedShown.length > 0 && <AnomalyFeed items={noticedShown} trends={noticedTrends} />}
+          {notesShown.length > 0 && <AnalystNotes items={notesShown} sectorSeries={sectorSeries} />}
+        </>
+      )}
+
+      {/* everything else, chunked by sector so the long list has anchors */}
+      {scanGroups.length > 0 && (
+        <>
+          <SectionHeader label="More signals — by sector" count={scanAll.length} />
+          {scanGroups.map((g) => {
+            const shown = g.items.slice(0, SCAN_GROUP_CAP);
+            const hidden = g.items.length - shown.length;
+            return (
+              <section key={g.domain ?? 'other'} className="mb-5 last:mb-0">
+                <div className="mono mb-1 flex items-baseline gap-2 text-[10.5px] tracking-[0.1em] uppercase">
+                  {g.domain && isDomain(g.domain) ? (
+                    <>
+                      <span
+                        aria-hidden
+                        className="inline-block h-[9px] w-[2px]"
+                        style={{ background: DOMAIN_COLORS[g.domain] }}
+                      />
+                      <span style={{ color: 'var(--ink-3)' }}>{DOMAIN_LABELS[g.domain]}</span>
+                    </>
+                  ) : (
+                    <span style={{ color: 'var(--ink-4)' }}>Unscoped</span>
+                  )}
+                  <span style={{ color: 'var(--ink-4)' }}>{g.items.length}</span>
+                  {hidden > 0 && g.domain && (
+                    <Link
+                      href={`/domain/${g.domain}`}
+                      className="ml-auto hover:underline"
+                      style={{ color: 'var(--ink-4)' }}
+                    >
+                      all {g.items.length} &rarr;
+                    </Link>
+                  )}
+                </div>
+                <ul>
+                  {shown.map((c) => (
+                    <ScanRow
+                      key={c.story.id}
+                      story={c.story}
+                      firstUrl={itemAgg.get(c.story.id)?.firstUrl ?? null}
+                      score={c.score}
+                      domain={g.domain && isDomain(g.domain) ? g.domain : null}
+                      isNew={c.isNew}
+                      timeLabel={timeAgo(c.story.createdAt)}
+                    />
+                  ))}
+                </ul>
+              </section>
+            );
+          })}
+        </>
+      )}
+
+      {/* trends: context after content — sector pulse, activity, entities */}
+      <SectionHeader label="Trends — 14-day sweep" />
+      <SectorStrip
+        stats={stats.map((s) => ({ ...s, series: sectorSeries[s.domain] ?? null }))}
+      />
+      <div className="mt-5 flex flex-col gap-7 md:flex-row">
         <div className="min-w-0 flex-1">
           <ChartFrame title="activity — 14-day sweep" brand={chartBrand}>
             <ActivityTrace days={days} spikes={spikes} />
@@ -267,36 +348,14 @@ export default async function BriefingPage() {
           <EntityBars entities={entities} hype={hype} />
         </div>
       </div>
-
-      {noticed.length > 0 && (
-        <>
-          <SectionHeader label={`The machine noticed — ${noticed[0].date}`} tone="phosphor" count={noticed.length} />
-          <AnomalyFeed items={noticed} trends={patternTrends} />
-        </>
-      )}
-
       {topics && topics.length > 0 && (
-        <>
-          <SectionHeader
-            label={`Topic map — ${topics.length} categories`}
-            count={topics.reduce((a, t) => a + t.size, 0)}
-          />
-          <BubbleMap data={topics} compact />
-        </>
+        <p className="mono mt-4 text-[10.5px] tracking-[0.06em]" style={{ color: 'var(--ink-4)' }}>
+          topic map &middot; {topics.length} categories &middot;{' '}
+          <Link href="/map" className="hover:underline" style={{ color: 'var(--ink-3)' }}>
+            explore the interactive map &rarr;
+          </Link>
+        </p>
       )}
-
-      {notes && notes.items.length > 0 && (
-        <>
-          <SectionHeader label={`Analyst notes — ${notes.date}`} />
-          <AnalystNotes items={notes.items} sectorSeries={sectorSeries} />
-        </>
-      )}
-
-      <FilteredFeed
-        top={top.map(toFeedEntry(itemAgg, voteAgg))}
-        scan={scan.map(toFeedEntry(itemAgg, voteAgg))}
-        readOnly={!user}
-      />
 
       {recentLaunches.length > 0 && (
         <>

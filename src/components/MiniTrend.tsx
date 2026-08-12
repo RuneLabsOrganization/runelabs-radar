@@ -11,12 +11,15 @@ export default function MiniTrend({
   width = 104,
   height = 30,
   caption,
+  fluid = false,
 }: {
   values: number[] | null;
   color?: string;
   width?: number;
   height?: number;
   caption?: string;
+  /** fill the container width instead of a fixed pixel width (bar widths stretch) */
+  fluid?: boolean;
 }) {
   if (!values || values.length === 0 || values.every((v) => v === 0)) return null;
   const max = Math.max(...values);
@@ -26,7 +29,9 @@ export default function MiniTrend({
   return (
     <div className="flex shrink-0 flex-col items-end gap-0.5">
       <svg
-        width={width}
+        {...(fluid
+          ? { className: 'block w-full', preserveAspectRatio: 'none' }
+          : { width })}
         height={height}
         viewBox={`0 0 ${width} ${height}`}
         role="img"
