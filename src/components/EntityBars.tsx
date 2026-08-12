@@ -1,6 +1,8 @@
 // Namespace import keeps JSX working under vitest's classic transform (jsx: preserve).
 import * as React from 'react';
+import Link from 'next/link';
 import type { EntityCount } from '@/lib/analytics';
+import { entitySlug } from '@/lib/entity';
 
 function delta(e: EntityCount): { text: string; color: string } {
   if (e.prev === 0) return { text: 'new', color: 'var(--phosphor)' };
@@ -36,9 +38,13 @@ export default function EntityBars({
         return (
           <li key={`${e.kind}:${e.name.toLowerCase()}`} title={`${e.name} (${e.kind}) — ${e.count} mentions this week, ${e.prev} last week${h !== undefined ? ` · hype/substance ${h}` : ''}`}>
             <div className="flex items-baseline justify-between gap-2">
-              <span className="mono min-w-0 truncate text-[11px]" style={{ color: 'var(--ink-2)' }}>
+              <Link
+                href={`/entity/${entitySlug(e.name)}`}
+                className="mono min-w-0 truncate text-[11px] hover:underline"
+                style={{ color: 'var(--ink-2)' }}
+              >
                 {e.name}
-              </span>
+              </Link>
               <span className="mono shrink-0 text-[10.5px]" style={{ color: 'var(--ink-3)' }}>
                 {h !== undefined && (
                   <span className="mr-1.5" style={{ color: hColor }} title="hype vs substance — high = loud, low = shipping">

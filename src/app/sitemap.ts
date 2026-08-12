@@ -4,12 +4,13 @@ import { getDb } from '@/lib/db';
 import { stories } from '@/lib/db/schema';
 import { config } from '@/lib/config';
 import { DOMAINS } from '@/lib/domains';
+import { topEntitySlugs } from '@/lib/entity';
 
 export const dynamic = 'force-dynamic';
 
 export default function sitemap(): MetadataRoute.Sitemap {
   const base = config.siteUrl;
-  const staticRoutes = ['', '/board', '/stacks', '/opportunities', '/map', '/brief', '/changelog'].map(
+  const staticRoutes = ['', '/board', '/stacks', '/opportunities', '/map', '/brief', '/changelog', '/accuracy'].map(
     (p) => ({
       url: `${base}${p}`,
       changeFrequency: 'hourly' as const,
@@ -23,6 +24,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
   }));
 
   let storyRoutes: MetadataRoute.Sitemap = [];
+  let entityRoutes: MetadataRoute.Sitemap = [];
   try {
     const recent = getDb()
       .select({ id: stories.id, createdAt: stories.createdAt })
@@ -40,9 +42,14 @@ export default function sitemap(): MetadataRoute.Sitemap {
       changeFrequency: 'never' as const,
       priority: 0.6,
     }));
+    entityRoutes = topEntitySlugs(200).map((slug) => ({
+      url: `${base}/entity/${slug}`,
+      changeFrequency: 'daily' as const,
+      priority: 0.6,
+    }));
   } catch {
     // no database yet (fresh install) — static routes only
   }
 
-  return [...staticRoutes, ...domainRoutes, ...storyRoutes];
+  return [...staticRoutes, ...domainRoutes, ...entityRoutes, ...storyRoutes];
 }

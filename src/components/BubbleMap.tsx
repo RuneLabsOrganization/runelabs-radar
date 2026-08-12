@@ -335,12 +335,10 @@ export default function BubbleMap({ data, compact = false }: { data: TopicNode[]
             )}
           </g>
         );
-        return story.url ? (
-          <a key={story.id} href={story.url} target="_blank" rel="noreferrer">
+        return (
+          <a key={story.id} href={`/story/${story.id}`}>
             {bubble}
           </a>
-        ) : (
-          bubble
         );
       })}
     </svg>
