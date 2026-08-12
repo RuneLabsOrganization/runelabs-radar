@@ -253,6 +253,18 @@ export default async function BoardPage() {
           ))}
         </ul>
       )}
+
+      <div className="mt-8 border-t border-[var(--grat-soft)] pt-3">
+        <span className="readout" style={{ color: 'var(--ink-4)' }}>
+          embed this board
+        </span>
+        <code
+          className="mono mt-1.5 block overflow-x-auto text-[10.5px]"
+          style={{ color: 'var(--ink-3)' }}
+        >
+          {`<iframe src="${config.siteUrl}/embed/board" width="420" height="480" style="border:0" loading="lazy"></iframe>`}
+        </code>
+      </div>
     </div>
   );
 }
