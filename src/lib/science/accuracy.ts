@@ -9,11 +9,20 @@ export interface CalibrationBucket {
   count: number;
   meanScore: number;
   meanHindsight: number | null;
+  medianHindsight: number | null;
+}
+
+function median(values: number[]): number | null {
+  if (values.length === 0) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 1 ? sorted[mid] : Math.round((sorted[mid - 1] + sorted[mid]) / 2);
 }
 
 /**
  * Score calibration: do higher top_scores actually turn into higher
- * hindsight? Bucketed proof for the accuracy page.
+ * hindsight? Bucketed on the feed's own bands (archive <40, scan 40-69,
+ * top signal 70+). Median reported alongside mean — small-n skew is real.
  */
 export function calibrationBuckets(): CalibrationBucket[] {
   const db = getDb();
@@ -23,24 +32,83 @@ export function calibrationBuckets(): CalibrationBucket[] {
     .where(and(eq(stories.status, 'curated'), isNotNull(stories.hindsight)))
     .all();
 
-  const buckets: CalibrationBucket[] = [
-    { label: '40–59', count: 0, meanScore: 0, meanHindsight: null },
-    { label: '60–79', count: 0, meanScore: 0, meanHindsight: null },
-    { label: '80–100', count: 0, meanScore: 0, meanHindsight: null },
+  const bands: { label: string; test: (s: number) => boolean; scores: number[]; hindsights: number[] }[] = [
+    { label: '<40', test: (s) => s < 40, scores: [], hindsights: [] },
+    { label: '40–69', test: (s) => s >= 40 && s < 70, scores: [], hindsights: [] },
+    { label: '70–100', test: (s) => s >= 70, scores: [], hindsights: [] },
   ];
   for (const r of rows) {
-    const b = r.topScore >= 80 ? buckets[2] : r.topScore >= 60 ? buckets[1] : buckets[0];
-    b.meanScore += r.topScore;
-    b.meanHindsight = (b.meanHindsight ?? 0) + (r.hindsight ?? 0);
-    b.count++;
+    const band = bands.find((b) => b.test(r.topScore))!;
+    band.scores.push(r.topScore);
+    band.hindsights.push(r.hindsight ?? 0);
   }
-  for (const b of buckets) {
-    if (b.count > 0) {
-      b.meanScore = Math.round(b.meanScore / b.count);
-      b.meanHindsight = Math.round((b.meanHindsight ?? 0) / b.count);
-    }
+  return bands.map((b) => ({
+    label: b.label,
+    count: b.scores.length,
+    meanScore: b.scores.length ? Math.round(b.scores.reduce((a, s) => a + s, 0) / b.scores.length) : 0,
+    meanHindsight: b.hindsights.length
+      ? Math.round(b.hindsights.reduce((a, h) => a + h, 0) / b.hindsights.length)
+      : null,
+    medianHindsight: median(b.hindsights),
+  }));
+}
+
+/**
+ * Is the calibration monotonic — do higher score bands earn strictly higher
+ * mean hindsight? False when inverted (or a band is empty); the page shows
+ * this verbatim, with sample size, because publishing the miss IS the point.
+ */
+export function calibrationMonotonic(buckets: CalibrationBucket[]): boolean {
+  const means = buckets.map((b) => b.meanHindsight);
+  if (means.some((m) => m === null)) return false;
+  for (let i = 1; i < means.length; i++) {
+    if (means[i]! < means[i - 1]!) return false;
   }
-  return buckets;
+  return true;
+}
+
+export interface AccuracyMiss {
+  id: number;
+  title: string;
+  topScore: number;
+  hindsight: number;
+}
+
+/** The published misses: high score/low follow-through vs low score/high follow-through. */
+export function accuracyMisses(limit = 3): { overRated: AccuracyMiss[]; underRated: AccuracyMiss[] } {
+  const db = getDb();
+  const graded = db
+    .select({
+      id: stories.id,
+      title: stories.title,
+      topScore: stories.topScore,
+      hindsight: stories.hindsight,
+    })
+    .from(stories)
+    .where(and(eq(stories.status, 'curated'), isNotNull(stories.hindsight)))
+    .all();
+  const overRated = graded
+    .filter((s) => s.topScore >= 70)
+    .sort((a, b) => (a.hindsight ?? 0) - (b.hindsight ?? 0))
+    .slice(0, limit) as AccuracyMiss[];
+  const underRated = graded
+    .filter((s) => s.topScore < 60)
+    .sort((a, b) => (b.hindsight ?? 0) - (a.hindsight ?? 0))
+    .slice(0, limit) as AccuracyMiss[];
+  return { overRated, underRated };
+}
+
+/** First day the rescore job wrote hindsight — the "grading since" counter. */
+export function gradingSince(): string | null {
+  const db = getDb();
+  const row = db
+    .select({ at: stories.hindsightAt })
+    .from(stories)
+    .where(isNotNull(stories.hindsightAt))
+    .orderBy(stories.hindsightAt)
+    .limit(1)
+    .get();
+  return row?.at ? row.at.toISOString().slice(0, 10) : null;
 }
 
 /** Nightly: persist today's frontier-price forecast so future-us can grade it. */
