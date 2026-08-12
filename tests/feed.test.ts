@@ -54,6 +54,7 @@ describe('filterBySector', () => {
       title: `s${id}`,
       tldr: null,
       whyItMatters: null,
+      whyShown: null,
       domainScores: JSON.stringify(scores),
       topScore: 50,
       createdAt: new Date(),

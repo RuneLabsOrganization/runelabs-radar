@@ -10,6 +10,7 @@ import ValueBars from '@/components/ValueBars';
 import VerdictEditor from '@/components/VerdictEditor';
 import SectionHeader from '@/components/SectionHeader';
 import { aaMedia, aaModels } from '@/lib/analytics';
+import { seriesFor } from '@/lib/metrics';
 import { forecastFrontierPrice } from '@/lib/science/forecast';
 import { lagFindings, lagReadiness } from '@/lib/science/lag';
 import ForecastChart from '@/components/ForecastChart';
@@ -36,6 +37,30 @@ function cell(value: string | null): ReactNode {
 
 function fmtDate(d: Date): string {
   return d.toISOString().slice(0, 10);
+}
+
+/** Per-day intelligence/price series for the scatter time-lapse (30d, carry-forward client-side). */
+function scatterHistory(models: { name: string }[]): import('@/components/ModelScatter').ScatterHistory | undefined {
+  const DAYS = 30;
+  const dateSet = new Set<string>();
+  const intel: Record<string, (number | null)[]> = {};
+  const price: Record<string, (number | null)[]> = {};
+  const raw = new Map<string, { i: Map<string, number>; p: Map<string, number> }>();
+  for (const m of models) {
+    const iSeries = seriesFor('aa', m.name, 'intelligence', DAYS);
+    const pSeries = seriesFor('aa', m.name, 'price_blended', DAYS);
+    if (iSeries.length === 0 && pSeries.length === 0) continue;
+    const entry = { i: new Map(iSeries.map((r) => [r.date, r.value])), p: new Map(pSeries.map((r) => [r.date, r.value])) };
+    raw.set(m.name, entry);
+    for (const d of [...entry.i.keys(), ...entry.p.keys()]) dateSet.add(d);
+  }
+  const dates = [...dateSet].sort();
+  if (dates.length < 5) return undefined;
+  for (const [name, entry] of raw) {
+    intel[name] = dates.map((d) => entry.i.get(d) ?? null);
+    price[name] = dates.map((d) => entry.p.get(d) ?? null);
+  }
+  return { dates, intel, price };
 }
 
 function domainLabel(domain: string): string {
@@ -87,7 +112,7 @@ export default async function BoardPage() {
           <section id="market" className="scroll-mt-24">
             <SectionHeader label="The market — quality vs price" />
             <ChartFrame title="quality vs price" brand={chartBrand}>
-              <ModelScatter models={aa.models} fetchedAt={aa.fetchedAt} />
+              <ModelScatter models={aa.models} fetchedAt={aa.fetchedAt} history={scatterHistory(aa.models)} />
             </ChartFrame>
           </section>
 
