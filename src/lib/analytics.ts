@@ -17,6 +17,7 @@ import {
   topicClusters,
 } from './db/schema';
 import { DOMAINS, DOMAIN_MEMBERSHIP_THRESHOLD, type Domain } from './domains';
+import { canonicalEntityKey, canonicalEntityName } from './entity';
 import { safeHttpUrl } from './safe-url';
 import { parseDomainScores, topDomain } from '@/components/DomainChips';
 
@@ -152,8 +153,10 @@ function collectEntities(rows: { entities: string | null }[]): Map<string, { nam
     for (const e of list) {
       if (typeof e?.name !== 'string' || e.name.trim() === '') continue;
       const name = e.name.replace(/\s+/g, ' ').trim();
-      const key = name.toLowerCase();
-      if (ENTITY_STOPLIST.has(key)) continue;
+      if (ENTITY_STOPLIST.has(name.toLowerCase())) continue;
+      // canonical key merges variants ("GPT-5" ≡ "gpt 5") into one entity
+      const key = canonicalEntityKey(name);
+      if (key === '') continue;
       if (seenInStory.has(key)) continue; // count once per story
       seenInStory.add(key);
       const cur = map.get(key);
@@ -161,7 +164,7 @@ function collectEntities(rows: { entities: string | null }[]): Map<string, { nam
         cur.count += 1;
       } else {
         map.set(key, {
-          name,
+          name: canonicalEntityName(name),
           kind: typeof e.kind === 'string' ? e.kind : 'model',
           count: 1,
         });
@@ -174,10 +177,10 @@ function collectEntities(rows: { entities: string | null }[]): Map<string, { nam
 /**
  * Daily mention counts for specific entities over the trailing window —
  * the series behind each entity-surge pattern's trend chart. Keys are
- * lowercased entity names; arrays align with dailyDomainCounts' days.
+ * canonicalEntityKey(name); arrays align with dailyDomainCounts' days.
  */
 export function entityDailySeries(names: string[], days = 14): Map<string, number[]> {
-  const wanted = new Set(names.map((n) => n.toLowerCase()));
+  const wanted = new Set(names.map((n) => canonicalEntityKey(n)));
   const out = new Map<string, number[]>();
   if (wanted.size === 0) return out;
   for (const n of wanted) out.set(n, new Array<number>(days).fill(0));
@@ -213,7 +216,7 @@ export function entityDailySeries(names: string[], days = 14): Map<string, numbe
     const seenInStory = new Set<string>();
     for (const e of list) {
       if (typeof e?.name !== 'string') continue;
-      const key = e.name.replace(/\s+/g, ' ').trim().toLowerCase();
+      const key = canonicalEntityKey(e.name);
       if (!wanted.has(key) || seenInStory.has(key)) continue;
       seenInStory.add(key);
       out.get(key)![idx] += 1;
