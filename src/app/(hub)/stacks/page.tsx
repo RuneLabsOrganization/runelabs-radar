@@ -1,9 +1,12 @@
+import Link from 'next/link';
 import { getDb } from '@/lib/db';
 import { stacks } from '@/lib/db/schema';
 import { requireViewer } from '@/lib/auth/user';
 import { timeAgo } from '@/lib/feed';
 import { VENTURES } from '@/lib/stacks/generate';
+import { allEntityNames, matchEntity, stackMarkdown } from '@/lib/stacks/match';
 import VerdictEditor from '@/components/VerdictEditor';
+import CopyButton from '@/components/CopyButton';
 
 interface Layer {
   layer: string;
@@ -31,6 +34,30 @@ function parseLayers(json: string): Layer[] {
   }
 }
 
+/** Pick cell: linked to its entity watch page when the name matches the graph. */
+function PickText({
+  text,
+  entities,
+  strong = false,
+}: {
+  text: string;
+  entities: Map<string, string>;
+  strong?: boolean;
+}) {
+  const m = matchEntity(text, entities);
+  if (!m) return <span style={{ color: strong ? 'var(--ink)' : 'var(--ink-2)' }}>{text}</span>;
+  return (
+    <Link
+      href={`/entity/${m.slug}`}
+      title={`watch ${m.name}`}
+      className="decoration-[var(--grat-strong)] underline-offset-2 hover:underline"
+      style={{ color: strong ? 'var(--ink)' : 'var(--ink-2)' }}
+    >
+      {text}
+    </Link>
+  );
+}
+
 export default async function StacksPage() {
   const user = await requireViewer();
   const db = getDb();
@@ -38,6 +65,7 @@ export default async function StacksPage() {
   const byVenture = new Map(rows.map((r) => [r.venture, r]));
   const ordered = VENTURES.map((v) => ({ venture: v, stack: byVenture.get(v.slug) ?? null }));
   const have = ordered.filter((o) => o.stack !== null);
+  const entities = allEntityNames();
 
   return (
     <div className="mx-auto max-w-[860px] px-6 py-7">
@@ -56,15 +84,28 @@ export default async function StacksPage() {
         </p>
       ) : (
         <div className="mt-6 flex flex-col gap-6">
-          {have.map(({ venture, stack }, idx) => {
-            const s = stack!;
+          {ordered.map(({ venture, stack }, idx) => {
+            if (!stack) {
+              // placeholder slot — the catalog shows its shape, not a hole
+              return (
+                <section key={venture.slug} className="rounded-[6px] border border-dashed border-[var(--grat)] p-5 opacity-60">
+                  <span className="readout" style={{ color: 'var(--ink-4)' }}>
+                    &#9646; {venture.label}
+                  </span>
+                  <p className="mono mt-2 text-[11px]" style={{ color: 'var(--ink-4)' }}>
+                    playbook drafts on the next weekly sweep
+                  </p>
+                </section>
+              );
+            }
+            const s = stack;
             const layers = parseLayers(s.layers);
+            const recipe = layers.map((l) => {
+              const m = matchEntity(l.pick, entities);
+              return m ? m.name : l.pick.split(' (')[0].slice(0, 26);
+            });
             return (
-              <section
-                key={venture.slug}
-                className="card anim-in !p-5"
-                style={{ animationDelay: `${idx * 60}ms` }}
-              >
+              <section key={venture.slug} className="card anim-in !p-5" style={{ animationDelay: `${idx * 60}ms` }}>
                 <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
                   <span className="readout" style={{ color: 'var(--phosphor)' }}>
                     &#9646; {venture.label}
@@ -76,6 +117,13 @@ export default async function StacksPage() {
                     </span>
                   )}
                 </div>
+
+                {/* the whole playbook in one line — triage before the table */}
+                {recipe.length > 0 && (
+                  <p className="mono mt-2 text-[11px] tracking-[0.02em]" style={{ color: 'var(--ink-3)' }}>
+                    {recipe.join(' → ')}
+                  </p>
+                )}
 
                 <div className="mono mt-2.5 flex flex-wrap gap-x-5 gap-y-1 text-[10.5px] tracking-[0.06em] uppercase" style={{ color: 'var(--ink-3)' }}>
                   {s.timeToMvp && (
@@ -106,8 +154,12 @@ export default async function StacksPage() {
                           <td data-label="layer" className="mono text-[10.5px] uppercase" style={{ color: 'var(--ink-4)' }}>
                             {l.layer}
                           </td>
-                          <td data-label="pick" style={{ color: 'var(--ink)' }}>{l.pick}</td>
-                          <td data-label="alternative">{l.alt ?? <span style={{ color: 'var(--ink-4)' }}>—</span>}</td>
+                          <td data-label="pick">
+                            <PickText text={l.pick} entities={entities} strong />
+                          </td>
+                          <td data-label="alternative">
+                            {l.alt ? <PickText text={l.alt} entities={entities} /> : <span style={{ color: 'var(--ink-4)' }}>—</span>}
+                          </td>
                           <td data-label="note" className="text-[12.5px]">{l.note ?? ''}</td>
                         </tr>
                       ))}
@@ -132,9 +184,12 @@ export default async function StacksPage() {
                       kind="stack"
                     />
                   </div>
-                  <span className="mono shrink-0 text-[10px]" style={{ color: 'var(--ink-4)' }}>
-                    updated {timeAgo(s.updatedAt)}
-                  </span>
+                  <div className="flex shrink-0 items-center gap-4">
+                    <CopyButton text={stackMarkdown(venture.label, s, layers)} />
+                    <span className="mono text-[10px]" style={{ color: 'var(--ink-4)' }}>
+                      updated {timeAgo(s.updatedAt)}
+                    </span>
+                  </div>
                 </div>
               </section>
             );
