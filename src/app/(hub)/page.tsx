@@ -38,7 +38,7 @@ type ItemAgg = { count: number; firstUrl: string | null; sourceName: string | nu
 type VoteAgg = { up: number; down: number; mine: 1 | -1 | 0 };
 
 export const metadata = {
-  title: 'Briefing',
+  title: 'Today',
   description:
     'Today\u2019s AI signals, curated and scored per domain — coding, copy, image, video, ads, agentic.',
 };
@@ -236,7 +236,7 @@ export default async function BriefingPage() {
         )}
         {echoes.multiSource > 0 && <span> &middot; {echoes.multiSource} multi-source echoes</span>}
       </div>
-      <h1 className="mt-1 text-[17px] font-semibold tracking-[-0.01em]">Briefing</h1>
+      <h1 className="mt-1 text-[17px] font-semibold tracking-[-0.01em]">Today</h1>
 
       <div className="mt-4">
         <SectorStrip stats={stats} />

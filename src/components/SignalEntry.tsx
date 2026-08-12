@@ -46,7 +46,7 @@ export default function SignalEntry({
         .slice(0, 3)
     : [];
   return (
-    <article className="border-b border-[var(--grat-soft)] py-5 last:border-b-0">
+    <article className="border-b border-[var(--grat-soft)] py-5 last:border-b-0" data-created={story.createdAt.getTime()}>
       <div className="flex items-start gap-3.5">
         <div className="pt-[5px]">
           <SignalMeter score={story.topScore} />

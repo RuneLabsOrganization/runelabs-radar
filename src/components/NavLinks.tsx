@@ -12,13 +12,13 @@ export interface NavLinkItem {
 
 export function buildLinks(pathname: string, isAdmin: boolean): NavLinkItem[] {
   return [
-    { href: '/', label: 'Briefing', active: pathname === '/' || pathname.startsWith('/domain') },
+    { href: '/', label: 'Today', active: pathname === '/' || pathname.startsWith('/domain') },
     { href: '/opportunities', label: 'Openings', active: pathname.startsWith('/opportunities') },
     { href: '/map', label: 'Map', active: pathname.startsWith('/map') },
     { href: '/board', label: 'Board', active: pathname.startsWith('/board') },
     { href: '/stacks', label: 'Stacks', active: pathname.startsWith('/stacks') },
-    { href: '/brief', label: 'Brief', active: pathname.startsWith('/brief') },
-    { href: '/changelog', label: 'Log', active: pathname.startsWith('/changelog') },
+    { href: '/brief', label: 'Daily Brief', active: pathname.startsWith('/brief') },
+    { href: '/changelog', label: 'Changelog', active: pathname.startsWith('/changelog') },
     { href: '/accuracy', label: 'Accuracy', active: pathname.startsWith('/accuracy') },
     ...(isAdmin ? [{ href: '/admin', label: 'Admin', active: pathname.startsWith('/admin') }] : []),
   ];

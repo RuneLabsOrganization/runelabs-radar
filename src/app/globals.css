@@ -146,6 +146,21 @@ a {
   }
 }
 
+/* anonymous "new since last visit" marker (stamped by AnonFresh) */
+.anon-new {
+  position: relative;
+}
+.anon-new::after {
+  content: '';
+  position: absolute;
+  left: -2px;
+  top: 14px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--phosphor);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .anim-bar,
   .anim-in {

@@ -81,6 +81,12 @@ export default function MobileNav({
                 {l.label}
               </Link>
             ))}
+            <Link
+              href="/search"
+              className="flex min-h-[44px] items-center border-b border-[var(--grat-soft)] text-[var(--ink-2)]"
+            >
+              Search
+            </Link>
             <div
               className="flex min-h-[44px] items-center gap-1.5 border-b border-[var(--grat-soft)] text-[11px]"
               style={{ color: sweepStale ? 'var(--amber)' : 'var(--ink-4)' }}

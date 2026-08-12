@@ -5,6 +5,7 @@ import { getStaleness, lastOkAt } from '@/lib/jobs';
 import { timeAgo } from '@/lib/feed';
 import NavLinks from '@/components/NavLinks';
 import MobileNav from '@/components/MobileNav';
+import AnonFresh from '@/components/AnonFresh';
 import LogoutButton from '@/components/LogoutButton';
 import RadarBackdrop from '@/components/RadarBackdrop';
 
@@ -39,6 +40,9 @@ export default async function HubLayout({ children }: { children: React.ReactNod
             <NavLinks isAdmin={user?.role === 'admin'} />
           </div>
           <div className="mono ml-auto hidden items-center gap-4 text-[10.5px] tracking-[0.08em] uppercase md:flex">
+            <Link href="/search" className="transition-colors hover:text-[var(--ink-2)]" style={{ color: 'var(--ink-3)' }}>
+              search
+            </Link>
             <span
               className="hidden items-center gap-1.5 sm:flex"
               style={{ color: stale ? 'var(--amber)' : 'var(--ink-4)' }}
@@ -75,6 +79,7 @@ export default async function HubLayout({ children }: { children: React.ReactNod
         </div>
       </header>
       <main>{children}</main>
+      <AnonFresh enabled={!user} />
     </div>
   );
 }
