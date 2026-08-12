@@ -5,6 +5,7 @@ import { runIngest } from '../src/lib/ingest/ingest';
 import { runCurate } from '../src/lib/curate/curate';
 import { runBoardSync } from '../src/lib/board/sync';
 import { runBrief } from '../src/lib/brief/brief';
+import { runRescore } from '../src/lib/science/hindsight';
 import { runStacks } from '../src/lib/stacks/generate';
 import { runSnapshot } from '../src/lib/snapshot';
 import { runVelocity } from '../src/lib/velocity';
@@ -30,6 +31,7 @@ const tasks = [
   cron.schedule('40 6 * * *', () => void withJobRun('pain', runPain)),
   cron.schedule('50 6 * * *', () => void withJobRun('science', runScience)),
   cron.schedule('0 7 * * *', () => void withJobRun('brief', runBrief)),
+  cron.schedule('0 8 * * *', () => void withJobRun('rescore', runRescore)),
   cron.schedule('10 7 * * *', () => void withJobRun('opportunities', runOpportunities)),
 ];
 

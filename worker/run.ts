@@ -6,6 +6,7 @@ import { runIngest } from '../src/lib/ingest/ingest';
 import { runCurate } from '../src/lib/curate/curate';
 import { runBoardSync } from '../src/lib/board/sync';
 import { runBrief } from '../src/lib/brief/brief';
+import { runRescore } from '../src/lib/science/hindsight';
 import { runStacks } from '../src/lib/stacks/generate';
 import { runSnapshot } from '../src/lib/snapshot';
 import { runVelocity } from '../src/lib/velocity';
@@ -20,6 +21,7 @@ const jobs: Record<JobName, () => Promise<Record<string, unknown>>> = {
   curate: runCurate,
   board: runBoardSync,
   brief: runBrief,
+  rescore: runRescore,
   stacks: runStacks,
   snapshot: runSnapshot,
   velocity: runVelocity,

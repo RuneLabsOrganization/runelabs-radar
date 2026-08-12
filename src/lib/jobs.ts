@@ -7,6 +7,7 @@ export type JobName =
   | 'curate'
   | 'board'
   | 'brief'
+  | 'rescore'
   | 'stacks'
   | 'snapshot'
   | 'velocity'

@@ -39,6 +39,10 @@ export const stories = sqliteTable('stories', {
   mapX: real('map_x'),
   mapY: real('map_y'),
   topScore: integer('top_score').notNull().default(0),
+  // hindsight: what the story actually turned out to be worth 36-60h later
+  // (echoes, launches, follow-ups) — feeds the accuracy page + calibration
+  hindsight: integer('hindsight'),
+  hindsightAt: integer('hindsight_at', { mode: 'timestamp' }),
   status: text('status', { enum: ['raw', 'curated'] }).notNull().default('raw'),
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
 });
@@ -119,6 +123,18 @@ export const briefs = sqliteTable('briefs', {
   markdown: text('markdown').notNull(),
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
 });
+
+/** Stored forecasts — nightly snapshots graded against realized prices later. */
+export const forecasts = sqliteTable(
+  'forecasts',
+  {
+    date: text('date').notNull(), // YYYY-MM-DD
+    metric: text('metric').notNull(), // e.g. 'frontier_price_30d'
+    predicted: real('predicted').notNull(),
+    createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.date, t.metric] })],
+);
 
 /** One 2-line analytical digest per domain per day, written by the brief job. */
 export const domainDigests = sqliteTable(

@@ -19,6 +19,7 @@ export function buildLinks(pathname: string, isAdmin: boolean): NavLinkItem[] {
     { href: '/stacks', label: 'Stacks', active: pathname.startsWith('/stacks') },
     { href: '/brief', label: 'Brief', active: pathname.startsWith('/brief') },
     { href: '/changelog', label: 'Log', active: pathname.startsWith('/changelog') },
+    { href: '/accuracy', label: 'Accuracy', active: pathname.startsWith('/accuracy') },
     ...(isAdmin ? [{ href: '/admin', label: 'Admin', active: pathname.startsWith('/admin') }] : []),
   ];
 }
