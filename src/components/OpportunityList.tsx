@@ -8,6 +8,7 @@ import { fmtUsd } from '@/lib/costs';
 import OppDossier, { ScoreBar, type OppView } from './OppDossier';
 import BriefSection from './BriefSection';
 import OpportunityMap from './OpportunityMap';
+import PortfolioScatter from './PortfolioScatter';
 import AssessmentMatrix from './AssessmentMatrix';
 
 export type { OppView } from './OppDossier';
@@ -88,6 +89,7 @@ function Card({ opp, canGenerate, sortKey }: { opp: OppView; canGenerate: boolea
 export default function OpportunityList({ opps, canGenerate }: { opps: OppView[]; canGenerate: boolean }) {
   const [sortKey, setSortKey] = useState<'flip' | 'hold'>('flip');
   const [sector, setSector] = useState<Domain | null>(null);
+  const [view, setView] = useState<'map' | 'scatter'>('map');
 
   const sectorCounts = useMemo(() => {
     const counts = new Map<Domain, number>();
@@ -153,8 +155,29 @@ export default function OpportunityList({ opps, canGenerate }: { opps: OppView[]
             {DOMAIN_LABELS[d]} {sectorCounts.get(d)}
           </button>
         ))}
+        <span className="mx-2 h-[10px] w-px" style={{ background: 'var(--grat)' }} aria-hidden />
+        <span style={{ color: 'var(--ink-4)' }}>view</span>
+        {(['map', 'scatter'] as const).map((v) => (
+          <button
+            key={v}
+            type="button"
+            onClick={() => setView(v)}
+            aria-pressed={view === v}
+            className={`cursor-pointer rounded-[3px] border px-2 py-0.5 uppercase transition-colors ${
+              view === v
+                ? 'border-[var(--phosphor)] text-[var(--ink)]'
+                : 'border-[var(--grat)] text-[var(--ink-3)] hover:border-[var(--grat-strong)]'
+            }`}
+          >
+            {v}
+          </button>
+        ))}
       </div>
-      <OpportunityMap opps={filtered} sortKey={sortKey} />
+      {view === 'map' ? (
+        <OpportunityMap opps={filtered} sortKey={sortKey} />
+      ) : (
+        <PortfolioScatter opps={filtered} sortKey={sortKey} />
+      )}
       <AssessmentMatrix opps={sorted} sortKey={sortKey} />
       <div className="flex flex-col gap-4">
         {sorted.map((o) => (
