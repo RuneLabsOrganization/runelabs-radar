@@ -4,14 +4,15 @@ import * as React from 'react';
 import { useMemo, useRef, useState, useEffect } from 'react';
 import { hierarchy, treemap as d3treemap, type HierarchyRectangularNode } from 'd3-hierarchy';
 import { DOMAIN_COLORS, DOMAIN_LABELS, isDomain, type Domain } from '@/lib/domains';
-import { fmtMoney, oppSizeEstimate } from '@/lib/opportunities/sizing';
+import { fmtMoney } from '@/lib/opportunities/sizing';
+import { OPTICS, opticById } from '@/lib/opportunities/optics';
 import type { OppView } from './OppDossier';
 
 type Sector = Domain | 'general';
 
 interface TileDatum {
   opp: OppView;
-  usd: number;
+  area: number;
   demandOnly: boolean;
   score: number;
   sector: Sector;
@@ -19,7 +20,6 @@ interface TileDatum {
 
 interface GroupNode {
   name?: string;
-  label?: string;
   children?: GroupNode[];
   tile?: TileDatum;
   value?: number;
@@ -36,15 +36,18 @@ function sectorLabel(sector: Sector): string {
 }
 
 /**
- * The opportunity map: every opening as a tile — AREA = size estimate (USD/yr,
- * composite formula captioned below), COLOR = score, GROUP = sector. Fluid:
- * layout recomputed from measured width on resize. TAPE §02's encodings with
- * Radar's honesty contract. Hatched tiles = no KPI data (demand-only sizing).
+ * The opportunity map: the field viewed through switchable lenses ("optics") —
+ * each optic pairs an AREA metric with a COLOR metric and prints its formula
+ * verbatim below the chart. AREA never silently means "best": the caption says
+ * exactly what it means in each lens. Hatched tiles = missing KPI data
+ * (demand-only sizing). Fluid: layout recomputed from measured width.
  */
 export default function OpportunityMap({ opps, sortKey }: { opps: OppView[]; sortKey: 'flip' | 'hold' }) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
+  const [opticId, setOpticId] = useState('flip');
   const [hover, setHover] = useState<{ x: number; y: number; tile: TileDatum } | null>(null);
+  const optic = opticById(opticId);
 
   useEffect(() => {
     const el = wrapRef.current;
@@ -60,18 +63,20 @@ export default function OpportunityMap({ opps, sortKey }: { opps: OppView[]; sor
   const tiles = useMemo(() => {
     const out: TileDatum[] = [];
     for (const o of opps) {
-      const est = oppSizeEstimate(o.kpis, o.sub);
-      if (est.usd <= 0) continue;
+      const area = optic.areaOf(o.kpis, o.sub);
+      const demandOnly = area === null;
+      const effectiveArea = demandOnly ? (o.sub.demand ?? 0) : area!;
+      if (effectiveArea <= 0) continue;
       out.push({
         opp: o,
-        usd: est.usd,
-        demandOnly: est.demandOnly,
-        score: sortKey === 'flip' ? o.flipScore : o.holdScore,
+        area: effectiveArea,
+        demandOnly,
+        score: optic.colorOf(o, sortKey),
         sector: o.sector && isDomain(o.sector) ? o.sector : 'general',
       });
     }
     return out;
-  }, [opps, sortKey]);
+  }, [opps, sortKey, optic]);
 
   const groups = useMemo(() => {
     const by = new Map<Sector, TileDatum[]>();
@@ -83,7 +88,7 @@ export default function OpportunityMap({ opps, sortKey }: { opps: OppView[]; sor
     return SECTOR_ORDER.filter((s) => by.has(s)).map((s) => ({
       sector: s,
       tiles: by.get(s)!,
-      total: by.get(s)!.reduce((a, t) => a + t.usd, 0),
+      n: by.get(s)!.length,
     }));
   }, [tiles]);
 
@@ -92,7 +97,7 @@ export default function OpportunityMap({ opps, sortKey }: { opps: OppView[]; sor
     const root: GroupNode = {
       children: groups.map((g) => ({
         name: sectorLabel(g.sector),
-        children: g.tiles.map((tile) => ({ tile, value: tile.usd })),
+        children: g.tiles.map((tile) => ({ tile, value: tile.area })),
       })),
     };
     return d3treemap<GroupNode>()
@@ -109,24 +114,42 @@ export default function OpportunityMap({ opps, sortKey }: { opps: OppView[]; sor
   const groupNodes = layout?.children ?? [];
   const leaves = layout?.leaves() ?? [];
 
-  if (tiles.length === 0) return null;
-
   return (
     <div className="mb-6">
+      {/* the lenses */}
+      <div className="mono mb-2 flex flex-wrap items-center gap-1.5 text-[10px] tracking-[0.06em]">
+        <span style={{ color: 'var(--ink-4)' }}>lens</span>
+        {OPTICS.map((o) => (
+          <button
+            key={o.id}
+            type="button"
+            onClick={() => setOpticId(o.id)}
+            aria-pressed={opticId === o.id}
+            className={`cursor-pointer rounded-[3px] border px-2 py-0.5 uppercase transition-colors ${
+              opticId === o.id
+                ? 'border-[var(--phosphor)] text-[var(--ink)]'
+                : 'border-[var(--grat)] text-[var(--ink-3)] hover:border-[var(--grat-strong)]'
+            }`}
+          >
+            {o.label}
+          </button>
+        ))}
+      </div>
+
       <div ref={wrapRef} className="relative rounded-[6px] border border-[var(--grat-soft)] bg-[var(--scope-1)]" style={{ height }}>
+        {width > 0 && tiles.length === 0 && (
+          <p className="mono absolute inset-x-4 top-4 text-[11px]" style={{ color: 'var(--ink-4)' }}>
+            no openings carry the {optic.label} metric — switch lens.
+          </p>
+        )}
         {width > 0 &&
           groupNodes.map((g, gi) => (
             <span
               key={gi}
               className="mono absolute text-[10px] uppercase tracking-[0.08em]"
-              style={{
-                left: g.x0 + 4,
-                top: g.y0 + 3,
-                color: 'var(--ink-3)',
-                pointerEvents: 'none',
-              }}
+              style={{ left: g.x0 + 4, top: g.y0 + 3, color: 'var(--ink-3)', pointerEvents: 'none' }}
             >
-              {g.data.name} &middot; {fmtMoney(g.value ?? 0)} &middot; n={g.children?.length ?? 0}
+              {g.data.name} &middot; n={g.children?.length ?? 0}
             </span>
           ))}
         {width > 0 &&
@@ -162,18 +185,14 @@ export default function OpportunityMap({ opps, sortKey }: { opps: OppView[]; sor
                 }}
                 onMouseLeave={() => setHover(null)}
               >
-                <span
-                  aria-hidden
-                  className="absolute inset-0"
-                  style={{ background: color, opacity: t.demandOnly ? 0 : alpha }}
-                />
+                <span aria-hidden className="absolute inset-0" style={{ background: color, opacity: t.demandOnly ? 0 : alpha }} />
                 {showText && (
                   <span className="absolute inset-x-1.5 top-1 block">
                     <span className="block truncate text-[11px] leading-tight" style={{ color: 'var(--ink)' }}>
                       {t.opp.title}
                     </span>
                     <span className="mono mt-0.5 block text-[10px]" style={{ color: 'var(--ink-3)' }}>
-                      {fmtMoney(t.usd)} &middot; {t.score}
+                      {optic.colorLabel} {t.score}
                     </span>
                   </span>
                 )}
@@ -193,18 +212,17 @@ export default function OpportunityMap({ opps, sortKey }: { opps: OppView[]; sor
           >
             <div style={{ color: 'var(--ink)' }}>{hover.tile.opp.title}</div>
             <div style={{ color: 'var(--ink-4)' }}>
-              {sectorLabel(hover.tile.sector).toLowerCase()} &middot; {sortKey} {hover.tile.score} &middot; {fmtMoney(hover.tile.usd)}
-              {hover.tile.demandOnly ? ' · demand-only' : ''}
+              {sectorLabel(hover.tile.sector).toLowerCase()} &middot; flip {hover.tile.opp.flipScore} &middot; hold {hover.tile.opp.holdScore}
               {hover.tile.opp.kpis?.priceUsd != null && ` · $${hover.tile.opp.kpis.priceUsd}/mo`}
-              {hover.tile.opp.kpis?.breakEvenCustomers != null && ` · ${Math.round(hover.tile.opp.kpis.breakEvenCustomers)} cust`
-              }
+              {hover.tile.opp.kpis?.initialCostUsd != null && ` · cost ${fmtMoney(hover.tile.opp.kpis.initialCostUsd)}`}
+              {hover.tile.opp.kpis?.timeToMvpDays != null && ` · mvp ~${Math.round(hover.tile.opp.kpis.timeToMvpDays)}d`}
+              {hover.tile.demandOnly ? ' · demand-only' : ''}
             </div>
           </div>
         )}
       </div>
       <p className="mono mt-1.5 text-[10px]" style={{ color: 'var(--ink-4)' }}>
-        size est = price/mo &times; 12 &times; break-even customers &times; (demand&divide;20) &middot; USD/yr
-        estimate &middot; hatched = no KPI data &middot; click tile for the dossier
+        {optic.caption} &middot; hatched = no KPI data &middot; click tile for the dossier
       </p>
     </div>
   );
