@@ -9,6 +9,7 @@ import AnonFresh from '@/components/AnonFresh';
 import FeedKeys from '@/components/FeedKeys';
 import LogoutButton from '@/components/LogoutButton';
 import RadarBackdrop from '@/components/RadarBackdrop';
+import ThemeToggle from '@/components/ThemeToggle';
 
 export default async function HubLayout({ children }: { children: React.ReactNode }) {
   const user = await requireViewer();
@@ -28,7 +29,7 @@ export default async function HubLayout({ children }: { children: React.ReactNod
       <div aria-hidden className="fixed inset-0 -z-10">
         <RadarBackdrop intensity={0.06} />
       </div>
-      <header className="sticky top-0 z-20 border-b border-[var(--grat)] bg-[rgba(10,14,19,0.88)] backdrop-blur">
+      <header className="sticky top-0 z-20 border-b border-[var(--grat)] bg-[var(--header-bg)] backdrop-blur">
         <div className="mx-auto flex h-12 max-w-[1100px] items-center gap-3 px-4 sm:px-6 lg:gap-5">
           <Link
             href="/"
@@ -41,6 +42,7 @@ export default async function HubLayout({ children }: { children: React.ReactNod
             <NavLinks isAdmin={user?.role === 'admin'} />
           </div>
           <div className="mono ml-auto hidden items-center gap-3 text-[10.5px] tracking-[0.08em] uppercase lg:flex">
+            <ThemeToggle />
             <Link href="/search" className="whitespace-nowrap transition-colors hover:text-[var(--ink-2)]" style={{ color: 'var(--ink-3)' }}>
               search
             </Link>

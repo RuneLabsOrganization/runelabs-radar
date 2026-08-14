@@ -228,6 +228,59 @@ describe('github adapter', () => {
   });
 });
 
+describe('brave adapter', () => {
+  beforeEach(() => {
+    vi.stubEnv('BRAVE_API_KEY', 'test-brave-key');
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('maps news results, joining extra_snippets into the excerpt', async () => {
+    const fn = stubFetch(fixture('brave-news.json'));
+    const out = await adapters.brave.fetchItems(
+      makeSource('brave', { query: 'AI coding assistant OR code model' }),
+    );
+    const calledUrl = String(fn.mock.calls[0][0]);
+    expect(calledUrl).toContain('api.search.brave.com/res/v1/news/search');
+    expect(calledUrl).toContain('q=AI+coding+assistant+OR+code+model');
+    expect(calledUrl).toContain('freshness=pd');
+    const init = fn.mock.calls[0][1];
+    expect((init?.headers as Record<string, string>)['X-Subscription-Token']).toBe('test-brave-key');
+    expect(out).toHaveLength(2); // result without a title is skipped
+    expect(out[0]).toEqual({
+      url: 'https://techcrunch.com/2026/08/12/openai-gpt-5-4-agentic-coding/',
+      title: 'OpenAI ships GPT-5.4 with a persistent coding agent',
+      excerpt:
+        'The new model keeps a coding agent running across sessions. — Analysts call it the biggest capability jump since GPT-5.',
+      publishedAt: new Date('2026-08-12T15:04:05'),
+    });
+    // no page_age/age -> null publishedAt
+    expect(out[1].url).toBe('https://www.theverge.com/2026/8/12/cursor-raise');
+    expect(out[1].publishedAt).toBeNull();
+  });
+
+  it('self-throttles: skips the fetch when lastFetchedAt is inside pollHours', async () => {
+    const fn = stubFetch(fixture('brave-news.json'));
+    const recent = { ...makeSource('brave', { query: 'AI' }), lastFetchedAt: new Date() };
+    expect(await adapters.brave.fetchItems(recent)).toEqual([]);
+    expect(fn).not.toHaveBeenCalled();
+
+    const stale = {
+      ...makeSource('brave', { query: 'AI' }),
+      lastFetchedAt: new Date(Date.now() - 4 * 36e5),
+    };
+    expect((await adapters.brave.fetchItems(stale)).length).toBeGreaterThan(0);
+  });
+
+  it('throws without BRAVE_API_KEY so runIngest records the failure', async () => {
+    vi.stubEnv('BRAVE_API_KEY', '');
+    await expect(adapters.brave.fetchItems(makeSource('brave', { query: 'AI' }))).rejects.toThrow(
+      /BRAVE_API_KEY/,
+    );
+  });
+});
+
 describe('runIngest', () => {
   beforeEach(() => {
     useTestDb();

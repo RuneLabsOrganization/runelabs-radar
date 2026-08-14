@@ -3,7 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useState, type FormEvent, type ReactNode } from 'react';
 
-const SOURCE_TYPES = ['rss', 'hn', 'reddit', 'arxiv', 'huggingface', 'github'] as const;
+const SOURCE_TYPES = ['rss', 'hn', 'reddit', 'arxiv', 'huggingface', 'github', 'brave'] as const;
 
 export interface SourceRow {
   id: number;

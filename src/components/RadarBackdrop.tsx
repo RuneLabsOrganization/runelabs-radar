@@ -14,6 +14,8 @@ const RadarField = dynamic(() => import('./RadarField'), { ssr: false });
  */
 export default function RadarBackdrop({ intensity }: { intensity?: number }) {
   const [enabled, setEnabled] = React.useState(false);
+  // theme flips re-mount the field so it re-reads the flipped CSS tokens
+  const [themeKey, setThemeKey] = React.useState(0);
   React.useEffect(() => {
     const mq = window.matchMedia('(min-width: 768px) and (pointer: fine)');
     const rm = window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -21,11 +23,14 @@ export default function RadarBackdrop({ intensity }: { intensity?: number }) {
     update();
     mq.addEventListener('change', update);
     rm.addEventListener('change', update);
+    const onTheme = () => setThemeKey((k) => k + 1);
+    window.addEventListener('radar:theme', onTheme);
     return () => {
       mq.removeEventListener('change', update);
       rm.removeEventListener('change', update);
+      window.removeEventListener('radar:theme', onTheme);
     };
   }, []);
   if (!enabled) return null;
-  return <RadarField intensity={intensity} />;
+  return <RadarField key={themeKey} intensity={intensity} />;
 }

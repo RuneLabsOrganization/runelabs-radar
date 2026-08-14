@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { requireViewer } from '@/lib/auth/user';
 import { getDb } from '@/lib/db';
 import { items, launches, sources, stories, votes } from '@/lib/db/schema';
-import { DOMAINS, DOMAIN_COLORS, DOMAIN_LABELS, DOMAIN_MEMBERSHIP_THRESHOLD, type Domain } from '@/lib/domains';
+import { DOMAINS, DOMAIN_MEMBERSHIP_THRESHOLD, type Domain } from '@/lib/domains';
 import {
   dailyDomainCounts,
   domainMomentum,
@@ -17,26 +17,25 @@ import {
 } from '@/lib/analytics';
 import { seriesFor } from '@/lib/metrics';
 import { isDomain } from '@/lib/domains';
-import { domainAffinity, groupByDomain, personalScore, splitFeed, timeAgo } from '@/lib/feed';
+import { domainAffinity, personalScore, splitFeed, timeAgo } from '@/lib/feed';
 import { safeHttpUrl } from '@/lib/safe-url';
 import { visitAnchor } from '@/lib/visits';
 import { canonicalEntityKey } from '@/lib/entity';
 import { config } from '@/lib/config';
 import { getIdentity } from '@/lib/identity';
-import { parseDomainScores, topDomain } from '@/components/DomainChips';
+import { parseDomainScores } from '@/components/DomainChips';
 import { hypeIndex } from '@/lib/science/hype';
 import ChartFrame from '@/components/ChartFrame';
-import ActivityTrace from '@/components/ActivityTrace';
 import ActivityPanel from '@/components/ActivityPanel';
 import AnalystNotes from '@/components/AnalystNotes';
 import AnomalyFeed from '@/components/AnomalyFeed';
 import EntityBars from '@/components/EntityBars';
 import SignalEntry from '@/components/SignalEntry';
-import ScanRow from '@/components/ScanRow';
+import SignalCollage from '@/components/SignalCollage';
 import MarkSeen from '@/components/MarkSeen';
 import SectionHeader from '@/components/SectionHeader';
 import SectorStrip, { type SectorStat } from '@/components/SectorStrip';
-import ScopeHero from '@/components/ScopeHero';
+import ScopeHero, { type ScopeInsight } from '@/components/ScopeHero';
 
 type ItemAgg = { count: number; firstUrl: string | null; sourceName: string | null };
 type VoteAgg = { up: number; down: number; mine: 1 | -1 | 0 };
@@ -214,12 +213,10 @@ export default async function BriefingPage() {
     .all();
 
   // feed presentation: hero (#1) → up to 4 featured → everything else folds
-  // into the scan log, re-sorted newest-first and chunked by primary domain
+  // into the filterable collage, newest first
   const hero = top[0] ?? null;
   const featured = top.slice(1, 5);
   const scanAll = [...top.slice(5), ...scan].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
-  const scanGroups = groupByDomain(scanAll, (c) => topDomain(c.scores), (c) => c.score);
-  const SCAN_GROUP_CAP = 6;
 
   const entryProps = (c: Contact) => {
     const it = itemAgg.get(c.story.id) ?? { count: 0, firstUrl: null, sourceName: null };
@@ -238,6 +235,23 @@ export default async function BriefingPage() {
     };
   };
 
+  const collageEntries = scanAll.map((c) => {
+    const it = itemAgg.get(c.story.id) ?? { count: 0, firstUrl: null, sourceName: null };
+    return {
+      id: c.story.id,
+      title: c.story.title,
+      tldr: c.story.tldr,
+      score: c.score,
+      createdAtMs: c.story.createdAt.getTime(),
+      scores: c.scores,
+      domains: DOMAINS.filter((d) => (c.scores?.[d] ?? 0) >= DOMAIN_MEMBERSHIP_THRESHOLD),
+      firstUrl: it.firstUrl,
+      sourceName: it.sourceName,
+      isNew: c.isNew,
+      timeLabel: timeAgo(c.story.createdAt),
+    };
+  });
+
   const notesShown = notes ? notes.items.slice(0, 2) : [];
   const noticedShown = noticed.slice(0, 3);
   const noticedTrends = patternTrends.slice(0, 3);
@@ -250,6 +264,8 @@ export default async function BriefingPage() {
       .from(stories)
       .where(and(eq(stories.status, 'curated'), gt(stories.createdAt, new Date(now - 24 * 36e5))))
       .get()?.c ?? 0;
+  const enabledSources =
+    db.select({ c: count() }).from(sources).where(eq(sources.enabled, true)).get()?.c ?? 0;
   // plot by domain MEMBERSHIP (score >= 40), not just top-domain — otherwise
   // quiet sectors (ads, copy) render empty although stories exist. Per-domain
   // cap keeps loud sectors from flooding the scope.
@@ -267,20 +283,44 @@ export default async function BriefingPage() {
         isNew: c.isNew,
       })),
   );
-  const scopeInsights = notes
-    ? notes.items.slice(0, 3).map((n) => ({ headline: n.headline, detail: n.detail, direction: n.direction }))
-    : noticed.slice(0, 3).map((p) => ({
-        headline: p.headline,
-        detail: p.detail,
-        direction: 'watch' as const,
-      }));
+  // rotating smart insights: analyst notes first, machine detections fill in —
+  // deduped by headline, capped at 5, linked to the subject when it has one
+  const scopeInsights: ScopeInsight[] = [];
+  const seenHeadlines = new Set<string>();
+  const pushInsight = (s: ScopeInsight) => {
+    const key = s.headline.toLowerCase();
+    if (seenHeadlines.has(key) || scopeInsights.length >= 5) return;
+    seenHeadlines.add(key);
+    scopeInsights.push(s);
+  };
+  for (const n of notes?.items ?? []) {
+    pushInsight({
+      headline: n.headline,
+      detail: n.detail,
+      direction: n.direction,
+      href: n.domain ? `/domain/${n.domain}` : undefined,
+    });
+  }
+  for (const p of noticed) {
+    const href =
+      p.kind === 'entity-surge' && p.subject
+        ? `/entity/${encodeURIComponent(p.subject)}`
+        : p.kind === 'sector-spike' && p.subject && isDomain(p.subject)
+          ? `/domain/${p.subject}`
+          : undefined;
+    pushInsight({ headline: p.headline, detail: p.detail, direction: 'watch', href });
+  }
 
   return (
-    <div className="mx-auto max-w-[860px] px-6 py-7">
+    <div className="mx-auto max-w-[1100px] px-6 py-7">
       {user && <MarkSeen />}
 
       <div className="readout">{dateLine(new Date())}</div>
-      <h1 className="mb-5 mt-1 text-[17px] font-semibold tracking-[-0.01em]">Today</h1>
+      <h1 className="mt-1 text-[17px] font-semibold tracking-[-0.01em]">Today</h1>
+      <p className="mb-5 mt-1 max-w-[640px] text-[12.5px] leading-relaxed" style={{ color: 'var(--ink-3)' }}>
+        {enabledSources} sources swept around the clock — {tracked24h} curated stories in the last 24h, scored
+        against your six sectors. Strongest first; the rest filter below.
+      </p>
 
       <ScopeHero
         blips={scopeBlips}
@@ -296,7 +336,34 @@ export default async function BriefingPage() {
         insights={scopeInsights}
       />
 
-      <div className="mt-8" />
+      {/* trends: prime real estate, right under the scope */}
+      <SectionHeader label="Trends — 14-day sweep" />
+      <SectorStrip
+        stats={stats.map((s) => ({ ...s, series: sectorSeries[s.domain] ?? null }))}
+      />
+      <div className="mt-5 flex flex-col gap-7 md:flex-row">
+        <div className="min-w-0 flex-1">
+          <ChartFrame
+            title="activity — 14-day sweep"
+            brand={chartBrand}
+            caption={`volume = curated stories/day · sector membership ≥ 40 · as-of ${new Date().toISOString().slice(0, 10)} UTC`}
+          >
+            <ActivityPanel days={days} spikes={spikes} />
+          </ChartFrame>
+        </div>
+        <div className="w-full shrink-0 md:w-[240px]">
+          <div className="readout mb-2.5">most mentioned &middot; 7d</div>
+          <EntityBars entities={entities} hype={hype} />
+        </div>
+      </div>
+      {topics && topics.length > 0 && (
+        <p className="mono mt-4 text-[10.5px] tracking-[0.06em]" style={{ color: 'var(--ink-4)' }}>
+          topic map &middot; {topics.length} categories &middot;{' '}
+          <Link href="/map" className="hover:underline" style={{ color: 'var(--ink-3)' }}>
+            explore the interactive map &rarr;
+          </Link>
+        </p>
+      )}
 
       {/* the news leads — hero + featured top signals */}
       <SectionHeader label="Top signals" count={top.length} />
@@ -330,85 +397,12 @@ export default async function BriefingPage() {
         </>
       )}
 
-      {/* everything else, chunked by sector so the long list has anchors */}
-      {scanGroups.length > 0 && (
+      {/* everything else: the filterable collage — filters persist per user */}
+      {collageEntries.length > 0 && (
         <>
-          <SectionHeader label="More signals — by sector" count={scanAll.length} />
-          {scanGroups.map((g) => {
-            const shown = g.items.slice(0, SCAN_GROUP_CAP);
-            const hidden = g.items.length - shown.length;
-            return (
-              <section key={g.domain ?? 'other'} className="mb-5 last:mb-0">
-                <div className="mono mb-1 flex items-baseline gap-2 text-[10.5px] tracking-[0.1em] uppercase">
-                  {g.domain && isDomain(g.domain) ? (
-                    <>
-                      <span
-                        aria-hidden
-                        className="inline-block h-[9px] w-[2px]"
-                        style={{ background: DOMAIN_COLORS[g.domain] }}
-                      />
-                      <span style={{ color: 'var(--ink-3)' }}>{DOMAIN_LABELS[g.domain]}</span>
-                    </>
-                  ) : (
-                    <span style={{ color: 'var(--ink-4)' }}>Unscoped</span>
-                  )}
-                  <span style={{ color: 'var(--ink-4)' }}>{g.items.length}</span>
-                  {hidden > 0 && g.domain && (
-                    <Link
-                      href={`/domain/${g.domain}`}
-                      className="ml-auto hover:underline"
-                      style={{ color: 'var(--ink-4)' }}
-                    >
-                      all {g.items.length} &rarr;
-                    </Link>
-                  )}
-                </div>
-                <ul>
-                  {shown.map((c) => (
-                    <ScanRow
-                      key={c.story.id}
-                      story={c.story}
-                      firstUrl={itemAgg.get(c.story.id)?.firstUrl ?? null}
-                      score={c.score}
-                      domain={g.domain && isDomain(g.domain) ? g.domain : null}
-                      isNew={c.isNew}
-                      timeLabel={timeAgo(c.story.createdAt)}
-                    />
-                  ))}
-                </ul>
-              </section>
-            );
-          })}
+          <SectionHeader label="More signals" count={scanAll.length} />
+          <SignalCollage entries={collageEntries} />
         </>
-      )}
-
-      {/* trends: context after content — sector pulse, activity, entities */}
-      <SectionHeader label="Trends — 14-day sweep" />
-      <SectorStrip
-        stats={stats.map((s) => ({ ...s, series: sectorSeries[s.domain] ?? null }))}
-      />
-      <div className="mt-5 flex flex-col gap-7 md:flex-row">
-        <div className="min-w-0 flex-1">
-          <ChartFrame
-            title="activity — 14-day sweep"
-            brand={chartBrand}
-            caption={`volume = curated stories/day · sector membership ≥ 40 · as-of ${new Date().toISOString().slice(0, 10)} UTC`}
-          >
-            <ActivityPanel days={days} spikes={spikes} />
-          </ChartFrame>
-        </div>
-        <div className="w-full shrink-0 md:w-[240px]">
-          <div className="readout mb-2.5">most mentioned &middot; 7d</div>
-          <EntityBars entities={entities} hype={hype} />
-        </div>
-      </div>
-      {topics && topics.length > 0 && (
-        <p className="mono mt-4 text-[10.5px] tracking-[0.06em]" style={{ color: 'var(--ink-4)' }}>
-          topic map &middot; {topics.length} categories &middot;{' '}
-          <Link href="/map" className="hover:underline" style={{ color: 'var(--ink-3)' }}>
-            explore the interactive map &rarr;
-          </Link>
-        </p>
       )}
 
       {recentLaunches.length > 0 && (

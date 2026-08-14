@@ -1,6 +1,6 @@
 import { and, asc, desc, eq, gte, sql } from 'drizzle-orm';
 import { getDb } from '../db';
-import { items, stories, votes } from '../db/schema';
+import { items, sources, stories, votes } from '../db/schema';
 import { chatJSON, LlmError } from '../llm/minimax';
 import { DOMAINS, type Domain } from '../domains';
 import { getIdentity } from '../identity';
@@ -69,6 +69,7 @@ export function buildCurationPrompts(
   story: CurationStory,
   memberItems: CurationMemberItem[],
   recentVotes: CurationVote[],
+  sourceHints: string[] = [],
 ): { system: string; user: string } {
   const id = getIdentity();
   const system = [
@@ -120,6 +121,11 @@ export function buildCurationPrompts(
       const excerpt = it.excerpt ? ` — ${it.excerpt.slice(0, MAX_EXCERPT_CHARS)}` : '';
       lines.push(`- ${it.title}${excerpt}`);
     }
+  }
+
+  const hints = sourceHints.slice(0, 6);
+  if (hints.length > 0) {
+    lines.push('', `Source tags (prior evidence, not a verdict): ${hints.join(', ')}`);
   }
 
   lines.push('', 'Recent team votes (calibration):');
@@ -184,7 +190,28 @@ export async function runCurate(): Promise<{ clustered: number; curated: number;
       .limit(MAX_MEMBER_ITEMS)
       .all();
 
-    const { system, user } = buildCurationPrompts(story, memberItems, recentVotes);
+    // merge the domain hints of every source the member items came from —
+    // targeted sources (e.g. Brave queries) give the scorer a prior
+    const hintRows = db
+      .select({ domainHints: sources.domainHints })
+      .from(items)
+      .innerJoin(sources, eq(items.sourceId, sources.id))
+      .where(eq(items.storyId, story.id))
+      .all();
+    const sourceHints = [
+      ...new Set(
+        hintRows.flatMap((r) => {
+          try {
+            const parsed: unknown = JSON.parse(r.domainHints);
+            return Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === 'string') : [];
+          } catch {
+            return [];
+          }
+        }),
+      ),
+    ];
+
+    const { system, user } = buildCurationPrompts(story, memberItems, recentVotes, sourceHints);
 
     try {
       const res = await chatJSON<CurationResponse>(system, user);

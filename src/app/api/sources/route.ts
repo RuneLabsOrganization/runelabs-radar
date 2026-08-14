@@ -4,7 +4,7 @@ import { getDb } from '@/lib/db';
 import { sources } from '@/lib/db/schema';
 import { getCurrentUser } from '@/lib/auth/user';
 
-const SOURCE_TYPES = ['rss', 'hn', 'reddit', 'arxiv', 'huggingface', 'github'] as const;
+const SOURCE_TYPES = ['rss', 'hn', 'reddit', 'arxiv', 'huggingface', 'github', 'brave'] as const;
 type SourceType = (typeof SOURCE_TYPES)[number];
 
 function isSourceType(s: unknown): s is SourceType {

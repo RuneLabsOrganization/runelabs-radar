@@ -44,6 +44,12 @@
   --font-readout:
     ui-monospace, 'Cascadia Mono', 'SF Mono', Menlo, Consolas, monospace;
 
+  /* chrome pieces that can't stay literal under a second theme */
+  --header-bg: rgba(10, 14, 19, 0.88);
+  --overlay-bg: rgba(7, 10, 15, 0.6);
+  --row-hover: rgba(151, 180, 205, 0.045);
+  --hatch: rgba(151, 180, 205, 0.10);
+
   /* aliases — surfaces written against the earlier token names */
   --bg: var(--scope-0);
   --panel: var(--scope-1);
@@ -64,8 +70,50 @@
   --d-agentic: var(--sector-agentic);
 }
 
+/* ── light theme: the same scope console on paper ─────────────────
+   Surfaces invert (white panel on gray canvas), hairlines go dark
+   blue-gray, and every signal hue is deepened until it holds WCAG AA
+   on white. Sector ticks keep their hue family — identity, not décor. */
+:root[data-theme='light'] {
+  --scope-0: #eceff3;
+  --scope-1: #ffffff;
+  --scope-2: #f5f7fa;
+  --scope-inset: #e4e9ef;
+
+  --grat-soft: rgba(30, 55, 80, 0.09);
+  --grat: rgba(30, 55, 80, 0.16);
+  --grat-strong: rgba(30, 55, 80, 0.32);
+
+  --ink: #16232f;
+  --ink-2: #3a4c5e;
+  --ink-3: #52667a;
+  --ink-4: #5f7386;
+
+  --phosphor: #0c7a52;
+  --phosphor-dim: rgba(12, 122, 82, 0.12);
+  --amber: #97650f;
+  --amber-dim: rgba(151, 101, 15, 0.12);
+  --alert: #b34434;
+
+  --sector-coding: #2f6fc4;
+  --sector-copy: #a97b1e;
+  --sector-image: #c4538f;
+  --sector-video: #7e5bc9;
+  --sector-ads: #0f8d7f;
+  --sector-agentic: #6d8f2f;
+
+  --header-bg: rgba(236, 239, 243, 0.88);
+  --overlay-bg: rgba(236, 239, 243, 0.6);
+  --row-hover: rgba(30, 55, 80, 0.05);
+  --hatch: rgba(30, 55, 80, 0.10);
+}
+
 html {
   color-scheme: dark;
+}
+
+html[data-theme='light'] {
+  color-scheme: light;
 }
 
 body {
@@ -165,7 +213,7 @@ a {
 }
 
 .row-hover:hover {
-  background: rgba(151, 180, 205, 0.045);
+  background: var(--row-hover);
 }
 
 /* chart export affordance — whisper until hovered, always there on touch */

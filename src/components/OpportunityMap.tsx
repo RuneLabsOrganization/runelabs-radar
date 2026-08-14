@@ -171,7 +171,7 @@ export default function OpportunityMap({ opps, sortKey }: { opps: OppView[]; sor
                   width: w,
                   height: h,
                   background: t.demandOnly
-                    ? `repeating-linear-gradient(45deg, transparent, transparent 3px, rgba(151,180,205,0.10) 3px, rgba(151,180,205,0.10) 4px)`
+                    ? `repeating-linear-gradient(45deg, transparent, transparent 3px, var(--hatch) 3px, var(--hatch) 4px)`
                     : 'transparent',
                   border: `1px solid ${color}`,
                 }}

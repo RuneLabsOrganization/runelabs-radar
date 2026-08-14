@@ -13,7 +13,22 @@ social feed. Color means signal, never decoration.
 - **Ink:** 4 levels `--ink` → `--ink-4`.
 - **Signal:** `--phosphor` (green-teal) is the ONLY accent; `--amber` warnings; `--alert` faults.
 - **Sector ticks:** `--sector-*` — six desaturated hues used ONLY as 2px identification ticks.
+- **Chrome:** `--header-bg` (sticky bars), `--overlay-bg` (drawer scrim), `--row-hover`,
+  `--hatch` (treemap demand-only pattern) — never hardcode these; they flip with the theme.
 - Legacy aliases (`--bg`, `--panel`, `--accent`, `--d-*`…) map old names onto these.
+
+## Theming (dark default, light optional)
+
+- **Dark is the brand default.** `:root` holds the dark ramp; `:root[data-theme='light']`
+  overrides every token with the paper variant (white panels, dark blue-gray hairlines,
+  hues deepened to hold WCAG AA on white). Components must consume tokens only — a
+  literal hex/rgba in a component is a bug the light theme can't fix.
+- **Toggle:** `ThemeToggle` in the top bar flips `<html data-theme>`, persists
+  `localStorage["radar.theme"]`, and broadcasts the window event `radar:theme`. An inline
+  script in the root layout restores the choice before first paint (no FOUC).
+- **Canvas surfaces** (`ScopeHero`, `RadarField`) read tokens via `getComputedStyle` at
+  init and listen for `radar:theme` to re-read/remount — never snapshot colors in JS.
+- `color-scheme` follows the theme so form controls and scrollbars match.
 
 ## Typography
 

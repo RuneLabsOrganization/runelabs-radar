@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { buildLinks } from './NavLinks';
 import LogoutButton from './LogoutButton';
+import ThemeToggle from './ThemeToggle';
 
 /**
  * Mobile navigation: 44px hamburger in the top bar, full-width drawer below it.
@@ -44,7 +45,8 @@ export default function MobileNav({
   }, [open]);
 
   return (
-    <div className="ml-auto lg:hidden">
+    <div className="ml-auto flex items-center gap-2 lg:hidden">
+      <ThemeToggle />
       <button
         type="button"
         aria-label={open ? 'Close menu' : 'Open menu'}
@@ -66,7 +68,7 @@ export default function MobileNav({
           <button
             type="button"
             aria-label="Close menu"
-            className="fixed inset-0 top-12 z-20 cursor-default bg-[rgba(7,10,15,0.6)]"
+            className="fixed inset-0 top-12 z-20 cursor-default bg-[var(--overlay-bg)]"
             onClick={() => setOpen(false)}
           />
           <nav className="mono fixed inset-x-0 top-12 z-30 border-b border-[var(--grat)] bg-[var(--scope-1)] px-6 py-2 text-[12px] tracking-[0.1em] uppercase">

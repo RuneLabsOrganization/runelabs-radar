@@ -2,6 +2,7 @@
 
 // Namespace import keeps JSX working under vitest's classic transform (jsx: preserve).
 import * as React from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { DOMAINS, DOMAIN_LABELS, type Domain } from '@/lib/domains';
 import { blipPosition, easeOutExpo, kpiFormat } from '@/lib/scope';
@@ -25,6 +26,8 @@ export interface ScopeInsight {
   headline: string;
   detail: string;
   direction: 'up' | 'down' | 'watch';
+  /** where the slide leads when clicked (entity / domain page) */
+  href?: string;
 }
 
 const TWO_PI = Math.PI * 2;
@@ -80,14 +83,24 @@ export default function ScopeHero({
   const canvasRef = React.useRef<HTMLCanvasElement>(null);
   const [hover, setHover] = React.useState<{ x: number; y: number; blip: ScopeBlip } | null>(null);
   const [insightIdx, setInsightIdx] = React.useState(0);
-
-  // insight rotation: calm 6s cadence, off under reduced motion
+  const [insightPaused, setInsightPaused] = React.useState(false);
+  // bumped by ThemeToggle's 'radar:theme' broadcast — re-runs the canvas
+  // effect so scope colors are re-read from the flipped CSS tokens
+  const [themeTick, setThemeTick] = React.useState(0);
   React.useEffect(() => {
-    if (insights.length < 2) return;
+    const on = () => setThemeTick((t) => t + 1);
+    window.addEventListener('radar:theme', on);
+    return () => window.removeEventListener('radar:theme', on);
+  }, []);
+
+  // insight rotation: calm 8s cadence — paused on hover/focus, off under
+  // reduced motion; arrows + dots always allow manual paging
+  React.useEffect(() => {
+    if (insights.length < 2 || insightPaused) return;
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-    const id = setInterval(() => setInsightIdx((i) => (i + 1) % insights.length), 6000);
+    const id = setInterval(() => setInsightIdx((i) => (i + 1) % insights.length), 8000);
     return () => clearInterval(id);
-  }, [insights.length]);
+  }, [insights.length, insightPaused]);
 
   React.useEffect(() => {
     const wrap = wrapRef.current;
@@ -323,7 +336,7 @@ export default function ScopeHero({
       canvas.removeEventListener('click', onClick);
       ro.disconnect();
     };
-  }, [blips, router]);
+  }, [blips, router, themeTick]);
 
   const insight = insights.length > 0 ? insights[insightIdx % insights.length] : null;
 
@@ -332,7 +345,7 @@ export default function ScopeHero({
       {/* the scope */}
       <div
         ref={wrapRef}
-        className="relative h-[260px] overflow-hidden rounded-[6px] border border-[var(--grat-soft)] bg-[var(--scope-1)] md:h-[400px]"
+        className="relative h-[260px] overflow-hidden rounded-[6px] border border-[var(--grat-soft)] bg-[var(--scope-1)] md:h-[340px]"
       >
         <canvas
           ref={canvasRef}
@@ -386,23 +399,56 @@ export default function ScopeHero({
           ))}
         </div>
 
-        {insight && (
-          <div className="rounded-[6px] border border-[var(--grat-soft)] bg-[var(--scope-1)] p-4">
-            <div className="readout mb-2 flex items-center justify-between">
-              <span style={{ color: 'var(--phosphor)' }}>smart insight</span>
-              {insights.length > 1 && (
-                <span className="flex gap-1" aria-hidden>
-                  {insights.map((_, i) => (
+        {/* the insight carousel: auto-rotates, pauses on hover/focus, always
+            manually pageable; explains itself when the brief hasn't run */}
+        <div
+          className="rounded-[6px] border border-[var(--grat-soft)] bg-[var(--scope-1)] p-4"
+          onMouseEnter={() => setInsightPaused(true)}
+          onMouseLeave={() => setInsightPaused(false)}
+          onFocus={() => setInsightPaused(true)}
+          onBlur={() => setInsightPaused(false)}
+        >
+          <div className="readout mb-2 flex items-center justify-between">
+            <span style={{ color: 'var(--phosphor)' }}>smart insight</span>
+            {insights.length > 1 && (
+              <span className="flex items-center gap-2">
+                <button
+                  type="button"
+                  className="vote-btn"
+                  aria-label="previous insight"
+                  onClick={() => setInsightIdx((i) => (i - 1 + insights.length) % insights.length)}
+                >
+                  &#8249;
+                </button>
+                {insights.map((_, i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    className="vote-btn"
+                    aria-label={`insight ${i + 1} of ${insights.length}`}
+                    aria-pressed={i === insightIdx}
+                    onClick={() => setInsightIdx(i)}
+                  >
                     <span
-                      key={i}
-                      className="inline-block h-[3px] w-[3px] rounded-full"
-                      style={{ background: i === insightIdx ? 'var(--phosphor)' : 'var(--grat)' }}
+                      aria-hidden
+                      className="inline-block h-[3px] w-[3px] rounded-full align-middle"
+                      style={{ background: i === insightIdx ? 'var(--phosphor)' : 'var(--grat-strong)' }}
                     />
-                  ))}
-                </span>
-              )}
-            </div>
-            <div key={insightIdx} className="scope-insight">
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  className="vote-btn"
+                  aria-label="next insight"
+                  onClick={() => setInsightIdx((i) => (i + 1) % insights.length)}
+                >
+                  &#8250;
+                </button>
+              </span>
+            )}
+          </div>
+          {insight ? (
+            <div key={insightIdx} className="scope-insight" aria-live="polite">
               <div className="flex items-baseline gap-2">
                 <span
                   className="mono text-[11px]"
@@ -412,7 +458,16 @@ export default function ScopeHero({
                   {DIRECTION_GLYPH[insight.direction]}
                 </span>
                 <span className="text-[13.5px] font-semibold leading-snug" style={{ color: 'var(--ink)' }}>
-                  {insight.headline}
+                  {insight.href ? (
+                    <Link
+                      href={insight.href}
+                      className="decoration-[var(--grat-strong)] underline-offset-2 hover:underline"
+                    >
+                      {insight.headline}
+                    </Link>
+                  ) : (
+                    insight.headline
+                  )}
                 </span>
               </div>
               {insight.detail && (
@@ -421,8 +476,12 @@ export default function ScopeHero({
                 </p>
               )}
             </div>
-          </div>
-        )}
+          ) : (
+            <p className="mono text-[10.5px] leading-relaxed" style={{ color: 'var(--ink-4)' }}>
+              analyst notes land after the 07:00 brief
+            </p>
+          )}
+        </div>
       </div>
     </section>
   );

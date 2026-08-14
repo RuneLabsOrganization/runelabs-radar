@@ -24,6 +24,10 @@ export const config = {
   get aaApiKey(): string {
     return process.env.AA_API_KEY ?? '';
   },
+  /** Brave Search API key — enables the brave news-search ingest adapter. */
+  get braveApiKey(): string {
+    return process.env.BRAVE_API_KEY ?? '';
+  },
   /** PUBLIC_MODE=true lets anonymous visitors read the hub (no votes/verdicts/admin). */
   get publicMode(): boolean {
     return process.env.PUBLIC_MODE === 'true';

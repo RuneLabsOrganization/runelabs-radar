@@ -32,8 +32,17 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
-      <body>{children}</body>
+    <html lang="en" suppressHydrationWarning>
+      <body>
+        {/* restore the saved theme before first paint — dark is the default,
+            only 'light' ever needs the attribute */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `try{if(localStorage.getItem('radar.theme')==='light')document.documentElement.dataset.theme='light'}catch(e){}`,
+          }}
+        />
+        {children}
+      </body>
     </html>
   );
 }

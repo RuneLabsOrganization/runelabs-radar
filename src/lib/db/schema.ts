@@ -13,7 +13,7 @@ export const users = sqliteTable('users', {
 
 export const sources = sqliteTable('sources', {
   id: integer('id').primaryKey({ autoIncrement: true }),
-  type: text('type', { enum: ['rss', 'hn', 'reddit', 'arxiv', 'huggingface', 'github'] }).notNull(),
+  type: text('type', { enum: ['rss', 'hn', 'reddit', 'arxiv', 'huggingface', 'github', 'brave'] }).notNull(),
   name: text('name').notNull().unique(),
   config: text('config').notNull().default('{}'),
   domainHints: text('domain_hints').notNull().default('[]'),

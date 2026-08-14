@@ -1,10 +1,10 @@
 // Namespace import keeps JSX working under vitest's classic transform (jsx: preserve).
 import * as React from 'react';
 import Link from 'next/link';
-import { DOMAINS, DOMAIN_COLORS, DOMAIN_LABELS, type Domain } from '@/lib/domains';
+import { type Domain } from '@/lib/domains';
 import { timeAgo, type FeedStory } from '@/lib/feed';
 import { safeHttpUrl } from '@/lib/safe-url';
-import { parseDomainScores } from './DomainChips';
+import { parseDomainScores, topDomain } from './DomainChips';
 import DomainFingerprint from './DomainFingerprint';
 import SignalMeter from './SignalMeter';
 import VoteButtons from './VoteButtons';
@@ -41,13 +41,6 @@ export default function SignalEntry({
 }) {
   const scores = parseDomainScores(story.domainScores);
   const href = safeHttpUrl(firstUrl);
-  // right rail: the story's strongest fits against OUR domains, labeled
-  const topFits = scores
-    ? DOMAINS.map((d) => ({ d, v: scores[d] ?? 0 }))
-        .filter((x) => x.v > 0)
-        .sort((a, b) => b.v - a.v)
-        .slice(0, 3)
-    : [];
   return (
     <article
       className={`border-b border-[var(--grat-soft)] last:border-b-0 ${hero ? 'py-7' : 'py-5'}`}
@@ -85,18 +78,6 @@ export default function SignalEntry({
               </a>
             )}
           </h3>
-          {/* mobile: the relevance rail collapses into inline chips */}
-          {topFits.length > 0 && (
-            <div className="mono mt-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[10px] tracking-[0.06em] uppercase md:hidden">
-              {topFits.map(({ d, v }) => (
-                <span key={d} className="inline-flex items-center gap-1">
-                  <span aria-hidden className="inline-block h-[8px] w-[2px]" style={{ background: DOMAIN_COLORS[d] }} />
-                  <span style={{ color: 'var(--ink-3)' }}>{DOMAIN_LABELS[d]}</span>
-                  <span style={{ color: 'var(--ink-4)' }}>{v}</span>
-                </span>
-              ))}
-            </div>
-          )}
           {story.tldr && (
             <p className="mt-1.5 text-[13.5px] leading-relaxed" style={{ color: 'var(--ink-2)' }}>
               {story.tldr}
@@ -133,40 +114,12 @@ export default function SignalEntry({
                 {itemCount > 1 ? ` +${itemCount - 1}` : ''}
               </span>
             )}
-            <DomainFingerprint scores={scores} highlight={highlightDomain} />
+            <DomainFingerprint scores={scores} highlight={highlightDomain ?? topDomain(scores) ?? undefined} />
             <span className="ml-auto">
               <VoteButtons storyId={story.id} up={up} down={down} myVote={myVote} readOnly={readOnly} />
             </span>
           </div>
         </div>
-
-        {topFits.length > 0 && (
-          <div
-            className="mono hidden w-[150px] shrink-0 flex-col gap-[5px] pt-1.5 md:flex"
-            role="img"
-            aria-label={`relevance: ${topFits.map((f) => `${DOMAIN_LABELS[f.d]} ${f.v}`).join(', ')}`}
-          >
-            {topFits.map(({ d, v }) => (
-              <div key={d} className="flex items-center gap-1.5" aria-hidden>
-                <span
-                  className="w-[44px] shrink-0 text-right text-[10px] tracking-[0.04em] uppercase"
-                  style={{ color: highlightDomain === d ? 'var(--ink-2)' : 'var(--ink-4)' }}
-                >
-                  {DOMAIN_LABELS[d].length > 7 ? DOMAIN_LABELS[d].slice(0, 6) : DOMAIN_LABELS[d]}
-                </span>
-                <span className="h-[4px] flex-1 rounded-[1px]" style={{ background: 'var(--grat-soft)' }}>
-                  <span
-                    className="anim-bar block h-full rounded-[1px]"
-                    style={{ width: `${v}%`, background: DOMAIN_COLORS[d], opacity: 0.85 }}
-                  />
-                </span>
-                <span className="w-[18px] shrink-0 text-[10.5px]" style={{ color: 'var(--ink-3)' }}>
-                  {v}
-                </span>
-              </div>
-            ))}
-          </div>
-        )}
       </div>
     </article>
   );

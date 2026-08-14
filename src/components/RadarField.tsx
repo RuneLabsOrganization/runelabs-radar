@@ -22,6 +22,19 @@ export default function RadarField({ intensity = 0.15 }: { intensity?: number })
     if (!el) return;
     const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
+    // colors come from the live CSS tokens (theme-aware); THREE.Color parses
+    // both hex and rgb()/rgba() styles
+    const cssColor = (name: string, fallback: string): THREE.Color => {
+      const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+      try {
+        return new THREE.Color(v || fallback);
+      } catch {
+        return new THREE.Color(fallback);
+      }
+    };
+    const phosphor = cssColor('--phosphor', '#57d9a3');
+    const gratColor = cssColor('--grat-strong', '#97b4cd');
+
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 100);
     camera.position.set(0, 4.4, 6.4);
@@ -43,7 +56,7 @@ export default function RadarField({ intensity = 0.15 }: { intensity?: number })
     const disposables: { dispose(): void }[] = [];
 
     // ── polar graticule: rings + spokes on the XZ plane
-    const gratMat = new THREE.LineBasicMaterial({ color: 0x97b4cd, transparent: true, opacity: 0.1 });
+    const gratMat = new THREE.LineBasicMaterial({ color: gratColor, transparent: true, opacity: 0.1 });
     disposables.push(gratMat);
     const graticule = new THREE.Group();
     for (let r = 1; r <= 4; r++) {
@@ -92,7 +105,7 @@ export default function RadarField({ intensity = 0.15 }: { intensity?: number })
       blending: THREE.AdditiveBlending,
       uniforms: {
         uSweep: { value: 0 },
-        uColor: { value: new THREE.Color(0x57d9a3) },
+        uColor: { value: phosphor },
       },
       vertexShader: `
         attribute float aAngle;
@@ -125,7 +138,7 @@ export default function RadarField({ intensity = 0.15 }: { intensity?: number })
       new THREE.Vector3(0, 0.002, 0),
       new THREE.Vector3(MAX_R, 0.002, 0),
     ]);
-    const sweepMat = new THREE.LineBasicMaterial({ color: 0x57d9a3, transparent: true, opacity: 0.45 });
+    const sweepMat = new THREE.LineBasicMaterial({ color: phosphor, transparent: true, opacity: 0.45 });
     disposables.push(sweepGeo, sweepMat);
     const sweep = new THREE.Line(sweepGeo, sweepMat);
     scene.add(sweep);

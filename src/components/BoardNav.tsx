@@ -17,7 +17,7 @@ const SECTIONS = [
 export default function BoardNav() {
   return (
     <nav
-      className="mono sticky top-12 z-10 -mx-6 mb-2 flex items-center gap-1.5 overflow-x-auto border-b border-[var(--grat-soft)] bg-[rgba(10,14,19,0.92)] px-6 py-2 text-[10px] tracking-[0.08em] backdrop-blur"
+      className="mono sticky top-12 z-10 -mx-6 mb-2 flex items-center gap-1.5 overflow-x-auto border-b border-[var(--grat-soft)] bg-[var(--header-bg)] px-6 py-2 text-[10px] tracking-[0.08em] backdrop-blur"
       aria-label="Board sections"
     >
       {SECTIONS.map(([id, label]) => (

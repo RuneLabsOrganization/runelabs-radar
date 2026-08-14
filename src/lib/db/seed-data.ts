@@ -1,7 +1,7 @@
 import type { Domain } from '../domains';
 
 export interface SeedSource {
-  type: 'rss' | 'hn' | 'reddit' | 'arxiv' | 'huggingface' | 'github';
+  type: 'rss' | 'hn' | 'reddit' | 'arxiv' | 'huggingface' | 'github' | 'brave';
   name: string;
   config: Record<string, unknown>;
   domainHints: Domain[];
@@ -29,6 +29,14 @@ export const SEED_SOURCES: SeedSource[] = [
   { type: 'huggingface', name: 'HF Trending Models', config: { kind: 'models' }, domainHints: [] },
   { type: 'huggingface', name: 'HF Daily Papers', config: { kind: 'papers' }, domainHints: [] },
   { type: 'github', name: 'GitHub Trending', config: {}, domainHints: ['coding'] },
+  // Brave News Search — targeted queries per domain (self-throttled, default 3h poll)
+  { type: 'brave', name: 'Brave — Coding AI', config: { query: 'AI coding assistant OR code model OR agentic coding' }, domainHints: ['coding'] },
+  { type: 'brave', name: 'Brave — Copy AI', config: { query: 'AI copywriting OR AI writing tool' }, domainHints: ['copy'] },
+  { type: 'brave', name: 'Brave — Image AI', config: { query: 'AI image generation OR text-to-image model' }, domainHints: ['image'] },
+  { type: 'brave', name: 'Brave — Video AI', config: { query: 'AI video generation OR text-to-video model' }, domainHints: ['video'] },
+  { type: 'brave', name: 'Brave — Ads AI', config: { query: 'AI ad creative OR advertising automation AI' }, domainHints: ['ads'] },
+  { type: 'brave', name: 'Brave — Agentic AI', config: { query: 'AI agents OR browser agent OR computer use' }, domainHints: ['agentic'] },
+  { type: 'brave', name: 'Brave — Frontier Watch', config: { query: 'frontier AI model release OR LLM launch' }, domainHints: [] },
 ];
 
 export const SEED_BOARD_TASKS: Record<Domain, string[]> = {

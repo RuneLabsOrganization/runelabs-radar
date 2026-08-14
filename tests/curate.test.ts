@@ -49,6 +49,13 @@ describe('buildCurationPrompts', () => {
     expect(user).not.toContain('Voted 10');
     expect(user).not.toContain('Voted 11');
   });
+
+  it('renders source tags as a prior when provided, omits them otherwise', () => {
+    const { user: withHints } = buildCurationPrompts({ title: 'T' }, [], [], ['coding', 'agentic']);
+    expect(withHints).toContain('Source tags (prior evidence, not a verdict): coding, agentic');
+    const { user: without } = buildCurationPrompts({ title: 'T' }, [], []);
+    expect(without).not.toContain('Source tags');
+  });
 });
 
 describe('runCurate', () => {
@@ -111,6 +118,36 @@ describe('runCurate', () => {
     expect(updated.whyItMatters).toBe('Evaluate it for agentic coding pipelines.');
     expect(updated.topScore).toBe(92);
     expect(JSON.parse(updated.domainScores!)).toEqual(scores);
+  });
+
+  it('passes member sources\' domain hints into the prompt as a prior', async () => {
+    const story = insertStory('Runway launches Gen-5 video model');
+    const sourceId = db
+      .insert(sources)
+      .values({ type: 'brave', name: 'Brave — Video AI', domainHints: '["video"]' })
+      .returning({ id: sources.id })
+      .get().id;
+    db.insert(items)
+      .values({
+        sourceId,
+        url: 'https://a.example/2',
+        title: 'Runway launches Gen-5 video model',
+        excerpt: 'Text-to-video quality jump.',
+        fetchedAt: new Date(),
+        storyId: story.id,
+      })
+      .run();
+
+    mockChat.mockResolvedValueOnce({
+      domain_scores: { coding: 0, copy: 0, image: 20, video: 95, ads: 10, agentic: 0 },
+      tldr: 't',
+      why_it_matters: 'w',
+    });
+
+    const res = await runCurate();
+    expect(res).toEqual({ clustered: 0, curated: 1, failed: 0 });
+    const [, userArg] = mockChat.mock.calls[0] as [string, string];
+    expect(userArg).toContain('Source tags (prior evidence, not a verdict): video');
   });
 
   it('clamps scores to 0-100 integers and defaults missing domains to 0', async () => {
