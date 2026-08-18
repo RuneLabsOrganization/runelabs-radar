@@ -1,10 +1,11 @@
-import { and, desc, eq } from 'drizzle-orm';
+import { and, desc, eq, gte, lt } from 'drizzle-orm';
 import { getDb } from './db';
 import { jobRuns } from './db/schema';
 
 export type JobName =
   | 'ingest'
   | 'curate'
+  | 'gate-audit'
   | 'board'
   | 'brief'
   | 'rescore'
@@ -23,6 +24,9 @@ export type JobName =
 // the same raw stories and double-burn the daily LLM cap.
 const running = new Set<JobName>();
 
+/** A 'running' row younger than this means another live process owns the job. */
+const RUNNING_FRESH_MS = 30 * 60 * 1000;
+
 /** Runs fn inside a recorded job run. Returns fn's stats, or null when it threw or the job was already running. */
 export async function withJobRun<T extends Record<string, unknown>>(
   job: JobName,
@@ -30,6 +34,27 @@ export async function withJobRun<T extends Record<string, unknown>>(
 ): Promise<T | null> {
   if (running.has(job)) {
     console.warn(`[job:${job}] skipped — previous run still in progress`);
+    return null;
+  }
+  const db = getDb();
+  // reap stale 'running' rows (a process died mid-run) so they never lock the job
+  db.update(jobRuns)
+    .set({ status: 'error', finishedAt: new Date(), error: 'stale running row reaped — process died mid-run' })
+    .where(
+      and(eq(jobRuns.job, job), eq(jobRuns.status, 'running'), lt(jobRuns.startedAt, new Date(Date.now() - RUNNING_FRESH_MS))),
+    )
+    .run();
+  // cross-process lock: the daemon and CLI runs share a DB — a fresh running
+  // row means the other process owns the job right now
+  const freshRunning = db
+    .select({ id: jobRuns.id })
+    .from(jobRuns)
+    .where(
+      and(eq(jobRuns.job, job), eq(jobRuns.status, 'running'), gte(jobRuns.startedAt, new Date(Date.now() - RUNNING_FRESH_MS))),
+    )
+    .get();
+  if (freshRunning) {
+    console.warn(`[job:${job}] skipped — another process holds the run lock`);
     return null;
   }
   running.add(job);

@@ -4,7 +4,7 @@ import { getDb } from '../db';
 import { launches, opportunities, painPoints, stories } from '../db/schema';
 import { DOMAINS } from '../domains';
 import { getIdentity } from '../identity';
-import { chatJSON } from '../llm/minimax';
+import { chatJSON, drainLlmUsageStats } from '../llm/minimax';
 import { promptLine } from '../prompt-hygiene';
 
 // Axes + score math live in the client-safe module; re-exported for server code.
@@ -379,5 +379,5 @@ export async function runOpportunities(): Promise<{
     .returning()
     .all().length;
 
-  return { proposed: drafts.length, created, refreshed, archived };
+  return { proposed: drafts.length, created, refreshed, archived, ...drainLlmUsageStats() };
 }

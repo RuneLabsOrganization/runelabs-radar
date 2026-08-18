@@ -20,12 +20,14 @@ export function _setFetch(f: typeof fetch): void {
 
 // token usage accumulator for the current job run — drained into the job's
 // stats JSON so the admin panel sees cost, not just call counts
+let _calls = 0;
 let _promptTokens = 0;
 let _completionTokens = 0;
 
-/** Returns accumulated token usage since the last drain and resets the counters. */
-export function drainLlmUsageStats(): { promptTokens: number; completionTokens: number } {
-  const out = { promptTokens: _promptTokens, completionTokens: _completionTokens };
+/** Returns accumulated usage since the last drain and resets the counters. */
+export function drainLlmUsageStats(): { calls: number; promptTokens: number; completionTokens: number } {
+  const out = { calls: _calls, promptTokens: _promptTokens, completionTokens: _completionTokens };
+  _calls = 0;
   _promptTokens = 0;
   _completionTokens = 0;
   return out;
@@ -59,16 +61,38 @@ function extractJson(content: string): string {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+// Per-job daily budgets (worker-process-local): keep one hungry job from
+// starving the rest against the shared daily cap. Curate is the only
+// high-volume job; the others are bounded by their fixed schedules.
+const JOB_DAILY_CAPS: Record<string, number> = { curate: config.minimaxCurateDailyCap };
+const jobCallsToday = new Map<string, { date: string; calls: number }>();
+
+/** Throws (non-retryable) when the job's daily budget is spent. */
+function checkJobBudget(job: string): void {
+  const cap = JOB_DAILY_CAPS[job];
+  if (cap === undefined) return;
+  const date = today();
+  const rec = jobCallsToday.get(job);
+  const calls = rec?.date === date ? rec.calls : 0;
+  if (calls >= cap) {
+    throw new LlmError(`Daily LLM call cap for job "${job}" reached (${cap})`, false);
+  }
+  jobCallsToday.set(job, { date, calls: calls + 1 });
+}
+
 /**
  * One curation call to MiniMax (OpenAI-compatible chat completions).
  * Counts against the daily cap once per invocation; 3 attempts with backoff
- * on retryable failures (429/5xx/network/malformed JSON).
+ * on retryable failures (429/5xx/network/malformed JSON). opts.job enforces
+ * the per-job daily budget (worker jobs only).
  */
-export async function chatJSON<T>(system: string, user: string): Promise<T> {
+export async function chatJSON<T>(system: string, user: string, opts?: { job?: string }): Promise<T> {
   if (!config.minimaxApiKey) {
     throw new LlmError('MINIMAX_API_KEY not set', false);
   }
+  if (opts?.job) checkJobBudget(opts.job);
   checkAndCountCall();
+  _calls++;
   const backoffs = [1000, 4000];
   for (let attempt = 0; ; attempt++) {
     try {
@@ -85,8 +109,10 @@ export async function chatJSON<T>(system: string, user: string): Promise<T> {
           body: JSON.stringify({
             model: config.minimaxModel,
             temperature: 0.2,
-            // bound runaway output — the curation response is ~120 tokens
-            max_tokens: 800,
+            // bound runaway output WITHOUT clipping the long jobs: MiniMax-M2
+            // spends thinking tokens (<think>) from this same budget — 800
+            // truncated the brief mid-think; 6000 fits thinking + a full brief
+            max_tokens: 6000,
             messages: [
               { role: 'system', content: system },
               { role: 'user', content: user },

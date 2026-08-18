@@ -6,6 +6,7 @@ import { eq } from 'drizzle-orm';
 vi.mock('@/lib/llm/minimax', () => ({
   chatJSON: vi.fn(),
   LlmError: class LlmError extends Error {},
+  drainLlmUsageStats: () => ({ calls: 0, promptTokens: 0, completionTokens: 0 }),
 }));
 // eslint-disable-next-line import/first
 import { chatJSON } from '@/lib/llm/minimax';

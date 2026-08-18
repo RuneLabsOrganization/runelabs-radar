@@ -2,7 +2,7 @@ import { and, desc, eq, gte, isNull } from 'drizzle-orm';
 import { getDb } from '../db';
 import { stories } from '../db/schema';
 import { getIdentity } from '../identity';
-import { chatJSON, LlmError } from '../llm/minimax';
+import { chatJSON, drainLlmUsageStats, LlmError } from '../llm/minimax';
 import { promptLine } from '../prompt-hygiene';
 
 /** Only top-signal stories earn a second look. */
@@ -102,5 +102,5 @@ export async function runSecondLook(): Promise<{ considered: number; written: nu
       .where(eq(stories.id, r.id))
       .run();
   }
-  return { considered: candidates.length, written: results.length };
+  return { considered: candidates.length, written: results.length, ...drainLlmUsageStats() };
 }

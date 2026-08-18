@@ -4,7 +4,7 @@ import { config } from './config';
 import { getDb } from './db';
 import { launches } from './db/schema';
 import { fetchJson } from './ingest/adapters/shared';
-import { chatJSON } from './llm/minimax';
+import { chatJSON, drainLlmUsageStats } from './llm/minimax';
 import { upsertMetric, utcDay } from './metrics';
 
 export const LAUNCH_CATEGORIES = [
@@ -229,5 +229,5 @@ export async function runLaunches(): Promise<{ fetched: number; tagged: number }
   }
   recordDailyCounts();
 
-  return { fetched, tagged };
+  return { fetched, tagged, ...drainLlmUsageStats() };
 }

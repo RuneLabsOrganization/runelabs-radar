@@ -6,6 +6,7 @@ import { stories } from '@/lib/db/schema';
 vi.mock('@/lib/llm/minimax', () => ({
   chatJSON: vi.fn(),
   LlmError: class LlmError extends Error {},
+  drainLlmUsageStats: () => ({ calls: 0, promptTokens: 0, completionTokens: 0 }),
 }));
 // eslint-disable-next-line import/first
 import { chatJSON, LlmError } from '@/lib/llm/minimax';
@@ -80,7 +81,7 @@ describe('runSecondLook', () => {
     } as never);
 
     const stats = await runSecondLook();
-    expect(stats).toEqual({ considered: 1, written: 1 });
+    expect(stats).toMatchObject({ considered: 1, written: 1 });
     const updated = db.select().from(stories).where(eq(stories.id, eligible.id)).get();
     expect(updated?.secondLook).toContain('Adoption curves');
     expect(updated?.secondLookAt).not.toBeNull();
@@ -97,7 +98,7 @@ describe('runSecondLook', () => {
   it('does nothing when no story qualifies — no LLM call', async () => {
     addStory(db, { topScore: 40 });
     const stats = await runSecondLook();
-    expect(stats).toEqual({ considered: 0, written: 0 });
+    expect(stats).toMatchObject({ considered: 0, written: 0 });
     expect(vi.mocked(chatJSON)).not.toHaveBeenCalled();
   });
 });

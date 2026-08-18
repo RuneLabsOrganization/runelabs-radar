@@ -7,7 +7,7 @@ import ProposalCard, { type ProposedFields } from '@/components/ProposalCard';
 import SourcesPanel, { type SourceRow } from '@/components/SourcesPanel';
 import SourceVolume from '@/components/SourceVolume';
 import PageHeader from '@/components/PageHeader';
-import { jobHistory, llmUsageHistory, pipelineFunnel, sourceVolume } from '@/lib/analytics';
+import { jobHistory, llmUsageHistory, llmUsageTodayByJob, pipelineFunnel, sourceVolume } from '@/lib/analytics';
 import { requireAdmin } from '@/lib/auth/user';
 import { getDb } from '@/lib/db';
 import { boardProposals, jobRuns, sources } from '@/lib/db/schema';
@@ -75,7 +75,7 @@ export default async function AdminPage() {
           </div>
           <div>
             <h2 className="section-title">LLM budget</h2>
-            <LlmBudget {...llmUsageHistory()} />
+            <LlmBudget {...llmUsageHistory()} byJob={llmUsageTodayByJob()} />
           </div>
         </div>
       </section>

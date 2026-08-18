@@ -36,10 +36,19 @@ export function hindsightScore(story: {
     /* no entities */
   }
 
+  // bounded: echoes past 5 days stop being evidence for a 2-day-old story,
+  // and the load must never grow with total history
   const later = db
     .select({ id: stories.id, title: stories.title, entities: stories.entities })
     .from(stories)
-    .where(and(gte(stories.createdAt, story.createdAt), ne(stories.id, story.id)))
+    .where(
+      and(
+        gte(stories.createdAt, story.createdAt),
+        lte(stories.createdAt, new Date(story.createdAt.getTime() + 5 * 864e5)),
+        ne(stories.id, story.id),
+      ),
+    )
+    .limit(3000)
     .all();
 
   // entity echo: distinct later stories sharing ≥1 entity
@@ -64,7 +73,13 @@ export function hindsightScore(story: {
     const rows = db
       .select({ title: launches.title })
       .from(launches)
-      .where(gte(launches.launchedAt, story.createdAt))
+      .where(
+        and(
+          gte(launches.launchedAt, story.createdAt),
+          lte(launches.launchedAt, new Date(story.createdAt.getTime() + 5 * 864e5)),
+        ),
+      )
+      .limit(1000)
       .all();
     materialized = rows.some((r) => names.some((n) => n.length >= 3 && r.title.toLowerCase().includes(n))) ? 1 : 0;
   }

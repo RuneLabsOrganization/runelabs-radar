@@ -48,6 +48,13 @@ export default function SourceVolume({ rows }: { rows: SourceVolumeRow[] }) {
               {r.total7d}
             </span>
           </span>
+          <span
+            className="mono w-16 shrink-0 text-right text-[10.5px]"
+            style={{ color: 'var(--ink-4)' }}
+            title={`${r.used7d} of ${r.total7d} items made it into a story (7d)`}
+          >
+            {r.total7d > 0 ? `${Math.round((r.used7d / r.total7d) * 100)}% used` : '—'}
+          </span>
         </li>
       ))}
     </ul>

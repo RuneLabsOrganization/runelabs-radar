@@ -58,7 +58,13 @@ export async function runIngest(): Promise<IngestStats> {
   let sourcesSkipped = 0;
   for (const source of enabled) {
     const pollMs = pollMinutesFor(readConfig(source.config)) * 60_000;
-    if (source.lastFetchedAt && now - source.lastFetchedAt.getTime() < pollMs) {
+    // exponential backoff for chronically failing sources: 3+ failures →
+    // cadence × 2^(failures-2), capped at 6h — a dead feed shouldn't burn a slot
+    const effectivePollMs =
+      source.consecutiveFailures >= 3
+        ? Math.min(pollMs * 2 ** (source.consecutiveFailures - 2), 6 * 36e5)
+        : pollMs;
+    if (source.lastFetchedAt && now - source.lastFetchedAt.getTime() < effectivePollMs) {
       sourcesSkipped += 1;
       continue;
     }

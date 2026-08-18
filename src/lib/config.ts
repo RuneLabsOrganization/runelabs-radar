@@ -21,6 +21,10 @@ export const config = {
   get minimaxDailyCallCap(): number {
     return Number(process.env.MINIMAX_DAILY_CALL_CAP ?? 500);
   },
+  /** Per-job daily cap for the high-volume curation job — keeps it from starving the others. */
+  get minimaxCurateDailyCap(): number {
+    return Number(process.env.MINIMAX_CURATE_DAILY_CAP ?? 400);
+  },
   get aaApiKey(): string {
     return process.env.AA_API_KEY ?? '';
   },

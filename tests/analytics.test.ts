@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { useTestDb } from './helpers/db';
+import { getDb } from '@/lib/db';
 import type { Db } from '@/lib/db';
-import { benchmarkSnapshots, items, sources, stories } from '@/lib/db/schema';
+import { benchmarkSnapshots, items, jobRuns, sources, stories } from '@/lib/db/schema';
 import {
   aaModels,
   dailyDomainCounts,
@@ -12,7 +13,7 @@ import {
 } from '@/lib/analytics';
 import { compactAaMediaSnapshot, compactAaSnapshot } from '@/lib/board/sync';
 import { fmtPtsPerDollar, fmtUsd, taskCost, TASK_ARCHETYPES } from '@/lib/costs';
-import { aaMedia, llmUsageHistory, pipelineFunnel, sourceVolume } from '@/lib/analytics';
+import { aaMedia, llmUsageHistory, llmUsageTodayByJob, pipelineFunnel, sourceVolume } from '@/lib/analytics';
 import { llmUsage } from '@/lib/db/schema';
 import { sanitizeEntities } from '@/lib/curate/curate';
 import { sanitizeInsights } from '@/lib/brief/brief';
@@ -321,5 +322,52 @@ describe('sanitizers', () => {
     expect(out[0]).toMatchObject({ direction: 'up', domain: 'coding' });
     expect(out[1].direction).toBe('watch');
     expect(out[2].domain).toBeUndefined();
+  });
+});
+
+
+describe('llmUsageTodayByJob', () => {
+  beforeEach(() => useTestDb());
+
+  it("sums today's job_runs stats per job, sorted by calls", () => {
+    const db = getDb();
+    db.insert(jobRuns)
+      .values([
+        { job: 'curate', startedAt: new Date(), status: 'ok', stats: JSON.stringify({ calls: 12, promptTokens: 9000, completionTokens: 3000 }) },
+        { job: 'curate', startedAt: new Date(), status: 'ok', stats: JSON.stringify({ calls: 8, promptTokens: 6000, completionTokens: 2000 }) },
+        { job: 'brief', startedAt: new Date(), status: 'ok', stats: JSON.stringify({ calls: 1, promptTokens: 5000, completionTokens: 1500 }) },
+        { job: 'ingest', startedAt: new Date(), status: 'ok', stats: JSON.stringify({ sourcesOk: 26 }) },
+      ])
+      .run();
+
+    const rows = llmUsageTodayByJob();
+    const curate = rows.find((r) => r.job === 'curate')!;
+    expect(curate.calls).toBe(20);
+    expect(curate.tokens).toBe(20000);
+    expect(curate.runs).toBe(2);
+    expect(rows.find((r) => r.job === 'ingest')!.calls).toBe(0);
+    expect(rows[0].job).toBe('curate');
+  });
+});
+
+describe('sourceVolume yield', () => {
+  beforeEach(() => useTestDb());
+
+  it('used7d counts items that made it into a story', () => {
+    const db = getDb();
+    const src = db.insert(sources).values({ type: 'rss', name: 'Feed X' }).returning().get();
+    const story = insertStory(db, { daysAgo: 0 });
+    db.insert(items)
+      .values([
+        { sourceId: src.id, url: 'https://x.example/1', title: 'a', fetchedAt: new Date(), storyId: story.id },
+        { sourceId: src.id, url: 'https://x.example/2', title: 'b', fetchedAt: new Date() },
+        { sourceId: src.id, url: 'https://x.example/3', title: 'c', fetchedAt: new Date() },
+        { sourceId: src.id, url: 'https://x.example/4', title: 'd', fetchedAt: new Date() },
+      ])
+      .run();
+
+    const row = sourceVolume(14).find((r) => r.name === 'Feed X')!;
+    expect(row.total7d).toBe(4);
+    expect(row.used7d).toBe(1);
   });
 });

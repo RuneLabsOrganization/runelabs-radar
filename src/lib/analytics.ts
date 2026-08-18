@@ -412,14 +412,16 @@ export interface SourceVolumeRow {
   name: string;
   daily: number[]; // items per day, oldest → newest
   total7d: number;
+  /** items that made it into a story (storyId set) in the last 7 days — the yield */
+  used7d: number;
 }
 
-/** Item volume per source: daily counts for sparklines + 7-day totals. */
+/** Item volume per source: daily counts for sparklines + 7-day totals + story yield. */
 export function sourceVolume(days = 14): SourceVolumeRow[] {
   const db = getDb();
   const start = new Date(Date.now() - days * DAY_MS);
   const rows = db
-    .select({ fetchedAt: items.fetchedAt, name: sourcesTable.name })
+    .select({ fetchedAt: items.fetchedAt, name: sourcesTable.name, used: items.storyId })
     .from(items)
     .innerJoin(sourcesTable, eq(items.sourceId, sourcesTable.id))
     .where(gte(items.fetchedAt, start))
@@ -431,18 +433,24 @@ export function sourceVolume(days = 14): SourceVolumeRow[] {
     index.set(utcDay(new Date(Date.now() - (days - 1 - i) * DAY_MS)), i);
   }
   const bySource = new Map<string, number[]>();
+  const usedBySource = new Map<string, number>();
+  const weekAgo = utcDay(new Date(Date.now() - 6 * DAY_MS));
   for (const row of rows) {
     const i = index.get(utcDay(row.fetchedAt));
     if (i === undefined) continue;
     const daily = bySource.get(row.name) ?? new Array<number>(days).fill(0);
     daily[i] += 1;
     bySource.set(row.name, daily);
+    if (row.used !== null && utcDay(row.fetchedAt) >= weekAgo) {
+      usedBySource.set(row.name, (usedBySource.get(row.name) ?? 0) + 1);
+    }
   }
   return [...bySource.entries()]
     .map(([name, daily]) => ({
       name,
       daily,
       total7d: daily.slice(-7).reduce((a, b) => a + b, 0),
+      used7d: usedBySource.get(name) ?? 0,
     }))
     .sort((a, b) => b.total7d - a.total7d);
 }
@@ -500,6 +508,41 @@ export function llmUsageHistory(days = 14): { days: { date: string; calls: numbe
     out.push({ date, calls: byDate.get(date) ?? 0 });
   }
   return { days: out, cap: config.minimaxDailyCallCap };
+}
+
+export interface JobUsage {
+  job: string;
+  runs: number;
+  calls: number;
+  tokens: number;
+}
+
+/** Today's LLM usage per job, summed from job_runs stats (calls/promptTokens/completionTokens). */
+export function llmUsageTodayByJob(): JobUsage[] {
+  const db = getDb();
+  const dayStart = new Date();
+  dayStart.setUTCHours(0, 0, 0, 0);
+  const rows = db
+    .select({ job: jobRuns.job, stats: jobRuns.stats })
+    .from(jobRuns)
+    .where(gte(jobRuns.startedAt, dayStart))
+    .all();
+  const byJob = new Map<string, JobUsage>();
+  for (const row of rows) {
+    const acc = byJob.get(row.job) ?? { job: row.job, runs: 0, calls: 0, tokens: 0 };
+    acc.runs += 1;
+    if (row.stats) {
+      try {
+        const s = JSON.parse(row.stats) as { calls?: number; promptTokens?: number; completionTokens?: number };
+        acc.calls += Number(s.calls) || 0;
+        acc.tokens += (Number(s.promptTokens) || 0) + (Number(s.completionTokens) || 0);
+      } catch {
+        /* malformed stats JSON — skip */
+      }
+    }
+    byJob.set(row.job, acc);
+  }
+  return [...byJob.values()].sort((a, b) => b.calls - a.calls);
 }
 
 export interface Funnel {

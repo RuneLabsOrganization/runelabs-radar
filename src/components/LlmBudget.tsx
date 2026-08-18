@@ -1,17 +1,27 @@
 // Namespace import keeps JSX working under vitest's classic transform (jsx: preserve).
 import * as React from 'react';
+import type { JobUsage } from '@/lib/analytics';
 
-/** Daily LLM spend against the call cap: today's gauge + 14-day trend. */
+/** Daily LLM spend against the call cap: today's gauge + pace projection + 14-day trend + per-job burn. */
 export default function LlmBudget({
   days,
   cap,
+  byJob = [],
 }: {
   days: { date: string; calls: number }[];
   cap: number;
+  byJob?: JobUsage[];
 }) {
   const today = days[days.length - 1];
   const pct = Math.min(100, (today.calls / Math.max(1, cap)) * 100);
   const gaugeColor = pct >= 90 ? 'var(--alert)' : pct >= 60 ? 'var(--amber)' : 'var(--phosphor)';
+
+  // end-of-day projection from the UTC-day pace so far
+  const now = new Date();
+  const dayFrac = (now.getUTCHours() * 3600 + now.getUTCMinutes() * 60 + now.getUTCSeconds()) / 86400;
+  const projected = today.calls > 0 && dayFrac > 0.01 ? Math.round(today.calls / dayFrac) : null;
+
+  const jobs = byJob.filter((j) => j.calls > 0);
 
   return (
     <div>
@@ -43,7 +53,32 @@ export default function LlmBudget({
       </div>
       <p className="mono mt-1 text-[10px]" style={{ color: 'var(--ink-4)' }}>
         14-day call volume &middot; cap {cap}/day
+        {projected !== null && <> &middot; pace &rarr; ~{projected} by 00:00 UTC</>}
       </p>
+
+      {jobs.length > 0 && (
+        <div className="mt-4">
+          <div className="readout mb-1.5">by job &middot; today</div>
+          <ul className="flex flex-col">
+            {jobs.map((j) => (
+              <li
+                key={j.job}
+                className="flex items-baseline gap-3 border-b border-[var(--grat-soft)] py-[4px] text-[11px] last:border-b-0"
+              >
+                <span className="mono min-w-0 flex-1 truncate" style={{ color: 'var(--ink-2)' }}>
+                  {j.job}
+                </span>
+                <span className="mono shrink-0 tabular-nums" style={{ color: 'var(--ink-3)' }}>
+                  {j.calls} calls
+                </span>
+                <span className="mono w-20 shrink-0 text-right tabular-nums" style={{ color: 'var(--ink-4)' }}>
+                  {j.tokens.toLocaleString('en-US')} tok
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }

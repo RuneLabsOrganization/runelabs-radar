@@ -6,6 +6,7 @@ import { eq } from 'drizzle-orm';
 vi.mock('@/lib/llm/minimax', () => ({
   chatJSON: vi.fn(),
   LlmError: class LlmError extends Error {},
+  drainLlmUsageStats: () => ({ calls: 0, promptTokens: 0, completionTokens: 0 }),
 }));
 
 import { chatJSON } from '@/lib/llm/minimax';
@@ -76,7 +77,7 @@ describe('runStacks', () => {
     vi.mocked(chatJSON).mockResolvedValue(VALID_DRAFT as never);
 
     const res = await runStacks();
-    expect(res).toEqual({ updated: VENTURES.length, failed: 0 });
+    expect(res).toMatchObject({ updated: VENTURES.length, failed: 0 });
 
     const first = db.select().from(stacks).where(eq(stacks.venture, VENTURES[0].slug)).get()!;
     expect(first.title).toBe('Next + Supabase speedrun'); // refreshed
@@ -88,7 +89,7 @@ describe('runStacks', () => {
     const db = useTestDb();
     vi.mocked(chatJSON).mockResolvedValue({ garbage: true } as never);
     const res = await runStacks();
-    expect(res).toEqual({ updated: 0, failed: VENTURES.length });
+    expect(res).toMatchObject({ updated: 0, failed: VENTURES.length });
     expect(db.select().from(stacks).all()).toHaveLength(0);
   });
 });

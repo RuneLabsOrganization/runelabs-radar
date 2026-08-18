@@ -425,4 +425,22 @@ describe('runIngest', () => {
     const res = await runIngest();
     expect(res).toEqual({ sourcesOk: 1, sourcesFailed: 0, sourcesSkipped: 2, newItems: 3 });
   });
+
+  it('backs off chronically failing sources beyond their cadence', async () => {
+    seedSources();
+    stubRoutedFetch();
+    const db = getDb();
+    // Good RSS: fetched 40 min ago but failed 5× straight → cadence 30 × 2³ = 240 min → not due
+    db.update(sources)
+      .set({ lastFetchedAt: new Date(Date.now() - 40 * 60e3), consecutiveFailures: 5 })
+      .where(eq(sources.name, 'Good RSS'))
+      .run();
+    // HN: healthy, fetched 40 min ago → due (30 min default)
+    db.update(sources).set({ lastFetchedAt: new Date(Date.now() - 40 * 60e3) }).where(eq(sources.name, 'HN AI')).run();
+    // Bad RSS: fetched just now → not due
+    db.update(sources).set({ lastFetchedAt: new Date() }).where(eq(sources.name, 'Bad RSS')).run();
+
+    const res = await runIngest();
+    expect(res).toEqual({ sourcesOk: 1, sourcesFailed: 0, sourcesSkipped: 2, newItems: 3 });
+  });
 });
