@@ -4,7 +4,7 @@ import { opportunities } from '../db/schema';
 import { drainLlmUsageStats } from '../llm/minimax';
 import { SUB_KEYS, type SubScores } from './axes';
 import { sanitizeKpis, type OppDraft, type OppKpis } from './engine';
-import { applyGate, blendScore, parseWindowMonths, unverifiedCritic } from './gate';
+import { applyGate, parseWindowMonths, unverifiedCritic } from './gate';
 import { runCritique } from './critic';
 
 type OppRow = typeof opportunities.$inferSelect;
@@ -51,8 +51,9 @@ function parseStoredEvidence(json: string): { type: string; label: string }[] {
  * Backfill for the layered pipeline: re-run the adversarial critic + gate on
  * the CURRENT active rows (no re-proposal) so yesterday's inflated scores get
  * corrected without waiting for the next sweep. Manual job: `npm run job --
- * opp-rescore`. Hysteresis blends against the row's prior score, same as a
- * daily refresh.
+ * opp-rescore`. Writes the gated values DIRECTLY — the whole point is to
+ * correct a prior the old pipeline produced, so no hysteresis blend here
+ * (blending would drag the fix back toward the number we're correcting).
  */
 export async function runOppRescore(): Promise<{
   considered: number;
@@ -119,8 +120,8 @@ export async function runOppRescore(): Promise<{
     );
     db.update(opportunities)
       .set({
-        flipScore: blendScore(gate.flipScore, t.row.flipScore),
-        holdScore: blendScore(gate.holdScore, t.row.holdScore),
+        flipScore: gate.flipScore,
+        holdScore: gate.holdScore,
         windowMonths: t.draft.windowMonths,
         verdict: gate.verdict,
         confidence: gate.confidence,
