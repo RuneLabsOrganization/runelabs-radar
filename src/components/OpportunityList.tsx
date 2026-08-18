@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { DOMAINS, DOMAIN_COLORS, DOMAIN_LABELS, isDomain, type Domain } from '@/lib/domains';
 import { fmtUsd } from '@/lib/costs';
 import { gradeBand, gradeColor } from '@/lib/opportunities/axes';
-import OppDossier, { LaunchChecks, ScoreBar, type OppView } from './OppDossier';
+import OppDossier, { LaunchChecks, ScoreBar, VerdictChip, type OppView } from './OppDossier';
 import BriefSection from './BriefSection';
 import OpportunityMap from './OpportunityMap';
 import PortfolioScatter from './PortfolioScatter';
@@ -47,7 +47,10 @@ function Card({
       id={`opp-${opp.id}`}
       ref={ref}
       className="card hover-raise scroll-mt-20 !p-0"
-      style={selected ? { outline: '1px solid var(--phosphor)' } : undefined}
+      style={{
+        ...(selected ? { outline: '1px solid var(--phosphor)' } : {}),
+        ...(opp.verdict === 'reject' ? { opacity: 0.6 } : {}),
+      }}
     >
       {/* the digest row: everything you need to triage, one glance */}
       <button
@@ -79,6 +82,7 @@ function Card({
                   {DOMAIN_LABELS[opp.sector].toUpperCase()}
                 </span>
               )}
+              <VerdictChip verdict={opp.verdict} />
             </div>
             <p className="mt-1.5 line-clamp-2 text-[13px] leading-relaxed" style={{ color: 'var(--ink-3)' }}>
               {opp.thesis}
@@ -90,7 +94,18 @@ function Card({
               {opp.window && <span>window {opp.window}</span>}
               <span>first seen {opp.firstSeenLabel}</span>
             </div>
-            {!opp.legacy && <LaunchChecks sub={opp.sub} />}
+            {!opp.legacy && (
+              <div className="flex flex-wrap items-center gap-x-3">
+                <LaunchChecks sub={opp.sub} />
+                <span
+                  className="mono mt-2 text-[10px]"
+                  style={{ color: 'var(--ink-4)' }}
+                  title="red-team confidence in this review"
+                >
+                  conf {opp.confidence}
+                </span>
+              </div>
+            )}
           </div>
           <div className="flex w-[132px] shrink-0 flex-col gap-1.5">
             <ScoreBar label="flip" value={opp.flipScore} emphasized={sortKey === 'flip'} />
@@ -137,6 +152,7 @@ export default function OpportunityList({ opps, canGenerate }: { opps: OppView[]
   const [sector, setSector] = useState<Domain | null>(null);
   const [analysis, setAnalysis] = useState(false);
   const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [showRejected, setShowRejected] = useState(false);
 
   // restore the analyst's preferred view (client-only, like ThemeToggle)
   useEffect(() => {
@@ -169,7 +185,13 @@ export default function OpportunityList({ opps, canGenerate }: { opps: OppView[]
     () => (sector ? opps.filter((o) => o.sector === sector) : opps),
     [opps, sector],
   );
-  const sorted = [...filtered].sort((a, b) =>
+  // the red team's rejects stay out of sight unless explicitly asked for
+  const rejectedCount = useMemo(() => opps.filter((o) => o.verdict === 'reject').length, [opps]);
+  const visible = useMemo(
+    () => (showRejected ? filtered : filtered.filter((o) => o.verdict !== 'reject')),
+    [filtered, showRejected],
+  );
+  const sorted = [...visible].sort((a, b) =>
     sortKey === 'flip' ? b.flipScore - a.flipScore : b.holdScore - a.holdScore,
   );
 
@@ -220,14 +242,33 @@ export default function OpportunityList({ opps, canGenerate }: { opps: OppView[]
             {DOMAIN_LABELS[d]} {sectorCounts.get(d)}
           </button>
         ))}
+        {rejectedCount > 0 && (
+          <>
+            <span className="mx-2 h-[10px] w-px" style={{ background: 'var(--grat)' }} aria-hidden />
+            <button
+              type="button"
+              onClick={() => setShowRejected((s) => !s)}
+              aria-pressed={showRejected}
+              title="openings the red team rejected — hidden by default"
+              className={chipCls(showRejected)}
+            >
+              rejected {rejectedCount}
+            </button>
+          </>
+        )}
       </div>
 
       {analysis && (
         <>
-          <OpportunityMap opps={filtered} sortKey={sortKey} onSelect={setSelectedId} />
-          <PortfolioScatter opps={filtered} sortKey={sortKey} onSelect={setSelectedId} />
+          <OpportunityMap opps={visible} sortKey={sortKey} onSelect={setSelectedId} />
+          <PortfolioScatter opps={visible} sortKey={sortKey} onSelect={setSelectedId} />
           <AssessmentMatrix opps={sorted} sortKey={sortKey} onSelect={setSelectedId} />
         </>
+      )}
+      {sorted.length === 0 && rejectedCount > 0 && (
+        <p className="mono mb-4 text-[11px]" style={{ color: 'var(--ink-4)' }}>
+          every current opening is rejected by the red team — enable &ldquo;rejected&rdquo; above to inspect why
+        </p>
       )}
       <div className="flex flex-col gap-4">
         {sorted.map((o) => (

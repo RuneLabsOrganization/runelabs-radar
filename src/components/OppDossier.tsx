@@ -10,6 +10,15 @@ import type { EvidenceItem } from '@/lib/opportunities/evidence';
 import SpiderChart from './SpiderChart';
 import { gradeColor } from '@/lib/opportunities/axes';
 
+export type Verdict = 'pursue' | 'watch' | 'reject';
+
+export interface OppReview {
+  killRisks: string[];
+  flags: string[];
+  capsApplied: { play: 'flip' | 'hold'; rule: string; from: number; to: number }[];
+  criticUnavailable?: boolean;
+}
+
 export interface OppView {
   id: number;
   title: string;
@@ -18,6 +27,9 @@ export interface OppView {
   window: string | null;
   flipScore: number;
   holdScore: number;
+  verdict: Verdict;
+  confidence: number;
+  review: OppReview | null;
   sub: SubScores;
   kpis: OppKpis | null;
   /** row predates the 10-axis assessment — full dossier arrives on the next sweep */
@@ -26,6 +38,26 @@ export interface OppView {
   brief: OppBriefType | null;
   firstSeenLabel: string;
   isNew: boolean;
+}
+
+const VERDICT_STYLE: Record<Verdict, { color: string; label: string; hint: string }> = {
+  pursue: { color: 'var(--phosphor)', label: 'pursue', hint: 'the red team endorses this one' },
+  watch: { color: 'var(--amber)', label: 'watch', hint: 'real, but with open risks — read the red-team notes' },
+  reject: { color: 'var(--alert)', label: 'reject', hint: 'the red team advises against this one' },
+};
+
+/** The red team's verdict, one glance — the third opinion after flip/hold. */
+export function VerdictChip({ verdict }: { verdict: Verdict }) {
+  const s = VERDICT_STYLE[verdict];
+  return (
+    <span
+      className="mono inline-block rounded-[3px] border px-1.5 py-px text-[9px] uppercase tracking-[0.08em]"
+      style={{ color: s.color, borderColor: s.color, opacity: 0.9 }}
+      title={s.hint}
+    >
+      {s.label}
+    </span>
+  );
 }
 
 const CHECK_LABELS: Record<keyof SubScores, string> = {
@@ -249,6 +281,33 @@ export default function OppDossier({ opp, sortKey }: { opp: OppView; sortKey: 'f
             {opp.evidence.length > 4 && <span style={{ color: 'var(--ink-4)' }}>+{opp.evidence.length - 4}</span>}
           </div>
         )}
+
+        {/* the adversarial half of the review — why this might die, and what the gate capped */}
+        {opp.review &&
+          (opp.review.killRisks.length > 0 ||
+            opp.review.capsApplied.length > 0 ||
+            opp.review.criticUnavailable) && (
+            <div className="mt-3 border-t border-[var(--grat-soft)] pt-2.5">
+              <div className="readout mb-1.5">red team</div>
+              <div className="flex flex-col gap-1">
+                {opp.review.killRisks.map((r, i) => (
+                  <p key={i} className="mono text-[10.5px] leading-relaxed" style={{ color: 'var(--alert)' }}>
+                    ▲ {r}
+                  </p>
+                ))}
+                {opp.review.capsApplied.map((c, i) => (
+                  <p key={`c${i}`} className="mono text-[10px]" style={{ color: 'var(--amber)' }}>
+                    ◆ {c.play} capped {c.from} → {c.to} · {c.rule}
+                  </p>
+                ))}
+                {opp.review.criticUnavailable && (
+                  <p className="mono text-[10px]" style={{ color: 'var(--ink-4)' }}>
+                    · review pending — unverified
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
       </div>
     </div>
   );

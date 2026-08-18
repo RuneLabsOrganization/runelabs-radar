@@ -181,7 +181,12 @@ describe('sanitizeBrief', () => {
 });
 
 describe('runOpportunities lifecycle', () => {
-  beforeEach(() => vi.mocked(chatJSON).mockReset());
+  beforeEach(() => {
+    vi.mocked(chatJSON).mockReset();
+    // call 2 of every run is the red-team critique — default to "no reviews"
+    // (proposals land unverified: watch/40) unless a test overrides it
+    vi.mocked(chatJSON).mockResolvedValue({ reviews: [] } as never);
+  });
 
   function seedSignal(db: ReturnType<typeof useTestDb>) {
     for (let i = 0; i < 3; i++) {
@@ -199,7 +204,7 @@ describe('runOpportunities lifecycle', () => {
     title: 'Bulk background removal for Shopify sellers',
     thesis: 'Image models crossed the cost floor while sellers keep asking for batch tools nobody ships.',
     sector: 'image',
-    window: '4-8 weeks',
+    window: '6-9 months',
     subScores: Object.fromEntries(SUB_KEYS.map((k) => [k, 15])),
     kpis: { initialCostUsd: 250, timeToMvpDays: 9 },
     evidenceRefs: ['P1'],
@@ -282,7 +287,56 @@ describe('runOpportunities lifecycle', () => {
   it('skips when there is not enough signal', async () => {
     useTestDb();
     const res = await runOpportunities();
-    expect(res).toEqual({ proposed: 0, created: 0, refreshed: 0, archived: 0 });
+    expect(res).toEqual({ proposed: 0, critiqued: 0, created: 0, refreshed: 0, archived: 0 });
     expect(vi.mocked(chatJSON)).not.toHaveBeenCalled();
+  });
+
+  it('layered pipeline: critic adjustments + gate + trail persisted', async () => {
+    const db = useTestDb();
+    seedSignal(db);
+    const d = { ...draft('layered-check'), window: '12-18 months', evidenceRefs: ['P1', 'S1'] };
+    vi.mocked(chatJSON)
+      .mockResolvedValueOnce({ opportunities: [d] } as never)
+      .mockResolvedValueOnce({
+        reviews: [
+          {
+            slug: 'layered-check',
+            verdict: 'pursue',
+            confidence: 85,
+            killRisks: ['Shopify ships this natively within two releases'],
+            axisAdjustments: [{ axis: 'moat', delta: -6, reason: 'no defensibility named' }],
+            coherenceFlags: [],
+          },
+        ],
+      } as never);
+
+    const res = await runOpportunities();
+    expect(res.critiqued).toBe(1);
+
+    const row = db.select().from(opportunities).where(eq(opportunities.slug, 'layered-check')).get()!;
+    expect(row.verdict).toBe('pursue');
+    expect(row.confidence).toBe(85);
+    expect(row.flipScore).toBe(74); // moat 15 → 9 after the critic's adjustment
+    expect(row.holdScore).toBe(71);
+    expect(row.windowMonths).toBe(12);
+    const review = JSON.parse(row.review!);
+    expect(review.killRisks).toEqual(['Shopify ships this natively within two releases']);
+    expect(review.adjustments).toEqual([{ axis: 'moat', delta: -6, reason: 'no defensibility named' }]);
+    expect(review.rawHold).toBe(75); // the proposer's untouched number stays in the trail
+    expect(review.capsApplied).toEqual([]);
+  });
+
+  it('critic unavailable → every proposal lands unverified (watch/40)', async () => {
+    const db = useTestDb();
+    seedSignal(db);
+    const d = { ...draft('unverified-one'), window: '12-18 months' };
+    vi.mocked(chatJSON).mockResolvedValueOnce({ opportunities: [d] } as never);
+    // second call hits the base mock: { reviews: [] }
+
+    await runOpportunities();
+    const row = db.select().from(opportunities).where(eq(opportunities.slug, 'unverified-one')).get()!;
+    expect(row.verdict).toBe('watch');
+    expect(row.confidence).toBe(40);
+    expect(JSON.parse(row.review!).criticUnavailable).toBe(true);
   });
 });

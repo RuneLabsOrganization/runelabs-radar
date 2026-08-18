@@ -3,7 +3,7 @@ import { enrichEvidence, type EvidenceItem } from './evidence';
 import { sanitizeKpis, SUB_KEYS, type OppKpis, type SubScores } from './engine';
 import { timeAgo } from '../feed';
 import type { opportunities } from '../db/schema';
-import type { OppView } from '@/components/OppDossier';
+import type { OppReview, OppView, Verdict } from '@/components/OppDossier';
 
 type OppRow = typeof opportunities.$inferSelect;
 
@@ -30,6 +30,33 @@ function parseEvidence(json: string): { type: string; label: string }[] {
     );
   } catch {
     return [];
+  }
+}
+
+/** The stored review trail, reduced to what the dossier renders. */
+function parseReview(json: string | null): OppReview | null {
+  if (!json) return null;
+  try {
+    const parsed = JSON.parse(json) as Record<string, unknown>;
+    const strArr = (v: unknown, max: number): string[] =>
+      Array.isArray(v) ? v.filter((s): s is string => typeof s === 'string').slice(0, max) : [];
+    const caps = Array.isArray(parsed.capsApplied)
+      ? parsed.capsApplied.flatMap((c) => {
+          if (typeof c !== 'object' || c === null) return [];
+          const r = c as Record<string, unknown>;
+          if (typeof r.play !== 'string' || typeof r.rule !== 'string') return [];
+          if (typeof r.from !== 'number' || typeof r.to !== 'number') return [];
+          return [{ play: r.play === 'flip' ? ('flip' as const) : ('hold' as const), rule: r.rule, from: r.from, to: r.to }];
+        })
+      : [];
+    return {
+      killRisks: strArr(parsed.killRisks, 3),
+      flags: strArr(parsed.flags, 5),
+      capsApplied: caps,
+      criticUnavailable: parsed.criticUnavailable === true,
+    };
+  } catch {
+    return null;
   }
 }
 
@@ -67,6 +94,9 @@ export function oppViewFromRow(r: OppRow): OppView {
     window: r.window,
     flipScore: r.flipScore,
     holdScore: r.holdScore,
+    verdict: r.verdict as Verdict,
+    confidence: r.confidence,
+    review: parseReview(r.review),
     sub: parseSub(r.scores),
     kpis,
     legacy,

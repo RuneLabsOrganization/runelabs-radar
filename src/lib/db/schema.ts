@@ -270,6 +270,15 @@ export const opportunities = sqliteTable('opportunities', {
   // JSON [{type: 'pain'|'pattern'|'story'|'entity'|'market', label}]
   evidence: text('evidence').notNull().default('[]'),
   window: text('window'),
+  // structured window for the scoring gate (the text above is for humans)
+  windowMonths: integer('window_months'),
+  // layered review outcome: adversarial critic verdict + deterministic gate caps,
+  // full trail in `review` (JSON {killRisks, adjustments, flags, capsApplied,
+  // criticVerdict, rawFlip, rawHold, criticUnavailable?})
+  verdict: text('verdict', { enum: ['pursue', 'watch', 'reject'] }).notNull().default('watch'),
+  confidence: integer('confidence').notNull().default(40),
+  review: text('review'),
+  reviewedAt: integer('reviewed_at', { mode: 'timestamp' }),
   // JSON launchable brief — generated on first expand, cached
   brief: text('brief'),
   briefGeneratedAt: integer('brief_generated_at', { mode: 'timestamp' }),

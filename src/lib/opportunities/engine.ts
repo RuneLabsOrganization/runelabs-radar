@@ -6,11 +6,13 @@ import { DOMAINS } from '../domains';
 import { getIdentity } from '../identity';
 import { chatJSON, drainLlmUsageStats } from '../llm/minimax';
 import { promptLine } from '../prompt-hygiene';
+import { applyGate, blendScore, parseWindowMonths, unverifiedCritic } from './gate';
+import { runCritique } from './critic';
 
 // Axes + score math live in the client-safe module; re-exported for server code.
 export { compositeScore, FLIP_WEIGHTS, HOLD_WEIGHTS, SUB_KEYS } from './axes';
 export type { SubKey, SubScores } from './axes';
-import { compositeScore, FLIP_WEIGHTS, HOLD_WEIGHTS, SUB_KEYS, type SubScores } from './axes';
+import { SUB_KEYS, type SubScores } from './axes';
 
 export function normalizeSlug(s: string): string {
   // trailing strip AFTER the slice keeps this idempotent — a stored 60-char
@@ -62,6 +64,8 @@ export interface OppDraft {
   thesis: string;
   sector: string | null;
   window: string | null;
+  /** structured window for the scoring gate — LLM-stated, else parsed from `window` */
+  windowMonths: number | null;
   sub: SubScores;
   kpis: OppKpis;
   evidenceRefs: string[];
@@ -116,6 +120,11 @@ export function sanitizeOpportunities(v: unknown, validRefs: Set<string>): OppDr
     // slug is only claimed by drafts that pass ALL checks — a rejected draft
     // must not block a valid one that reuses the same slug
     seenSlugs.add(slug);
+    const windowText = typeof rec.window === 'string' ? promptLine(rec.window, 80) : null;
+    const wm =
+      typeof rec.windowMonths === 'number' && Number.isFinite(rec.windowMonths)
+        ? Math.round(rec.windowMonths)
+        : null;
     out.push({
       slug,
       title,
@@ -124,7 +133,8 @@ export function sanitizeOpportunities(v: unknown, validRefs: Set<string>): OppDr
         typeof rec.sector === 'string' && (DOMAINS as readonly string[]).includes(rec.sector)
           ? rec.sector
           : null,
-      window: typeof rec.window === 'string' ? promptLine(rec.window, 80) : null,
+      window: windowText,
+      windowMonths: wm !== null && wm > 0 && wm <= 240 ? wm : parseWindowMonths(windowText),
       sub,
       kpis: sanitizeKpis(rec.kpis),
       evidenceRefs,
@@ -269,6 +279,7 @@ const ARCHIVE_AFTER_DAYS = 7;
  */
 export async function runOpportunities(): Promise<{
   proposed: number;
+  critiqued: number;
   created: number;
   refreshed: number;
   archived: number;
@@ -277,7 +288,7 @@ export async function runOpportunities(): Promise<{
   const ctx = buildContext();
   if (ctx.signalCount < 5) {
     console.warn('[opportunities] skipped — not enough signal on the scope yet');
-    return { proposed: 0, created: 0, refreshed: 0, archived: 0 };
+    return { proposed: 0, critiqued: 0, created: 0, refreshed: 0, archived: 0 };
   }
 
   const existing = db
@@ -301,12 +312,17 @@ export async function runOpportunities(): Promise<{
     'refreshing a known opportunity), "title" (the product opening, specific), "thesis" (2-3 ' +
     'sentences: why now, citing the evidence), "sector" (one of ' +
     `${DOMAINS.join('|')} or omit), "window" (how long before saturation, honest), ` +
+    '"windowMonths" (integer — months until saturation/obsolescence, honest median, <= 36), ' +
     '"subScores" — ALL TEN keys, each an integer 0-20 where higher is always MORE favorable: ' +
     '{demand, buildability (20 = weekend-buildable), margin, competition (20 = wide-open field), ' +
     'timing, moat (defensibility once shipped), regClear (20 = no regulatory exposure — think ' +
     'GDPR, copyright, medical/financial rules), platformSafe (20 = no single-platform ' +
     'dependency that could kill it), distribution (20 = the ICP is cheap to reach), qualityBar ' +
-    '(20 = sellable quality is easy to hit with current models)}, ' +
+    '(20 = sellable quality is easy to hit with current models)}. ' +
+    'Score anchors — 0-5 terrible, 6-10 weak, 11-15 decent, 16-20 exceptional. Calibrate: most ' +
+    'openings land 8-14 on moat (16+ requires a named network effect or data lock-in); demand ' +
+    '16+ requires at least two supporting refs; buildability 16+ means a weekend MVP; ' +
+    'competition 16+ means you cannot name a direct competitor. ' +
     '"kpis" — honest numeric estimates, null when you cannot ground them: {initialCostUsd ' +
     '(build cost to MVP incl. API/tools, excl. salaries), monthlyCostUsd (run cost ~100 users, ' +
     'ground in the model-market prices), priceUsd (monthly price point), timeToMvpDays, ' +
@@ -323,6 +339,10 @@ export async function runOpportunities(): Promise<{
   const res = await chatJSON<{ opportunities?: unknown }>(system, user);
   const drafts = sanitizeOpportunities(res.opportunities, new Set(ctx.refMap.keys()));
 
+  // layers 2+3: the red team attacks every proposal, then the deterministic
+  // gate reconciles — the proposer's numbers are never trusted unreviewed
+  const critiques = drafts.length > 0 ? await runCritique(drafts, ctx.blocks) : new Map();
+
   let created = 0;
   let refreshed = 0;
   const now = new Date();
@@ -331,23 +351,42 @@ export async function runOpportunities(): Promise<{
     db.select().from(opportunities).all().map((o) => [normalizeSlug(o.slug), o]),
   );
   for (const d of drafts) {
+    const critic = critiques?.get(d.slug) ?? unverifiedCritic(d.slug);
+    const gate = applyGate(
+      {
+        sub: d.sub,
+        kpis: d.kpis,
+        windowMonths: d.windowMonths,
+        evidenceCount: d.evidenceRefs.length,
+        legacy: false,
+      },
+      critic,
+    );
     const evidence = d.evidenceRefs
       .map((r) => ctx.refMap.get(r))
       .filter((e): e is EvidenceItem => e !== undefined);
+    const prior = bySlug.get(d.slug);
+    // hysteresis against yesterday's score on plain refreshes; a resurrected
+    // archived slug starts fresh (its old score is 7+ days stale)
+    const priorScore = prior?.status === 'active' ? prior : null;
     const values = {
       title: d.title,
       thesis: d.thesis,
       sector: d.sector,
       status: 'active' as const,
-      flipScore: compositeScore(d.sub, FLIP_WEIGHTS),
-      holdScore: compositeScore(d.sub, HOLD_WEIGHTS),
+      flipScore: blendScore(gate.flipScore, priorScore?.flipScore ?? null),
+      holdScore: blendScore(gate.holdScore, priorScore?.holdScore ?? null),
       scores: JSON.stringify(d.sub),
       kpis: JSON.stringify(d.kpis),
       evidence: JSON.stringify(evidence),
       window: d.window,
+      windowMonths: d.windowMonths,
+      verdict: gate.verdict,
+      confidence: gate.confidence,
+      review: JSON.stringify(gate.review),
+      reviewedAt: now,
       lastSeenAt: now,
     };
-    const prior = bySlug.get(d.slug);
     if (prior) {
       // brief + firstSeenAt survive day-to-day refreshes — but resurrecting an
       // ARCHIVED slug is a new incarnation: its old brief (stale prices, maybe
@@ -379,5 +418,12 @@ export async function runOpportunities(): Promise<{
     .returning()
     .all().length;
 
-  return { proposed: drafts.length, created, refreshed, archived, ...drainLlmUsageStats() };
+  return {
+    proposed: drafts.length,
+    critiqued: critiques ? critiques.size : 0,
+    created,
+    refreshed,
+    archived,
+    ...drainLlmUsageStats(),
+  };
 }

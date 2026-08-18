@@ -17,6 +17,7 @@ export type JobName =
   | 'pain'
   | 'science'
   | 'opportunities'
+  | 'opp-rescore'
   | 'second-look';
 
 // In-process overlap guard: a slow run (e.g. curate during a MiniMax incident)
