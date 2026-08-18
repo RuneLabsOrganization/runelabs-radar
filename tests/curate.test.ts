@@ -11,6 +11,11 @@ vi.mock('@/lib/llm/minimax', async (importOriginal) => {
   return { ...actual, chatJSON: vi.fn() };
 });
 
+// semantic pre-dedup is tested in semantic-merge.test.ts — keep ONNX out of this file
+vi.mock('@/lib/curate/semantic-merge', () => ({
+  semanticPreDedup: vi.fn(async () => ({ embedded: 0, merged: 0 })),
+}));
+
 const mockChat = chatJSON as unknown as Mock;
 
 describe('buildCurationPrompts', () => {
@@ -122,7 +127,7 @@ describe('runCurate', () => {
     });
 
     const res = await runCurate();
-    expect(res).toEqual({ clustered: 0, curated: 1, failed: 0, filtered: 0, recurated: 0, promptTokens: 0, completionTokens: 0 });
+    expect(res).toEqual({ clustered: 0, curated: 1, failed: 0, filtered: 0, recurated: 0, semanticMerged: 0, embedded: 0, calls: 0, promptTokens: 0, completionTokens: 0 });
     expect(mockChat).toHaveBeenCalledTimes(1);
 
     // prompts carried the story, member item and vote calibration line
@@ -165,7 +170,7 @@ describe('runCurate', () => {
     });
 
     const res = await runCurate();
-    expect(res).toEqual({ clustered: 0, curated: 1, failed: 0, filtered: 0, recurated: 0, promptTokens: 0, completionTokens: 0 });
+    expect(res).toEqual({ clustered: 0, curated: 1, failed: 0, filtered: 0, recurated: 0, semanticMerged: 0, embedded: 0, calls: 0, promptTokens: 0, completionTokens: 0 });
     const [, userArg] = mockChat.mock.calls[0] as [string, string];
     expect(userArg).toContain('Source tags (prior evidence, not a verdict): video');
   });
@@ -179,7 +184,7 @@ describe('runCurate', () => {
     });
 
     const res = await runCurate();
-    expect(res).toEqual({ clustered: 0, curated: 1, failed: 0, filtered: 0, recurated: 0, promptTokens: 0, completionTokens: 0 });
+    expect(res).toEqual({ clustered: 0, curated: 1, failed: 0, filtered: 0, recurated: 0, semanticMerged: 0, embedded: 0, calls: 0, promptTokens: 0, completionTokens: 0 });
 
     const updated = db.select().from(stories).where(eq(stories.id, story.id)).get()!;
     expect(JSON.parse(updated.domainScores!)).toEqual({
@@ -208,7 +213,7 @@ describe('runCurate', () => {
       });
 
     const res = await runCurate();
-    expect(res).toEqual({ clustered: 0, curated: 1, failed: 1, filtered: 0, recurated: 0, promptTokens: 0, completionTokens: 0 });
+    expect(res).toEqual({ clustered: 0, curated: 1, failed: 1, filtered: 0, recurated: 0, semanticMerged: 0, embedded: 0, calls: 0, promptTokens: 0, completionTokens: 0 });
     expect(mockChat).toHaveBeenCalledTimes(2);
 
     // newest-first: the failing first call hit the newer story
@@ -232,7 +237,7 @@ describe('runCurate', () => {
     mockChat.mockRejectedValue(new LlmError('Daily LLM call cap reached (500)', false));
 
     const res = await runCurate();
-    expect(res).toEqual({ clustered: 0, curated: 0, failed: 1, filtered: 0, recurated: 0, promptTokens: 0, completionTokens: 0 });
+    expect(res).toEqual({ clustered: 0, curated: 0, failed: 1, filtered: 0, recurated: 0, semanticMerged: 0, embedded: 0, calls: 0, promptTokens: 0, completionTokens: 0 });
     expect(mockChat).toHaveBeenCalledTimes(1);
 
     const all = db.select().from(stories).all();
@@ -263,7 +268,7 @@ describe('runCurate', () => {
     });
 
     const res = await runCurate();
-    expect(res).toEqual({ clustered: 1, curated: 1, failed: 0, filtered: 0, recurated: 0, promptTokens: 0, completionTokens: 0 });
+    expect(res).toEqual({ clustered: 1, curated: 1, failed: 0, filtered: 0, recurated: 0, semanticMerged: 0, embedded: 0, calls: 0, promptTokens: 0, completionTokens: 0 });
 
     const story = db.select().from(stories).all()[0];
     expect(story.title).toBe('Mistral releases new open weights model');
@@ -274,7 +279,7 @@ describe('runCurate', () => {
     const story = insertStory('Celebrity couple adopts a puppy in Malibu');
 
     const res = await runCurate();
-    expect(res).toEqual({ clustered: 0, curated: 0, failed: 0, filtered: 1, recurated: 0, promptTokens: 0, completionTokens: 0 });
+    expect(res).toEqual({ clustered: 0, curated: 0, failed: 0, filtered: 1, recurated: 0, semanticMerged: 0, embedded: 0, calls: 0, promptTokens: 0, completionTokens: 0 });
     expect(mockChat).not.toHaveBeenCalled();
     expect(db.select().from(stories).where(eq(stories.id, story.id)).get()!.status).toBe('filtered');
   });
@@ -288,7 +293,7 @@ describe('runCurate', () => {
     });
 
     const res = await runCurate();
-    expect(res).toEqual({ clustered: 0, curated: 0, failed: 0, filtered: 1, recurated: 0, promptTokens: 0, completionTokens: 0 });
+    expect(res).toEqual({ clustered: 0, curated: 0, failed: 0, filtered: 1, recurated: 0, semanticMerged: 0, embedded: 0, calls: 0, promptTokens: 0, completionTokens: 0 });
     expect(mockChat).toHaveBeenCalledTimes(1);
     expect(db.select().from(stories).where(eq(stories.id, story.id)).get()!.status).toBe('filtered');
   });

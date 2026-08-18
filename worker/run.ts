@@ -4,6 +4,7 @@ import { withJobRun, type JobName } from '../src/lib/jobs';
 loadDotEnv();
 import { runIngest } from '../src/lib/ingest/ingest';
 import { runCurate } from '../src/lib/curate/curate';
+import { runGateAudit } from '../src/lib/curate/gate-audit';
 import { runBoardSync } from '../src/lib/board/sync';
 import { runBrief } from '../src/lib/brief/brief';
 import { runRescore } from '../src/lib/science/hindsight';
@@ -20,6 +21,7 @@ import { runSecondLook } from '../src/lib/science/second-look';
 const jobs: Record<JobName, () => Promise<Record<string, unknown>>> = {
   ingest: runIngest,
   curate: runCurate,
+  'gate-audit': runGateAudit,
   board: runBoardSync,
   brief: runBrief,
   rescore: runRescore,

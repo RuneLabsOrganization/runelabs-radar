@@ -3,6 +3,7 @@ import { loadDotEnv } from '../src/lib/env';
 import { withJobRun } from '../src/lib/jobs';
 import { runIngest } from '../src/lib/ingest/ingest';
 import { runCurate } from '../src/lib/curate/curate';
+import { runGateAudit } from '../src/lib/curate/gate-audit';
 import { runBoardSync } from '../src/lib/board/sync';
 import { runBrief } from '../src/lib/brief/brief';
 import { runRescore } from '../src/lib/science/hindsight';
@@ -38,6 +39,8 @@ const tasks = [
   cron.schedule('0 8 * * *', () => void withJobRun('rescore', runRescore)),
   cron.schedule('10 7 * * *', () => void withJobRun('opportunities', runOpportunities)),
   cron.schedule('20 7 * * *', () => void withJobRun('second-look', runSecondLook)),
+  // weekly: audit the relevance gate's false-kill rate on a filtered sample
+  cron.schedule('15 9 * * 0', () => void withJobRun('gate-audit', runGateAudit)),
 ];
 
 // Populate immediately on boot instead of waiting for the first tick

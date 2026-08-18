@@ -9,6 +9,7 @@ import { accuracyMisses } from '../science/accuracy';
 import { promptLine } from '../prompt-hygiene';
 import { clusterNewItems } from './cluster';
 import { passesGate } from './gate';
+import { semanticPreDedup } from './semantic-merge';
 
 /** Max 'raw' stories sent to MiniMax per run. */
 const CURATE_BATCH_LIMIT = 50;
@@ -38,7 +39,7 @@ export interface CurationVote {
   storyTitle: string;
 }
 
-interface CurationResponse {
+export interface CurationResponse {
   domain_scores?: Partial<Record<Domain, number>>;
   tldr?: string;
   why_it_matters?: string;
@@ -172,6 +173,15 @@ function clampScore(n: unknown): number {
   return Math.min(100, Math.max(0, v));
 }
 
+/** Clamped per-domain scores + top score from a curation response. Exported for the gate audit. */
+export function curationScores(res: CurationResponse): { scores: Record<Domain, number>; topScore: number } {
+  const scores = {} as Record<Domain, number>;
+  for (const d of DOMAINS) {
+    scores[d] = clampScore(res.domain_scores?.[d]);
+  }
+  return { scores, topScore: Math.max(...DOMAINS.map((d) => scores[d])) };
+}
+
 type StoryRow = typeof stories.$inferSelect;
 
 export type CurateStats = {
@@ -180,6 +190,8 @@ export type CurateStats = {
   failed: number;
   filtered: number;
   recurated: number;
+  semanticMerged: number;
+  embedded: number;
   promptTokens: number;
   completionTokens: number;
 };
@@ -200,6 +212,10 @@ export async function runCurate(): Promise<CurateStats> {
   const { newStories, merged } = await clusterNewItems();
   const clustered = newStories + merged;
   const db = getDb();
+
+  // semantic pre-dedup: reworded dupes merge into existing stories BEFORE any
+  // LLM spend; survivors keep their embedding for the next run
+  const semantic = await semanticPreDedup();
 
   const rawStories = db
     .select()
@@ -285,12 +301,8 @@ export async function runCurate(): Promise<CurateStats> {
 
     const { system, user } = buildCurationPrompts(story, memberItems, recentVotes, sourceHints, missLines);
 
-    const res = await chatJSON<CurationResponse>(system, user);
-    const scores = {} as Record<Domain, number>;
-    for (const d of DOMAINS) {
-      scores[d] = clampScore(res.domain_scores?.[d]);
-    }
-    const topScore = Math.max(...DOMAINS.map((d) => scores[d]));
+    const res = await chatJSON<CurationResponse>(system, user, { job: 'curate' });
+    const { scores, topScore } = curationScores(res);
     const entities = sanitizeEntities(res.entities);
     db.update(stories)
       .set({
@@ -342,5 +354,5 @@ export async function runCurate(): Promise<CurateStats> {
   }
 
   const usage = drainLlmUsageStats();
-  return { clustered, curated, failed, filtered, recurated, ...usage };
+  return { clustered, curated, failed, filtered, recurated, semanticMerged: semantic.merged, embedded: semantic.embedded, ...usage };
 }
