@@ -92,6 +92,8 @@ type Contact = {
   score: number;
   createdAt: Date;
   isNew: boolean;
+  /** merged-in coverage since the anchor but not itself new — gets the amber marker */
+  isUpdated: boolean;
 };
 
 const WEEKDAYS = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
@@ -155,14 +157,17 @@ export default async function BriefingPage() {
     : {};
   const contacts = curated.map((story) => {
     const scores = parseDomainScores(story.domainScores);
+    // new OR updated: a merge bumps updatedAt, so fresh coverage of an
+    // existing story still counts against the visit anchor
+    const createdFresh = anchor !== null && story.createdAt > anchor;
+    const mergedFresh = anchor !== null && story.updatedAt !== null && story.updatedAt > anchor;
     return {
       story,
       scores,
       score: personalScore(story.topScore, story.domainScores, affinity),
       createdAt: story.createdAt,
-      // new OR updated: a merge bumps updatedAt, so fresh coverage of an
-      // existing story still counts against the visit anchor
-      isNew: anchor ? story.createdAt > anchor || (story.updatedAt !== null && story.updatedAt > anchor) : false,
+      isNew: createdFresh || mergedFresh,
+      isUpdated: !createdFresh && mergedFresh,
     };
   });
   const { top, scan, lowCount } = splitFeed(contacts);
@@ -239,6 +244,7 @@ export default async function BriefingPage() {
       down: vt.down,
       myVote: vt.mine,
       isNew: c.isNew,
+      updated: c.isUpdated,
       timeLabel: timeAgo(c.story.createdAt),
       readOnly: !user,
     };
@@ -258,6 +264,7 @@ export default async function BriefingPage() {
       firstUrl: it.firstUrl,
       sourceName: it.sourceName,
       isNew: c.isNew,
+      isUpdated: c.isUpdated,
       timeLabel: timeAgo(c.story.createdAt),
     };
   });

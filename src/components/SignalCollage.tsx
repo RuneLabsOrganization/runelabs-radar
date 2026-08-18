@@ -23,6 +23,8 @@ export interface CollageEntry {
   firstUrl: string | null;
   sourceName: string | null;
   isNew: boolean;
+  /** merged-in coverage since the anchor but not itself new — amber marker */
+  isUpdated: boolean;
   timeLabel: string;
 }
 
@@ -176,6 +178,11 @@ export default function SignalCollage({ entries }: { entries: CollageEntry[] }) 
                       {e.isNew && (
                         <span aria-label="new" className="mr-1" style={{ color: 'var(--phosphor)' }}>
                           &#9679;
+                        </span>
+                      )}
+                      {!e.isNew && e.isUpdated && (
+                        <span aria-label="updated" title="updated since your last visit" className="mr-1" style={{ color: 'var(--amber)' }}>
+                          &#9675;
                         </span>
                       )}
                       <Link

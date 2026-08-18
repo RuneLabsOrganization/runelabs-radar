@@ -19,6 +19,7 @@ export default function SignalEntry({
   down,
   myVote,
   isNew = false,
+  updated = false,
   highlightDomain,
   readOnly = false,
   timeLabel,
@@ -32,6 +33,8 @@ export default function SignalEntry({
   down: number;
   myVote: 1 | -1 | 0;
   isNew?: boolean;
+  /** merged-in coverage since the anchor but not itself new — amber marker */
+  updated?: boolean;
   highlightDomain?: Domain;
   readOnly?: boolean;
   /** precomputed server-side when rendered under a client boundary (hydration-stable) */
@@ -104,6 +107,11 @@ export default function SignalEntry({
             {isNew && (
               <span className="readout" style={{ color: 'var(--phosphor)' }}>
                 &#9679; new
+              </span>
+            )}
+            {!isNew && updated && (
+              <span className="readout" style={{ color: 'var(--amber)' }}>
+                &#9675; updated
               </span>
             )}
             <span className="mono text-[11px]" style={{ color: 'var(--ink-4)' }}>

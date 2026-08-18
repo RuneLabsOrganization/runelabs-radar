@@ -1,9 +1,9 @@
-import { and, desc, eq, gte } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray } from 'drizzle-orm';
 import { getDb } from '../db';
-import { boardHistory, briefs, domainDigests, insights, stories } from '../db/schema';
+import { boardHistory, briefs, domainDigests, insights, patterns, stories } from '../db/schema';
 import { DOMAINS, type Domain } from '../domains';
 import { getIdentity } from '../identity';
-import { chatJSON, LlmError } from '../llm/minimax';
+import { chatJSON, drainLlmUsageStats, LlmError } from '../llm/minimax';
 import { promptLine } from '../prompt-hygiene';
 
 interface InsightItem {
@@ -69,8 +69,36 @@ function quietDayMarkdown(date: string, historyLines: string[]): string {
   return (
     `# ${getIdentity().briefTitle} — ${date}\n\n` +
     'Quiet day: fewer than 3 curated stories in the last 24 hours. Nothing major to report.' +
-    changes
+    changes +
+    watchCrossingsMarkdown()
   );
+}
+
+/**
+ * Deterministic watch-alerts section appended to every brief: the freshest
+ * pattern detections (entity surges, price drops, launch spikes), linked to
+ * their watch pages. No LLM call — and it lands in /brief.xml, so RSS readers
+ * get the alerts too.
+ */
+function watchCrossingsMarkdown(): string {
+  const db = getDb();
+  const rows = db
+    .select()
+    .from(patterns)
+    .where(inArray(patterns.kind, ['entity-surge', 'price-drop', 'launch-spike']))
+    .orderBy(desc(patterns.createdAt))
+    .limit(6)
+    .all();
+  const fresh = rows.filter((r) => Date.now() - r.createdAt.getTime() < 2 * 864e5);
+  if (fresh.length === 0) return '';
+  const lines = fresh.map((p) => {
+    const href =
+      p.kind === 'entity-surge' && p.subject
+        ? ` — [watch ${promptLine(p.subject, 40)}](/entity/${encodeURIComponent(p.subject)})`
+        : '';
+    return `- ${promptLine(p.headline, 140)}${href}`;
+  });
+  return `\n\n## Watch crossings\n\n${lines.join('\n')}`;
 }
 
 /**
@@ -106,7 +134,7 @@ export async function runBrief(): Promise<{ wrote: boolean; insights: number; di
 
   if (topStories.length < 3) {
     upsertBrief(date, quietDayMarkdown(date, historyLines));
-    return { wrote: true, insights: 0, digests: 0 };
+    return { wrote: true, insights: 0, digests: 0, ...drainLlmUsageStats() };
   }
 
   const storiesText = topStories
@@ -147,14 +175,14 @@ export async function runBrief(): Promise<{ wrote: boolean; insights: number; di
     const res = await chatJSON<{ markdown?: unknown; insights?: unknown }>(system, user);
     const markdown = typeof res.markdown === 'string' ? res.markdown.trim() : '';
     if (!markdown) throw new LlmError('Brief response missing "markdown"', false);
-    upsertBrief(date, markdown);
+    upsertBrief(date, markdown + watchCrossingsMarkdown());
     const items = sanitizeInsights(res.insights);
     upsertInsights(date, items);
     const digests = await writeDomainDigests(date);
-    return { wrote: true, insights: items.length, digests };
+    return { wrote: true, insights: items.length, digests, ...drainLlmUsageStats() };
   } catch (e) {
     console.error('[brief] LLM brief generation failed:', e);
-    return { wrote: false, insights: 0, digests: 0 };
+    return { wrote: false, insights: 0, digests: 0, ...drainLlmUsageStats() };
   }
 }
 
