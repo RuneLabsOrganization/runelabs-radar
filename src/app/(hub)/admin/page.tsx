@@ -6,6 +6,7 @@ import PipelineFunnel from '@/components/PipelineFunnel';
 import ProposalCard, { type ProposedFields } from '@/components/ProposalCard';
 import SourcesPanel, { type SourceRow } from '@/components/SourcesPanel';
 import SourceVolume from '@/components/SourceVolume';
+import PageHeader from '@/components/PageHeader';
 import { jobHistory, llmUsageHistory, pipelineFunnel, sourceVolume } from '@/lib/analytics';
 import { requireAdmin } from '@/lib/auth/user';
 import { getDb } from '@/lib/db';
@@ -63,8 +64,7 @@ export default async function AdminPage() {
   return (
     <div className="mx-auto flex max-w-[860px] flex-col gap-8 px-6 py-7">
       <div>
-        <div className="readout">operator console &middot; sources, sweeps, proposals</div>
-        <h1 className="mt-1 text-[17px] font-semibold tracking-[-0.01em]">Admin</h1>
+        <PageHeader kicker="operator console &middot; sources, jobs, proposals" title="Admin" />
       </div>
 
       <section>
@@ -81,7 +81,7 @@ export default async function AdminPage() {
       </section>
 
       <section>
-        <h2 className="section-title">Sweep health — recent runs</h2>
+        <h2 className="section-title">Job health — recent runs</h2>
         <JobTimeline history={jobHistory()} />
       </section>
 

@@ -350,7 +350,7 @@ export default function ScopeHero({
         <canvas
           ref={canvasRef}
           role="img"
-          aria-label={`Radar scope: ${blips.length} stories plotted — angle is sector, distance from center is signal strength`}
+          aria-label={`Radar scope: ${blips.length} stories plotted — angle is sector, distance from center is relevance`}
         />
         {hover && (
           <div
@@ -366,7 +366,7 @@ export default function ScopeHero({
             <span style={{ color: 'var(--ink)' }}>{hover.blip.title}</span>
             <br />
             <span style={{ color: 'var(--ink-4)' }}>
-              signal {hover.blip.score}
+              score {hover.blip.score}
               {hover.blip.domain ? ` · ${DOMAIN_LABELS[hover.blip.domain]}` : ''} · click to read
             </span>
           </div>

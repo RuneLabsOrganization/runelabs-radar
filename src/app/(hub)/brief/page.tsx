@@ -4,6 +4,7 @@ import { requireViewer } from '@/lib/auth/user';
 import { getDb } from '@/lib/db';
 import { briefs, stories } from '@/lib/db/schema';
 import { renderMarkdown } from '@/lib/markdown';
+import PageHeader from '@/components/PageHeader';
 
 const briefStyles = `
 .brief-md h1 { font-size: 17px; font-weight: 650; margin: 14px 0 6px; }
@@ -22,7 +23,7 @@ const briefStyles = `
 export const metadata = {
   title: 'Daily Brief',
   description:
-    'The daily AI intelligence brief: top stories, board changes and what the machine noticed — written at the 07:00 sweep.',
+    'The daily AI intelligence brief: top stories, board changes and what the machine noticed — written every morning at 07:00.',
 };
 
 const WEEKDAYS = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
@@ -91,8 +92,11 @@ export default async function BriefPage({
     <div className="mx-auto max-w-[760px] px-6 py-7">
       <style>{briefStyles}</style>
 
-      <div className="readout">daily brief &middot; written at the 07:00 sweep</div>
-      <h1 className="mt-1 text-[17px] font-semibold tracking-[-0.01em]">Brief</h1>
+      <PageHeader
+        kicker="daily brief &middot; written at 07:00 sharp"
+        title="Brief"
+        description="Yesterday's AI news in five minutes — written every morning, with the board changes that matter."
+      />
 
       {recentDates.length === 0 ? (
         <p className="mono mt-6 text-[12px]" style={{ color: 'var(--ink-4)' }}>
@@ -133,7 +137,7 @@ export default async function BriefPage({
                   )}
                 </div>
                 <div className="mono mt-1 text-[10.5px] tracking-[0.06em] uppercase" style={{ color: 'var(--ink-4)' }}>
-                  written at the 07:00 sweep &middot; {readMinutes} min read
+                  written at 07:00 &middot; {readMinutes} min read
                 </div>
               </div>
 

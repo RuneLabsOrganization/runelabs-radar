@@ -9,6 +9,7 @@ import TaskCostExplorer from '@/components/TaskCostExplorer';
 import ValueBars from '@/components/ValueBars';
 import VerdictEditor from '@/components/VerdictEditor';
 import SectionHeader from '@/components/SectionHeader';
+import PageHeader from '@/components/PageHeader';
 import { aaMedia, aaModels } from '@/lib/analytics';
 import { seriesFor } from '@/lib/metrics';
 import { forecastFrontierPrice } from '@/lib/science/forecast';
@@ -116,81 +117,17 @@ export default async function BoardPage() {
 
   return (
     <div className="mx-auto max-w-[860px] px-6 py-7">
-      <div className="readout">cost-benefit board &middot; weekly sync, human-approved</div>
-      <h1 className="mt-1 text-[17px] font-semibold tracking-[-0.01em]">Best Right Now</h1>
+      <PageHeader
+        kicker="cost-benefit board &middot; weekly sync, human-approved"
+        title="Best Right Now"
+        description="The best AI tool for each task, ranked on quality vs. cost — updated weekly from benchmark data, every change human-approved."
+      />
 
       <div className="mt-3">
         <BoardNav />
       </div>
 
-      {aa && aa.models.length > 0 && (
-        <>
-          <section id="market" className="scroll-mt-24">
-            <SectionHeader label="The market — quality vs price" />
-            <ChartFrame title="quality vs price" brand={chartBrand}>
-              <ModelScatter models={aa.models} fetchedAt={aa.fetchedAt} history={scatterHistory(aa.models)} />
-            </ChartFrame>
-          </section>
-
-          <section id="race" className="scroll-mt-24">
-            <SectionHeader label="The race — intelligence over time" />
-            <ChartFrame title="intelligence over time" brand={chartBrand}>
-              <FrontierTimeline models={aa.models} />
-            </ChartFrame>
-          </section>
-
-          <section id="forecast" className="scroll-mt-24">
-            <SectionHeader label="Forecast — price of frontier intelligence" tone="phosphor" />
-            <ChartFrame
-              title="frontier price forecast"
-              brand={chartBrand}
-              caption={`forecast = frontier blended price, 30d horizon · linear trend over realized prices · as-of ${aa.fetchedAt}`}
-            >
-              <ForecastChart forecast={forecastFrontierPrice()} />
-            </ChartFrame>
-            <div className="mt-6">
-              <div className="readout mb-2">timing lab — release&rarr;launch windows</div>
-              <LagPanel readiness={lagReadiness()} findings={lagFindings()} />
-            </div>
-          </section>
-
-          <section id="costs" className="scroll-mt-24">
-            <SectionHeader label="Bottom line — cost per task" tone="phosphor" />
-            <TaskCostExplorer models={aa.models} />
-            <div className="mt-7">
-              <CostMatrix models={aa.models} />
-            </div>
-          </section>
-
-          <section id="value" className="scroll-mt-24">
-            <SectionHeader label="Value — intelligence per dollar" />
-            <ChartFrame title="intelligence per dollar" brand={chartBrand}>
-              <ValueBars models={aa.models} />
-            </ChartFrame>
-          </section>
-        </>
-      )}
-
-      {media && (
-        <section id="arenas" className="scroll-mt-24">
-          <SectionHeader label="Media arenas — crowd-ranked quality" />
-          <div className="grid gap-x-8 gap-y-6 md:grid-cols-3">
-            {media.arenas.image && <EloBars title="text to image" models={media.arenas.image} />}
-            {media.arenas.video && <EloBars title="text to video" models={media.arenas.video} />}
-            {media.arenas.imageEdit && (
-              <EloBars title="image editing" models={media.arenas.imageEdit} />
-            )}
-          </div>
-          <p className="mono mt-2 text-[10px]" style={{ color: 'var(--ink-4)' }}>
-            arena ELO from human preference votes &middot;{' '}
-            <a href="https://artificialanalysis.ai" target="_blank" rel="noreferrer" className="hover:underline">
-              data: Artificial Analysis
-            </a>{' '}
-            &middot; {media.fetchedAt}
-          </p>
-        </section>
-      )}
-
+      {/* the rankings first — the tables are the point of the page */}
       {entries.length === 0 && (
         <p className="mono mt-6 text-[12px]" style={{ color: 'var(--ink-4)' }}>
           No board entries yet — the weekly board job drafts proposals; approved ones land here.
@@ -268,6 +205,78 @@ export default async function BoardPage() {
           </section>
         );
       })}
+
+      {/* the evidence: market analytics below the rankings they support */}
+      {aa && aa.models.length > 0 && (
+        <>
+          <div className="mt-10">
+            <SectionHeader label="The data behind the rankings" />
+          </div>
+          <section id="market" className="scroll-mt-24">
+            <SectionHeader label="The market — quality vs price" />
+            <ChartFrame title="quality vs price" brand={chartBrand}>
+              <ModelScatter models={aa.models} fetchedAt={aa.fetchedAt} history={scatterHistory(aa.models)} />
+            </ChartFrame>
+          </section>
+
+          <section id="race" className="scroll-mt-24">
+            <SectionHeader label="The race — intelligence over time" />
+            <ChartFrame title="intelligence over time" brand={chartBrand}>
+              <FrontierTimeline models={aa.models} />
+            </ChartFrame>
+          </section>
+
+          <section id="forecast" className="scroll-mt-24">
+            <SectionHeader label="Forecast — price of frontier intelligence" tone="phosphor" />
+            <ChartFrame
+              title="frontier price forecast"
+              brand={chartBrand}
+              caption={`forecast = frontier blended price, 30d horizon · linear trend over realized prices · as-of ${aa.fetchedAt}`}
+            >
+              <ForecastChart forecast={forecastFrontierPrice()} />
+            </ChartFrame>
+            <div className="mt-6">
+              <div className="readout mb-2">timing lab — release&rarr;launch windows</div>
+              <LagPanel readiness={lagReadiness()} findings={lagFindings()} />
+            </div>
+          </section>
+
+          <section id="costs" className="scroll-mt-24">
+            <SectionHeader label="Bottom line — cost per task" tone="phosphor" />
+            <TaskCostExplorer models={aa.models} />
+            <div className="mt-7">
+              <CostMatrix models={aa.models} />
+            </div>
+          </section>
+
+          <section id="value" className="scroll-mt-24">
+            <SectionHeader label="Value — intelligence per dollar" />
+            <ChartFrame title="intelligence per dollar" brand={chartBrand}>
+              <ValueBars models={aa.models} />
+            </ChartFrame>
+          </section>
+        </>
+      )}
+
+      {media && (
+        <section id="arenas" className="scroll-mt-24">
+          <SectionHeader label="Media arenas — crowd-ranked quality" />
+          <div className="grid gap-x-8 gap-y-6 md:grid-cols-3">
+            {media.arenas.image && <EloBars title="text to image" models={media.arenas.image} />}
+            {media.arenas.video && <EloBars title="text to video" models={media.arenas.video} />}
+            {media.arenas.imageEdit && (
+              <EloBars title="image editing" models={media.arenas.imageEdit} />
+            )}
+          </div>
+          <p className="mono mt-2 text-[10px]" style={{ color: 'var(--ink-4)' }}>
+            arena ELO from human preference votes &middot;{' '}
+            <a href="https://artificialanalysis.ai" target="_blank" rel="noreferrer" className="hover:underline">
+              data: Artificial Analysis
+            </a>{' '}
+            &middot; {media.fetchedAt}
+          </p>
+        </section>
+      )}
 
       <div id="changes" className="scroll-mt-24" />
       <SectionHeader label="Changed recently" count={meaningfulHistory.length} />

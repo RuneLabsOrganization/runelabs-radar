@@ -114,12 +114,12 @@ export default function FilteredFeed({
         ))}
       </div>
 
-      <SectionHeader label="Top signals" count={shownTop.length} tone="phosphor" />
+      <SectionHeader label="Top stories" count={shownTop.length} tone="phosphor" />
       {shownTop.length === 0 ? (
         <p className="mono py-4 text-[12px]" style={{ color: 'var(--ink-4)' }}>
           {sector
-            ? `No strong ${DOMAIN_LABELS[sector]} signals on the scope right now.`
-            : 'No strong signals on the scope yet — curation sweeps hourly.'}
+            ? `No strong ${DOMAIN_LABELS[sector]} stories on the radar right now.`
+            : 'No strong stories on the radar yet — curation runs hourly.'}
         </p>
       ) : (
         <div>

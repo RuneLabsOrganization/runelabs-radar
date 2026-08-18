@@ -176,6 +176,10 @@ export default async function EntityPage({ params }: { params: Promise<{ name: s
         {hypeChip}
       </div>
       <h1 className="mt-1 text-[21px] font-semibold tracking-[-0.01em]">{entity.name}</h1>
+      <p className="mt-1.5 max-w-[640px] text-[13px] leading-relaxed" style={{ color: 'var(--ink-3)' }}>
+        Everything the radar tracks on {entity.name} — mentions, velocity, board placements, and the stories
+        behind them.
+      </p>
 
       {/* the Stake stat row: big numbers + range-labeled delta chips */}
       <div className="mt-5 flex flex-wrap gap-x-10 gap-y-5">

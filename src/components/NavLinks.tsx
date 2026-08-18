@@ -13,11 +13,11 @@ export interface NavLinkItem {
 export function buildLinks(pathname: string, isAdmin: boolean): NavLinkItem[] {
   return [
     { href: '/', label: 'Today', active: pathname === '/' || pathname.startsWith('/domain') },
-    { href: '/opportunities', label: 'Openings', active: pathname.startsWith('/opportunities') },
-    { href: '/map', label: 'Map', active: pathname.startsWith('/map') },
-    { href: '/board', label: 'Board', active: pathname.startsWith('/board') },
+    { href: '/opportunities', label: 'Opportunities', active: pathname.startsWith('/opportunities') },
+    { href: '/map', label: 'Topic Map', active: pathname.startsWith('/map') },
+    { href: '/board', label: 'Best Tools', active: pathname.startsWith('/board') },
     { href: '/stacks', label: 'Stacks', active: pathname.startsWith('/stacks') },
-    { href: '/brief', label: 'Daily Brief', active: pathname.startsWith('/brief') },
+    { href: '/brief', label: 'Brief', active: pathname.startsWith('/brief') },
     { href: '/changelog', label: 'Changelog', active: pathname.startsWith('/changelog') },
     { href: '/accuracy', label: 'Accuracy', active: pathname.startsWith('/accuracy') },
     ...(isAdmin ? [{ href: '/admin', label: 'Admin', active: pathname.startsWith('/admin') }] : []),
@@ -25,7 +25,7 @@ export function buildLinks(pathname: string, isAdmin: boolean): NavLinkItem[] {
 }
 
 /** Desktop bar: the daily-habit pages inline; the rest behind "more". */
-const PRIMARY = ['/', '/brief', '/board', '/map'];
+const PRIMARY = ['/', '/brief', '/board', '/opportunities'];
 
 const linkCls = (active: boolean) =>
   `flex h-full shrink-0 items-center whitespace-nowrap border-b-2 transition-colors ${

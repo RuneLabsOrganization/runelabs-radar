@@ -7,6 +7,7 @@ import { VENTURES } from '@/lib/stacks/generate';
 import { allEntityNames, matchEntity, stackMarkdown } from '@/lib/stacks/match';
 import VerdictEditor from '@/components/VerdictEditor';
 import CopyButton from '@/components/CopyButton';
+import PageHeader from '@/components/PageHeader';
 
 interface Layer {
   layer: string;
@@ -69,13 +70,11 @@ export default async function StacksPage() {
 
   return (
     <div className="mx-auto max-w-[860px] px-6 py-7">
-      <div className="readout">venture playbooks &middot; weekly sync, news-grounded</div>
-      <h1 className="mt-1 text-[17px] font-semibold tracking-[-0.01em]">Stacks</h1>
-      <p className="mt-1.5 max-w-[560px] text-[13px] leading-relaxed" style={{ color: 'var(--ink-3)' }}>
-        The ship-it-today tech stack per venture type Runelabs sells — optimized for speed to MVP
-        with AI-assisted dev, low run cost, and easy handover. Regenerated weekly from the news and
-        the model market.
-      </p>
+      <PageHeader
+        kicker="playbooks &middot; weekly sync, news-grounded"
+        title="Stacks"
+        description="Ready-to-ship tech stacks for common AI product types — optimized for speed to MVP with AI-assisted dev, low run cost, and easy handover. Regenerated weekly from the news and the model market."
+      />
 
       {have.length === 0 ? (
         <p className="mono mt-8 text-[12px]" style={{ color: 'var(--ink-4)' }}>
@@ -93,7 +92,7 @@ export default async function StacksPage() {
                     &#9646; {venture.label}
                   </span>
                   <p className="mono mt-2 text-[11px]" style={{ color: 'var(--ink-4)' }}>
-                    playbook drafts on the next weekly sweep
+                    playbook drafts on the next weekly run
                   </p>
                 </section>
               );

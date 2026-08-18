@@ -1,6 +1,7 @@
 import { requireViewer } from '@/lib/auth/user';
 import { topicHierarchy } from '@/lib/analytics';
 import BubbleMap from '@/components/BubbleMap';
+import PageHeader from '@/components/PageHeader';
 
 export default async function MapPage() {
   await requireViewer();
@@ -8,8 +9,11 @@ export default async function MapPage() {
 
   return (
     <div className="mx-auto max-w-[1100px] px-6 py-7">
-      <div className="readout">topic map &middot; categories &rarr; subtopics &rarr; the stories themselves</div>
-      <h1 className="mt-1 text-[17px] font-semibold tracking-[-0.01em]">Map</h1>
+      <PageHeader
+        kicker="topic map &middot; categories &rarr; subtopics &rarr; the stories themselves"
+        title="Topic Map"
+        description="Every recent story clustered by topic — bigger bubbles got more coverage."
+      />
 
       {!data || data.length === 0 ? (
         <p className="mono mt-8 text-[12px]" style={{ color: 'var(--ink-4)' }}>

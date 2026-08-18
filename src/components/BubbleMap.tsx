@@ -508,7 +508,7 @@ export default function BubbleMap({ data, compact = false }: { data: TopicNode[]
                     {s.title}
                   </Link>
                   <span className="mono text-[10px]" style={{ color: 'var(--ink-4)' }}>
-                    signal {s.score} &middot; {s.ageDays}d ago
+                    score {s.score} &middot; {s.ageDays}d ago
                   </span>
                 </li>
               ))}
@@ -595,7 +595,7 @@ export default function BubbleMap({ data, compact = false }: { data: TopicNode[]
         >
           <div style={{ color: 'var(--ink)' }}>{hoverStory.s.title}</div>
           <div style={{ color: 'var(--ink-3)' }}>
-            signal {hoverStory.s.score} &middot; {hoverStory.s.ageDays}d ago
+            score {hoverStory.s.score} &middot; {hoverStory.s.ageDays}d ago
             {hoverStory.s.url ? ' · click to open' : ''}
           </div>
         </div>

@@ -21,6 +21,7 @@ import ActivityTrace from '@/components/ActivityTrace';
 import ActivityPanel from '@/components/ActivityPanel';
 import ScanRow from '@/components/ScanRow';
 import SectionHeader from '@/components/SectionHeader';
+import PageHeader from '@/components/PageHeader';
 import SectorStrip, { type SectorStat } from '@/components/SectorStrip';
 import SignalEntry from '@/components/SignalEntry';
 
@@ -30,7 +31,7 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   const label = DOMAIN_LABELS[slug];
   return {
     title: `${label} — sector scan`,
-    description: `AI signals scored for ${label}: top stories, sector activity and what changed — updated continuously.`,
+    description: `AI stories scored for ${label}: top stories, sector activity and what changed — updated continuously.`,
   };
 }
 
@@ -142,14 +143,21 @@ export default async function DomainPage({ params }: { params: Promise<{ slug: s
 
   return (
     <div className="mx-auto max-w-[860px] px-6 py-7">
-      <div className="readout">
-        sector scan &middot; {member.length} contacts
-        {fresh > 0 && <span style={{ color: 'var(--phosphor)' }}> &middot; {fresh} new</span>}
-      </div>
-      <h1 className="mt-1 flex items-center gap-2.5 text-[17px] font-semibold tracking-[-0.01em]">
-        <span aria-hidden className="inline-block h-[14px] w-[3px]" style={{ background: DOMAIN_COLORS[slug] }} />
-        {DOMAIN_LABELS[slug]}
-      </h1>
+      <PageHeader
+        kicker={
+          <>
+            sector scan &middot; {member.length} stories
+            {fresh > 0 && <span style={{ color: 'var(--phosphor)' }}> &middot; {fresh} new</span>}
+          </>
+        }
+        title={
+          <span className="inline-flex items-center gap-2.5">
+            <span aria-hidden className="inline-block h-[14px] w-[3px]" style={{ background: DOMAIN_COLORS[slug] }} />
+            {DOMAIN_LABELS[slug]}
+          </span>
+        }
+        description={`The ${DOMAIN_LABELS[slug]} beat — every story scored for this sector, its 14-day activity trend, and its spots on the board.`}
+      />
 
       {digest && (
         <p className="mt-2.5 text-[13.5px] leading-relaxed" style={{ color: 'var(--ink-2)' }}>
@@ -162,15 +170,15 @@ export default async function DomainPage({ params }: { params: Promise<{ slug: s
         <SectorStrip stats={stats} active={slug} />
       </div>
 
-      <SectionHeader label="Sector activity — 14-day sweep" />
+      <SectionHeader label="Sector activity — last 14 days" />
       <ActivityPanel days={dailyDomainCounts(14)} focus={slug} />
 
       <div className="grid gap-10 lg:grid-cols-[minmax(0,1fr)_240px]">
         <div className="min-w-0">
-          <SectionHeader label="Top signals" count={top.length} tone="phosphor" />
+          <SectionHeader label="Top stories" count={top.length} tone="phosphor" />
           {top.length === 0 ? (
             <p className="mono py-4 text-[12px]" style={{ color: 'var(--ink-4)' }}>
-              No strong {DOMAIN_LABELS[slug]} signals in the last 72h.
+              No strong {DOMAIN_LABELS[slug]} stories in the last 72h.
             </p>
           ) : (
             <div>
@@ -216,7 +224,7 @@ export default async function DomainPage({ params }: { params: Promise<{ slug: s
           )}
 
           {lowCount > 0 && (
-            <p className="readout mt-9">{lowCount} low-signal contacts below the scan threshold</p>
+            <p className="readout mt-9">{lowCount} low-scoring stories below the threshold</p>
           )}
         </div>
 

@@ -10,8 +10,8 @@ export default function SignalMeter({ score, compact = false }: { score: number;
     <span
       className="inline-flex shrink-0 items-end gap-[2px]"
       role="img"
-      aria-label={`signal ${score} of 100`}
-      title={`signal ${score}`}
+      aria-label={`score ${score} of 100`}
+      title={`score ${score}`}
     >
       {heights.map((h, i) => (
         <span

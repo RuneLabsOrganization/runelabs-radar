@@ -21,7 +21,7 @@ export default async function HubLayout({ children }: { children: React.ReactNod
         ...(ingestStale ? ['ingest has not succeeded in over 2h'] : []),
         ...(curateStale ? ['curation has not succeeded in over 3h'] : []),
       ].join('; ')
-    : 'all sweeps nominal';
+    : 'all scans nominal';
 
   return (
     <div className="min-h-screen">
@@ -56,7 +56,7 @@ export default async function HubLayout({ children }: { children: React.ReactNod
                 className="inline-block h-[6px] w-[6px] rounded-full"
                 style={{ background: stale ? 'var(--amber)' : 'var(--phosphor)' }}
               />
-              sweep {lastSweep ? timeAgo(lastSweep) : '—'}
+              scanned {lastSweep ? timeAgo(lastSweep) : '—'}
             </span>
             {user ? (
               <>

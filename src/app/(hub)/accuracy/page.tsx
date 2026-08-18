@@ -7,6 +7,7 @@ import {
   forecastGrades,
   gradingSince,
 } from '@/lib/science/accuracy';
+import PageHeader from '@/components/PageHeader';
 
 export const metadata = {
   title: 'Accuracy — our track record',
@@ -119,13 +120,17 @@ export default async function AccuracyPage() {
 
   return (
     <div className="mx-auto max-w-[760px] px-6 py-7">
-      <div className="readout">the track record, graded in public</div>
-      <h1 className="mt-1 text-[17px] font-semibold tracking-[-0.01em]">Accuracy</h1>
-      <p className="mt-3 max-w-[62ch] text-[13px] leading-relaxed" style={{ color: 'var(--ink-3)' }}>
-        Every story gets a relevance score when it lands on the scope. Two days later the machine checks what
-        actually happened — did the ecosystem echo it, did it ship, did anyone follow up? This page publishes
-        the result, misses included. Predictions we can&rsquo;t grade yet are shown as pending, not hidden.
-      </p>
+      <PageHeader
+        kicker="the track record, graded in public"
+        title="Accuracy"
+        description={
+          <>
+            Every story gets a relevance score when it is published. Two days later the machine checks what
+            actually happened — did the ecosystem echo it, did it ship, did anyone follow up? This page publishes
+            the result, misses included. Predictions we can&rsquo;t grade yet are shown as pending, not hidden.
+          </>
+        }
+      />
       {since && (
         <p className="mono mt-2 text-[10.5px] tracking-[0.06em] uppercase" style={{ color: 'var(--ink-4)' }}>
           grading since {since} &middot; {totalHindsight} stories graded &middot; times in UTC

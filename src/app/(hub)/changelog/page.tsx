@@ -8,11 +8,12 @@ import { formatBoardChange, isNoopChange } from '@/lib/board/change';
 import { changelogSummary } from '@/lib/changelog';
 import { parseDomainScores, topDomain } from '@/components/DomainChips';
 import SectionHeader from '@/components/SectionHeader';
+import PageHeader from '@/components/PageHeader';
 
 export const metadata = {
   title: 'Changelog',
   description:
-    'What changed on the scope: new evaluations, board moves and stack updates — every day the machine sweeps.',
+    'What changed: new evaluations, board moves and stack updates — refreshed daily.',
 };
 
 const WEEKDAYS = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
@@ -119,9 +120,12 @@ export default async function ChangelogPage({
           rss ↗
         </a>
       </div>
-      <h1 className="mt-1 text-[17px] font-semibold tracking-[-0.01em]">Changelog</h1>
-      <p className="mono mt-1.5 text-[10.5px] tracking-[0.06em] uppercase" style={{ color: 'var(--ink-4)' }}>
-        {summary.contacts} contacts &middot; {summary.moves} board moves
+      <PageHeader
+        title="Changelog"
+        description="The full audit trail: every story the radar kept, and every board move and stack update that followed."
+      />
+      <p className="mono mt-2.5 text-[10.5px] tracking-[0.06em] uppercase" style={{ color: 'var(--ink-4)' }}>
+        {summary.contacts} stories &middot; {summary.moves} board moves
         {summary.topSector && isDomain(summary.topSector) && (
           <span> &middot; busiest sector: {DOMAIN_LABELS[summary.topSector]}</span>
         )}
@@ -129,13 +133,13 @@ export default async function ChangelogPage({
 
       <div className="mono mt-4 flex flex-wrap items-center gap-1.5 text-[10.5px] tracking-[0.06em]">
         {chip('all', 'all', summary.contacts + summary.moves)}
-        {chip('contacts', 'contacts', summary.contacts)}
+        {chip('contacts', 'stories', summary.contacts)}
         {chip('board', 'board moves', summary.moves)}
       </div>
 
       {days.length === 0 && (
         <p className="mono mt-6 text-[12px]" style={{ color: 'var(--ink-4)' }}>
-          Nothing on the scope in the last 30 days.
+          Nothing tracked in the last 30 days.
         </p>
       )}
 

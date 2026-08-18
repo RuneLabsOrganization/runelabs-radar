@@ -239,7 +239,7 @@ export default function ActivityTrace({
           }}
         >
           <div style={{ color: 'var(--ink-3)' }}>{hover.date}</div>
-          <div style={{ color: 'var(--ink)' }}>{hover.total} contacts</div>
+          <div style={{ color: 'var(--ink)' }}>{hover.total} stories</div>
           {DOMAINS.filter((d) => !hidden.has(d) && hover.byDomain[d] > 0)
             .sort((a, b) => hover.byDomain[b] - hover.byDomain[a])
             .map((d) => (

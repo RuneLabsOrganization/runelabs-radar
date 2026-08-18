@@ -33,6 +33,7 @@ import EntityBars from '@/components/EntityBars';
 import SignalEntry from '@/components/SignalEntry';
 import SignalCollage from '@/components/SignalCollage';
 import MarkSeen from '@/components/MarkSeen';
+import PageHeader from '@/components/PageHeader';
 import SectionHeader from '@/components/SectionHeader';
 import SectorStrip, { type SectorStat } from '@/components/SectorStrip';
 import ScopeHero, { type ScopeInsight } from '@/components/ScopeHero';
@@ -43,7 +44,7 @@ type VoteAgg = { up: number; down: number; mine: 1 | -1 | 0 };
 export const metadata = {
   title: 'Today',
   description:
-    'Today\u2019s AI signals, curated and scored per domain — coding, copy, image, video, ads, agentic.',
+    'Today\u2019s AI stories, curated and scored per domain — coding, copy, image, video, ads, agentic.',
 };
 
 function itemAggByStory(storyIds: number[]): Map<number, ItemAgg> {
@@ -125,6 +126,12 @@ export default async function BriefingPage() {
       .select({ c: count() })
       .from(stories)
       .where(and(eq(stories.status, 'raw'), gt(stories.createdAt, new Date(now - 24 * 36e5))))
+      .get()?.c ?? 0;
+  const filteredCount =
+    db
+      .select({ c: count() })
+      .from(stories)
+      .where(and(eq(stories.status, 'filtered'), gt(stories.createdAt, new Date(now - 24 * 36e5))))
       .get()?.c ?? 0;
 
   const itemAgg = itemAggByStory([...curated, ...rawRecent].map((s) => s.id));
@@ -315,12 +322,33 @@ export default async function BriefingPage() {
     <div className="mx-auto max-w-[1100px] px-6 py-7">
       {user && <MarkSeen />}
 
-      <div className="readout">{dateLine(new Date())}</div>
-      <h1 className="mt-1 text-[17px] font-semibold tracking-[-0.01em]">Today</h1>
-      <p className="mb-5 mt-1 max-w-[640px] text-[12.5px] leading-relaxed" style={{ color: 'var(--ink-3)' }}>
-        {enabledSources} sources swept around the clock — {tracked24h} curated stories in the last 24h, scored
-        against your six sectors. Strongest first; the rest filter below.
-      </p>
+      <div className="mb-5">
+        <PageHeader
+          kicker={dateLine(new Date())}
+          title="Today"
+          description={
+            <>
+              An AI intelligence briefing that never sleeps: {enabledSources} sources scanned around the clock,
+              distilled into {tracked24h} stories worth your time in the last 24h — strongest first, the rest
+              filter below. New here? Read the{' '}
+              <Link
+                href="/brief"
+                className="underline decoration-[var(--grat-strong)] underline-offset-2 hover:text-[var(--ink-2)]"
+              >
+                daily brief
+              </Link>{' '}
+              or see the{' '}
+              <Link
+                href="/board"
+                className="underline decoration-[var(--grat-strong)] underline-offset-2 hover:text-[var(--ink-2)]"
+              >
+                best tools right now
+              </Link>
+              .
+            </>
+          }
+        />
+      </div>
 
       <ScopeHero
         blips={scopeBlips}
@@ -331,20 +359,60 @@ export default async function BriefingPage() {
             series: days.map((d) => d.total),
           },
           { label: 'new since your last visit', value: freshTotal },
-          { label: 'confirmed by 2+ sources · 7d', value: echoStats().multiSource },
+          { label: 'corroborated by 2+ sources · 7d', value: echoStats().multiSource },
         ]}
         insights={scopeInsights}
       />
 
-      {/* trends: prime real estate, right under the scope */}
-      <SectionHeader label="Trends — 14-day sweep" />
+      {/* the news leads — hero + featured top stories */}
+      <SectionHeader label="Top stories" count={top.length} />
+      {hero ? (
+        <div>
+          <div className="anim-in">
+            <SignalEntry {...entryProps(hero)} hero />
+          </div>
+          {featured.map((c, i) => (
+            <div key={c.story.id} className="anim-in" style={{ animationDelay: `${(i + 1) * 50}ms` }}>
+              <SignalEntry {...entryProps(c)} />
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="mono text-[12px]" style={{ color: 'var(--ink-4)' }}>
+          No strong stories on the radar yet — sources are scanned every 30 minutes.
+        </p>
+      )}
+
+      {/* machine detections + analyst calls, one merged block (they were twins) */}
+      {(noticedShown.length > 0 || notesShown.length > 0) && (
+        <>
+          <SectionHeader
+            label={`Worth knowing — ${worthKnowingDate}`}
+            tone="phosphor"
+            count={noticedShown.length + notesShown.length}
+          />
+          {noticedShown.length > 0 && <AnomalyFeed items={noticedShown} trends={noticedTrends} />}
+          {notesShown.length > 0 && <AnalystNotes items={notesShown} sectorSeries={sectorSeries} />}
+        </>
+      )}
+
+      {/* everything else: the filterable collage — filters persist per user */}
+      {collageEntries.length > 0 && (
+        <>
+          <SectionHeader label="All stories" count={scanAll.length} />
+          <SignalCollage entries={collageEntries} />
+        </>
+      )}
+
+      {/* trends: the analytics block sits below the news */}
+      <SectionHeader label="Trends — last 14 days" />
       <SectorStrip
         stats={stats.map((s) => ({ ...s, series: sectorSeries[s.domain] ?? null }))}
       />
       <div className="mt-5 flex flex-col gap-7 md:flex-row">
         <div className="min-w-0 flex-1">
           <ChartFrame
-            title="activity — 14-day sweep"
+            title="activity — last 14 days"
             brand={chartBrand}
             caption={`volume = curated stories/day · sector membership ≥ 40 · as-of ${new Date().toISOString().slice(0, 10)} UTC`}
           >
@@ -365,49 +433,9 @@ export default async function BriefingPage() {
         </p>
       )}
 
-      {/* the news leads — hero + featured top signals */}
-      <SectionHeader label="Top signals" count={top.length} />
-      {hero ? (
-        <div>
-          <div className="anim-in">
-            <SignalEntry {...entryProps(hero)} hero />
-          </div>
-          {featured.map((c, i) => (
-            <div key={c.story.id} className="anim-in" style={{ animationDelay: `${(i + 1) * 50}ms` }}>
-              <SignalEntry {...entryProps(c)} />
-            </div>
-          ))}
-        </div>
-      ) : (
-        <p className="mono text-[12px]" style={{ color: 'var(--ink-4)' }}>
-          No strong signals on the scope yet — the sweep runs every 30 minutes.
-        </p>
-      )}
-
-      {/* machine detections + analyst calls, one merged block (they were twins) */}
-      {(noticedShown.length > 0 || notesShown.length > 0) && (
-        <>
-          <SectionHeader
-            label={`Worth knowing — ${worthKnowingDate}`}
-            tone="phosphor"
-            count={noticedShown.length + notesShown.length}
-          />
-          {noticedShown.length > 0 && <AnomalyFeed items={noticedShown} trends={noticedTrends} />}
-          {notesShown.length > 0 && <AnalystNotes items={notesShown} sectorSeries={sectorSeries} />}
-        </>
-      )}
-
-      {/* everything else: the filterable collage — filters persist per user */}
-      {collageEntries.length > 0 && (
-        <>
-          <SectionHeader label="More signals" count={scanAll.length} />
-          <SignalCollage entries={collageEntries} />
-        </>
-      )}
-
       {recentLaunches.length > 0 && (
         <>
-          <SectionHeader label="Launch radar — 24h" count={recentLaunches.length} />
+          <SectionHeader label="New launches — 24h" count={recentLaunches.length} />
           <ul>
             {recentLaunches.map((l) => (
               <li
@@ -443,7 +471,7 @@ export default async function BriefingPage() {
 
       <details className="mt-9">
         <summary className="readout cursor-pointer select-none">
-          archive &middot; {lowCount} low-signal &middot; {rawCount} uncurated in 24h
+          archive &middot; {lowCount} low-scoring &middot; {rawCount} uncurated in 24h
         </summary>
         {rawRecent.length > 0 && (
           <ul className="mt-3">

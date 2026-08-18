@@ -99,7 +99,7 @@ export default function MobileNav({
                 className="inline-block h-[6px] w-[6px] rounded-full"
                 style={{ background: sweepStale ? 'var(--amber)' : 'var(--phosphor)' }}
               />
-              sweep {sweepLabel}
+              scanned {sweepLabel}
             </div>
             <div className="flex min-h-[44px] items-center justify-between text-[11px]">
               {userName ? (

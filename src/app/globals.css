@@ -18,11 +18,12 @@
   --grat: rgba(151, 180, 205, 0.13);
   --grat-strong: rgba(151, 180, 205, 0.26);
 
-  /* ink — text hierarchy (ink-3/ink-4 raised for WCAG AA on scope-0) */
+  /* ink — text hierarchy (ink-3/ink-4 raised for WCAG AA on scope-0:
+     ink-4 #71839a measures 4.99:1 on scope-0, 4.77:1 on scope-1) */
   --ink: #e3eaf0;
   --ink-2: #a6b4c2;
   --ink-3: #8295a6;
-  --ink-4: #68798a;
+  --ink-4: #71839a;
 
   /* phosphor — the signal */
   --phosphor: #57d9a3;
@@ -87,7 +88,7 @@
   --ink: #16232f;
   --ink-2: #3a4c5e;
   --ink-3: #52667a;
-  --ink-4: #5f7386;
+  --ink-4: #576b7d;
 
   --phosphor: #0c7a52;
   --phosphor-dim: rgba(12, 122, 82, 0.12);

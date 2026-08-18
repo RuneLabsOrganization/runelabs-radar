@@ -148,7 +148,7 @@ export default async function StoryPage({ params }: { params: Promise<{ id: stri
             {srcNames.length > 0 && <span style={{ color: 'var(--ink-3)' }}>{srcNames.join(' + ')}</span>}
             <span>{timeAgo(story.createdAt)}</span>
             {srcs.length > 1 && <span>{srcs.length} sources</span>}
-            <span>signal {story.topScore}</span>
+            <span>score {story.topScore}</span>
           </div>
 
           {story.tldr && (
@@ -183,7 +183,7 @@ export default async function StoryPage({ params }: { params: Promise<{ id: stri
 
           {story.whyShown && (
             <p className="mono mt-2 text-[10.5px] tracking-[0.04em]" style={{ color: 'var(--ink-4)' }}>
-              scoped because <span style={{ color: 'var(--ink-3)' }}>{story.whyShown}</span>
+              on the radar because <span style={{ color: 'var(--ink-3)' }}>{story.whyShown}</span>
             </p>
           )}
 
@@ -277,7 +277,7 @@ export default async function StoryPage({ params }: { params: Promise<{ id: stri
                       {r.title}
                     </Link>
                     <span className="mono text-[10px]" style={{ color: 'var(--ink-4)' }}>
-                      signal {r.topScore} &middot; {timeAgo(r.createdAt)}
+                      score {r.topScore} &middot; {timeAgo(r.createdAt)}
                     </span>
                   </li>
                 ))}

@@ -3,13 +3,13 @@
 import * as React from 'react';
 
 const SECTIONS = [
+  ['boards', 'Rankings'],
   ['market', 'Market'],
   ['race', 'Race'],
   ['forecast', 'Forecast'],
   ['costs', 'Costs'],
   ['value', 'Value'],
   ['arenas', 'Arenas'],
-  ['boards', 'Boards'],
   ['changes', 'Changes'],
 ] as const;
 

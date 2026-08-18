@@ -4,6 +4,7 @@ import { requireViewer } from '@/lib/auth/user';
 import { getDb } from '@/lib/db';
 import { timeAgo } from '@/lib/feed';
 import DomainTicks, { parseDomainScores } from '@/components/DomainChips';
+import PageHeader from '@/components/PageHeader';
 
 export const metadata = { title: 'Search', robots: { index: false } };
 
@@ -50,7 +51,10 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
 
   return (
     <div className="mx-auto max-w-[760px] px-6 py-7">
-      <h1 className="text-[17px] font-semibold tracking-[-0.01em]">Search the scope</h1>
+      <PageHeader
+        title="Search"
+        description="Full-text search over every curated story — try a model, tool, org, or technique."
+      />
       <form method="GET" action="/search" className="mt-4">
         <input
           type="search"
