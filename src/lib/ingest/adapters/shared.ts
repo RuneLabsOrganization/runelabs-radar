@@ -3,19 +3,48 @@
 export const FETCH_TIMEOUT_MS = 15_000;
 export const EXCERPT_MAX = 500;
 
-/** Single fetch with a 15s AbortController timeout. Throws on non-2xx. No retries — the next cron tick retries naturally. */
+/** Browser-ish UA: feed CDNs and API gateways commonly 403 the Node fetch default. */
+export const DEFAULT_UA = 'RunelabsRadar/1.0 (+https://radar.runelabs.org)';
+
+const RETRYABLE_STATUSES = new Set([429, 500, 502, 503, 504]);
+const MAX_ATTEMPTS = 3;
+
+/** Jittered backoff: 500ms after the first failure, ~2s after the second. */
+function backoffMs(attempt: number): number {
+  return (attempt === 1 ? 500 : 2000) + Math.random() * 500;
+}
+
+/**
+ * Fetch with a 15s timeout, a default UA, and up to 2 retries with jittered
+ * backoff on 429/5xx/network/timeout — a transient error must not cost a
+ * whole cadence tick. 304 passes through without throwing (the RSS adapter's
+ * conditional GET relies on it); every other non-2xx throws.
+ */
 export async function fetchWithTimeout(url: string, init: RequestInit = {}): Promise<Response> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-  try {
-    const res = await fetch(url, { ...init, signal: controller.signal });
-    if (!res.ok) {
-      throw new Error(`HTTP ${res.status} fetching ${url}`);
+  const headers = { 'user-agent': DEFAULT_UA, ...(init.headers as Record<string, string> | undefined) };
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    if (attempt > 1) await new Promise((r) => setTimeout(r, backoffMs(attempt)));
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+    try {
+      const res = await fetch(url, { ...init, headers, signal: controller.signal });
+      if (RETRYABLE_STATUSES.has(res.status) && attempt < MAX_ATTEMPTS) {
+        lastError = new Error(`HTTP ${res.status} fetching ${url}`);
+        continue;
+      }
+      if (!res.ok && res.status !== 304) {
+        throw new Error(`HTTP ${res.status} fetching ${url}`);
+      }
+      return res;
+    } catch (e) {
+      lastError = e;
+      if (attempt === MAX_ATTEMPTS) throw e;
+    } finally {
+      clearTimeout(timer);
     }
-    return res;
-  } finally {
-    clearTimeout(timer);
   }
+  throw lastError;
 }
 
 export async function fetchText(url: string, init?: RequestInit): Promise<string> {

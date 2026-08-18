@@ -95,11 +95,58 @@ describe('rss adapter', () => {
     expect(out[0].publishedAt).toBeNull();
   });
 
-  it('throws on HTTP errors so runIngest records the failure', async () => {
+  it('throws on HTTP errors so runIngest records the failure', { timeout: 15000 }, async () => {
     stubFetch('gone', 500);
     await expect(
       adapters.rss.fetchItems(makeSource('rss', { url: 'https://example.com/feed' })),
     ).rejects.toThrow(/500/);
+  });
+
+  it('sends conditional headers and returns [] on 304 without erroring', async () => {
+    // undici's Response constructor rejects 304 — fake the minimal shape the adapter touches
+    const notModified = { status: 304, headers: new Headers(), text: async () => '' } as Response;
+    const fn = vi.fn(async () => notModified);
+    vi.stubGlobal('fetch', fn);
+    const cfg = { url: 'https://example.com/feed', etag: '"abc"', lastModified: 'Wed, 01 Jul 2026 00:00:00 GMT' };
+    const out = await adapters.rss.fetchItems(makeSource('rss', {}), cfg);
+    expect(out).toEqual([]);
+    const init = fn.mock.calls[0][1]!;
+    expect((init.headers as Record<string, string>)['if-none-match']).toBe('"abc"');
+    expect((init.headers as Record<string, string>)['if-modified-since']).toBe('Wed, 01 Jul 2026 00:00:00 GMT');
+  });
+
+  it('persists fresh etag/lastModified into cfg after a 200', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(fixture('rss2.xml'), {
+            status: 200,
+            headers: { etag: '"v2"', 'last-modified': 'Thu, 09 Jul 2026 00:00:00 GMT' },
+          }),
+      ),
+    );
+    const cfg: Record<string, unknown> = { url: 'https://example.com/feed' };
+    const out = await adapters.rss.fetchItems(makeSource('rss', {}), cfg);
+    expect(out).toHaveLength(3);
+    expect(cfg.etag).toBe('"v2"');
+    expect(cfg.lastModified).toBe('Thu, 09 Jul 2026 00:00:00 GMT');
+  });
+
+  it('retries a 429 and succeeds on the next attempt', { timeout: 15000 }, async () => {
+    let calls = 0;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        calls++;
+        return calls === 1
+          ? new Response('busy', { status: 429 })
+          : new Response(fixture('rss2.xml'), { status: 200 });
+      }),
+    );
+    const out = await adapters.rss.fetchItems(makeSource('rss', { url: 'https://example.com/feed' }));
+    expect(out).toHaveLength(3);
+    expect(calls).toBe(2);
   });
 });
 
@@ -215,16 +262,14 @@ describe('github adapter', () => {
     expect(String(fn.mock.calls[0][0])).toBe('https://github.com/trending/typescript?since=daily');
   });
 
-  it('returns [] on unrecognizable HTML instead of throwing', async () => {
+  it('throws on unrecognizable HTML so the health panel sees it', async () => {
     stubFetch('<html><body><h1>Rate limit exceeded</h1></body></html>');
-    const out = await adapters.github.fetchItems(makeSource('github', {}));
-    expect(out).toEqual([]);
+    await expect(adapters.github.fetchItems(makeSource('github', {}))).rejects.toThrow(/layout changed/);
   });
 
-  it('returns [] on fetch failure instead of throwing', async () => {
+  it('throws on fetch failure (after retries) so the health panel sees it', { timeout: 15000 }, async () => {
     stubFetch('nope', 429);
-    const out = await adapters.github.fetchItems(makeSource('github', {}));
-    expect(out).toEqual([]);
+    await expect(adapters.github.fetchItems(makeSource('github', {}))).rejects.toThrow(/429/);
   });
 });
 
@@ -260,17 +305,11 @@ describe('brave adapter', () => {
     expect(out[1].publishedAt).toBeNull();
   });
 
-  it('self-throttles: skips the fetch when lastFetchedAt is inside pollHours', async () => {
+  it('always fetches when called — poll cadence is owned by runIngest now', async () => {
     const fn = stubFetch(fixture('brave-news.json'));
-    const recent = { ...makeSource('brave', { query: 'AI' }), lastFetchedAt: new Date() };
-    expect(await adapters.brave.fetchItems(recent)).toEqual([]);
-    expect(fn).not.toHaveBeenCalled();
-
-    const stale = {
-      ...makeSource('brave', { query: 'AI' }),
-      lastFetchedAt: new Date(Date.now() - 4 * 36e5),
-    };
-    expect((await adapters.brave.fetchItems(stale)).length).toBeGreaterThan(0);
+    const fresh = { ...makeSource('brave', { query: 'AI' }), lastFetchedAt: new Date() };
+    expect((await adapters.brave.fetchItems(fresh)).length).toBeGreaterThan(0);
+    expect(fn).toHaveBeenCalled();
   });
 
   it('throws without BRAVE_API_KEY so runIngest records the failure', async () => {
@@ -310,14 +349,14 @@ describe('runIngest', () => {
     );
   }
 
-  it('inserts new items, dedups on rerun, and tracks per-source health', async () => {
+  it('inserts new items, dedups on rerun, and tracks per-source health', { timeout: 20000 }, async () => {
     seedSources();
     stubRoutedFetch();
     const db = getDb();
 
     // first run: 3 rss items + 3 hn hits inserted; bad source fails
     const first = await runIngest();
-    expect(first).toEqual({ sourcesOk: 2, sourcesFailed: 1, newItems: 6 });
+    expect(first).toEqual({ sourcesOk: 2, sourcesFailed: 1, sourcesSkipped: 0, newItems: 6 });
 
     const allItems = db.select().from(items).all();
     expect(allItems).toHaveLength(6);
@@ -342,9 +381,10 @@ describe('runIngest', () => {
     expect(disabled.lastFetchedAt).toBeNull();
     expect(disabled.lastStatus).toBeNull();
 
-    // second run: everything dedups on unique url, failure count climbs
+    // second run: sources aged past their cadence → refetch; everything dedups on unique url
+    db.update(sources).set({ lastFetchedAt: new Date(Date.now() - 36e5) }).run();
     const second = await runIngest();
-    expect(second).toEqual({ sourcesOk: 2, sourcesFailed: 1, newItems: 0 });
+    expect(second).toEqual({ sourcesOk: 2, sourcesFailed: 1, sourcesSkipped: 0, newItems: 0 });
     expect(db.select().from(items).all()).toHaveLength(6);
 
     const badAgain = db.select().from(sources).where(eq(sources.name, 'Bad RSS')).get()!;
@@ -353,5 +393,36 @@ describe('runIngest', () => {
     const goodAgain = db.select().from(sources).where(eq(sources.name, 'Good RSS')).get()!;
     expect(goodAgain.consecutiveFailures).toBe(0);
     expect(goodAgain.lastStatus).toMatch(/0 new/);
+  });
+
+  it('skips sources inside their poll cadence without stamping them', async () => {
+    seedSources();
+    const db = getDb();
+    // freshly fetched an instant ago — nothing is due
+    db.update(sources).set({ lastFetchedAt: new Date(), lastStatus: 'ok (previous run)' }).run();
+
+    const res = await runIngest();
+    expect(res).toEqual({ sourcesOk: 0, sourcesFailed: 0, sourcesSkipped: 3, newItems: 0 });
+
+    // skipped sources are NOT re-stamped — this is what keeps throttled sources
+    // (Brave et al) actually fetching again once their cadence elapses
+    const good = db.select().from(sources).where(eq(sources.name, 'Good RSS')).get()!;
+    expect(good.lastStatus).toBe('ok (previous run)');
+  });
+
+  it('honors per-source pollMinutes: hot sources re-poll while slow ones skip', async () => {
+    seedSources();
+    stubRoutedFetch();
+    const db = getDb();
+    // all sources fetched 20 min ago
+    db.update(sources).set({ lastFetchedAt: new Date(Date.now() - 20 * 60e3) }).run();
+    // Good RSS polls every 15 min → due; HN + Bad RSS default to 30 → not due
+    db.update(sources)
+      .set({ config: JSON.stringify({ url: 'https://good.example.com/feed.xml', pollMinutes: 15 }) })
+      .where(eq(sources.name, 'Good RSS'))
+      .run();
+
+    const res = await runIngest();
+    expect(res).toEqual({ sourcesOk: 1, sourcesFailed: 0, sourcesSkipped: 2, newItems: 3 });
   });
 });

@@ -16,7 +16,7 @@ export const arxivAdapter: SourceAdapter = {
     const query = cfg.query ?? 'cat:cs.AI OR cat:cs.CL';
     const maxResults = cfg.maxResults ?? 40;
     const url =
-      `http://export.arxiv.org/api/query?search_query=${encodeURIComponent(query)}` +
+      `https://export.arxiv.org/api/query?search_query=${encodeURIComponent(query)}` +
       `&sortBy=submittedDate&sortOrder=descending&max_results=${maxResults}`;
     const xml = await fetchText(url);
     const doc = parser.parse(xml) as Record<string, any>;

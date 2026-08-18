@@ -1,9 +1,12 @@
 import { XMLParser } from 'fast-xml-parser';
 import type { FetchedItem, Source, SourceAdapter } from '../types';
-import { fetchText, parseConfig, parseDate, textOf, toArray, toExcerpt } from './shared';
+import { fetchWithTimeout, parseConfig, parseDate, textOf, toArray, toExcerpt } from './shared';
 
 interface RssConfig {
   url?: string;
+  /** Conditional-GET state persisted in the sources.config JSON by runIngest. */
+  etag?: string;
+  lastModified?: string;
 }
 
 const parser = new XMLParser({ ignoreAttributes: false });
@@ -65,10 +68,26 @@ export function parseFeed(xml: string): FetchedItem[] {
 
 export const rssAdapter: SourceAdapter = {
   type: 'rss',
-  async fetchItems(source: Source): Promise<FetchedItem[]> {
-    const cfg = parseConfig<RssConfig>(source.config);
-    if (!cfg.url) throw new Error(`rss source "${source.name}" is missing config.url`);
-    const xml = await fetchText(cfg.url);
-    return parseFeed(xml);
+  async fetchItems(source: Source, cfg?: Record<string, unknown>): Promise<FetchedItem[]> {
+    // cfg is the orchestrator-parsed config (mutations persist); fall back to
+    // parsing the raw column when called standalone (tests, CLI)
+    const config = (cfg as RssConfig | undefined) ?? parseConfig<RssConfig>(source.config);
+    if (!config.url) throw new Error(`rss source "${source.name}" is missing config.url`);
+
+    // conditional GET: skip the download entirely when the feed hasn't moved
+    const headers: Record<string, string> = {};
+    if (config.etag) headers['if-none-match'] = config.etag;
+    if (config.lastModified) headers['if-modified-since'] = config.lastModified;
+    const res = await fetchWithTimeout(config.url, { headers });
+    if (res.status === 304) return [];
+
+    const etag = res.headers.get('etag');
+    const lastModified = res.headers.get('last-modified');
+    if (etag) config.etag = etag;
+    else delete config.etag;
+    if (lastModified) config.lastModified = lastModified;
+    else delete config.lastModified;
+
+    return parseFeed(await res.text());
   },
 };

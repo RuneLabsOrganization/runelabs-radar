@@ -11,5 +11,10 @@ export interface FetchedItem {
 
 export interface SourceAdapter {
   type: Source['type'];
-  fetchItems(source: Source): Promise<FetchedItem[]>;
+  /**
+   * cfg: the orchestrator-parsed config object. Adapters may read cadence keys
+   * from it and may MUTATE it to persist fetch state (etag, lastModified) —
+   * runIngest writes it back to the sources row after a successful fetch.
+   */
+  fetchItems(source: Source, cfg?: Record<string, unknown>): Promise<FetchedItem[]>;
 }

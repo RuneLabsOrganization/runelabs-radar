@@ -9,6 +9,8 @@ interface GithubConfig {
  * Best-effort scrape of GitHub trending. Article blocks look like:
  *   <article class="Box-row"><h2 class="h3 lh-condensed"><a href="/owner/repo">…</a></h2>
  *   <p class="col-9 …">description</p> …</article>
+ * Fetch/parse failures throw so runIngest records them — a silent [] used to
+ * masquerade as "ok (0 fetched)" in the source-health panel.
  */
 export function parseTrending(html: string): FetchedItem[] {
   const out: FetchedItem[] = [];
@@ -35,19 +37,12 @@ export function parseTrending(html: string): FetchedItem[] {
 export const githubAdapter: SourceAdapter = {
   type: 'github',
   async fetchItems(source: Source): Promise<FetchedItem[]> {
-    // Scraping is best-effort: any fetch or parse failure returns [] and never
-    // throws past the adapter (the trending page layout can change under us).
-    try {
-      const cfg = parseConfig<GithubConfig>(source.config);
-      const lang = cfg.language ? `/${encodeURIComponent(cfg.language)}` : '';
-      const html = await fetchText(`https://github.com/trending${lang}?since=daily`);
-      return parseTrending(html);
-    } catch (e) {
-      console.error(
-        `[ingest] github trending scrape failed for "${source.name}":`,
-        e instanceof Error ? e.message : e,
-      );
-      return [];
-    }
+    const cfg = parseConfig<GithubConfig>(source.config);
+    const lang = cfg.language ? `/${encodeURIComponent(cfg.language)}` : '';
+    const html = await fetchText(`https://github.com/trending${lang}?since=daily`);
+    const parsed = parseTrending(html);
+    // the layout changing under us must surface as a failure, not "0 fetched"
+    if (parsed.length === 0) throw new Error('github trending parse returned 0 repos — layout changed?');
+    return parsed;
   },
 };

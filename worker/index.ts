@@ -21,8 +21,11 @@ loadDotEnv();
 console.log('[worker] Runelabs Radar worker starting');
 
 const tasks = [
-  cron.schedule('*/30 * * * *', () => void withJobRun('ingest', runIngest)),
-  cron.schedule('5 * * * *', () => void withJobRun('curate', runCurate)),
+  // ingest → curate chained: fresh items get scored minutes after landing,
+  // and curate can never race a slow ingest (the standalone :05 tick is gone)
+  cron.schedule('*/15 * * * *', () =>
+    void withJobRun('ingest', runIngest).then(() => withJobRun('curate', runCurate)),
+  ),
   cron.schedule('20 * * * *', () => void withJobRun('embed', runEmbed)),
   cron.schedule('30 5 * * *', () => void withJobRun('snapshot', runSnapshot)),
   cron.schedule('45 5 * * *', () => void withJobRun('velocity', runVelocity)),
