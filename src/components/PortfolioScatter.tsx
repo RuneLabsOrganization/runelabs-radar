@@ -7,7 +7,16 @@ import { fmtUsd } from '@/lib/costs';
 import type { OppView } from './OppDossier';
 
 /** Portfolio overview: every opening as a bubble — cost vs score, one glance across the field. */
-export default function PortfolioScatter({ opps, sortKey }: { opps: OppView[]; sortKey: 'flip' | 'hold' }) {
+export default function PortfolioScatter({
+  opps,
+  sortKey,
+  onSelect,
+}: {
+  opps: OppView[];
+  sortKey: 'flip' | 'hold';
+  /** when set, bubble clicks select the matching list card instead of anchor-jumping */
+  onSelect?: (id: number) => void;
+}) {
   const W = 640;
   const H = 210;
   const PAD = { top: 10, right: 14, bottom: 24, left: 34 };
@@ -39,8 +48,15 @@ export default function PortfolioScatter({ opps, sortKey }: { opps: OppView[]; s
           </g>
         ))}
         {pts.map(({ o, cost }) => (
-          <a key={o.id} href={`#opp-${o.id}`}>
-            <circle
+          <a
+            key={o.id}
+            href={`#opp-${o.id}`}
+            onClick={(e) => {
+              if (!onSelect) return; // fall back to the plain anchor jump
+              e.preventDefault();
+              onSelect(o.id);
+            }}
+          >            <circle
               cx={x(cost)}
               cy={y(score(o))}
               r={7}
@@ -58,7 +74,7 @@ export default function PortfolioScatter({ opps, sortKey }: { opps: OppView[]; s
         </text>
       </svg>
       <p className="mono mt-1 text-[10px]" style={{ color: 'var(--ink-4)' }}>
-        top-left = cheap + strong &middot; each bubble is an opening (sector-tinted) &middot; click to jump to its dossier
+        top-left = cheap + strong &middot; each bubble is an opening (sector-tinted) &middot; click to open its card below
       </p>
     </div>
   );

@@ -25,18 +25,24 @@ export default async function OpportunitiesPage() {
   return (
     <div className="mx-auto max-w-[860px] px-6 py-7">
       <PageHeader
-        kicker="opportunity engine &middot; daily synthesis"
+        kicker="opportunity engine · daily synthesis"
         title="Opportunities"
         description={
           <>
-            Monetizable openings the machine detected by crossing unmet pains, newly-cheap capability,
-            launch gaps and attention surges. Radar color is the verdict —
-            <span className="mono text-[11px]"> flip</span> favors speed and window,
-            <span className="mono text-[11px]"> hold</span> favors margin and durable demand. Expand any
-            opening for its launchable brief.
+            Business gaps the scanner found in the news: real user pain, AI that just made the
+            fix cheap, and nobody good shipping it yet. Each opening is scored two ways —
+            <span className="mono text-[11px]"> flip</span> favors building fast and selling
+            into the window, <span className="mono text-[11px]"> hold</span> favors keeping it
+            for monthly revenue. Open a card for the full dossier: costs, risks, evidence,
+            launch brief.
           </>
         }
       />
+
+      {/* the factory path IS this page's purpose statement — it belongs above the fold */}
+      <div className="mt-5">
+        <FactoryPipeline funnel={factoryFunnel()} />
+      </div>
 
       {views.length === 0 ? (
         <p className="mono mt-8 text-[12px]" style={{ color: 'var(--ink-4)' }}>
@@ -54,11 +60,6 @@ export default async function OpportunitiesPage() {
           {archivedCount} archived (not re-detected for 7+ days)
         </p>
       )}
-
-      {/* engine meta below the content: how the pipeline is flowing */}
-      <div className="mt-8">
-        <FactoryPipeline funnel={factoryFunnel()} />
-      </div>
     </div>
   );
 }

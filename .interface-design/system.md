@@ -101,3 +101,10 @@ the point to avoid collisions in tight clusters.
 - Empty states: one mono ink-4 line, no cards ("No strong signals on the scope yet — …").
 - New-contact marker: small phosphor ● before timestamp/title (replaces divider).
 - Tables: `.table` — mono uppercase th, grat-soft row hairlines.
+- **List-first pages** (opportunities): the ranked list IS the page; chart stacks (treemap,
+  scatter, matrix) sit behind a persisted `▦ field analysis` toggle
+  (`localStorage["radar.oppanalysis"]`, ThemeToggle pattern) — never gate the list behind
+  visualizations.
+- **Charts navigate the list**: viz components take `onSelect(id)`; clicking a tile/dot/row
+  selects the matching card (phosphor ring, auto-expand, scrollIntoView) instead of routing
+  away. Modified clicks (⌘/ctrl) keep the underlying href.

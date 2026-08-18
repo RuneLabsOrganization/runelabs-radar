@@ -1,11 +1,12 @@
 'use client';
 
 import * as React from 'react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { DOMAINS, DOMAIN_COLORS, DOMAIN_LABELS, isDomain, type Domain } from '@/lib/domains';
 import { fmtUsd } from '@/lib/costs';
-import OppDossier, { ScoreBar, type OppView } from './OppDossier';
+import { gradeBand, gradeColor } from '@/lib/opportunities/axes';
+import OppDossier, { LaunchChecks, ScoreBar, type OppView } from './OppDossier';
 import BriefSection from './BriefSection';
 import OpportunityMap from './OpportunityMap';
 import PortfolioScatter from './PortfolioScatter';
@@ -13,14 +14,41 @@ import AssessmentMatrix from './AssessmentMatrix';
 
 export type { OppView } from './OppDossier';
 
-function Card({ opp, canGenerate, sortKey }: { opp: OppView; canGenerate: boolean; sortKey: 'flip' | 'hold' }) {
+const ANALYSIS_KEY = 'radar.oppanalysis';
+
+function Card({
+  opp,
+  canGenerate,
+  sortKey,
+  selected,
+}: {
+  opp: OppView;
+  canGenerate: boolean;
+  sortKey: 'flip' | 'hold';
+  selected: boolean;
+}) {
   // collapsed by default — the full dossier is an expand-away (Turo accordion
   // pattern); 39 expanded dossiers made a 22k px wall
   const [dossier, setDossier] = useState(false);
+  const ref = useRef<HTMLElement>(null);
   const k = opp.kpis;
+  const primary = sortKey === 'flip' ? opp.flipScore : opp.holdScore;
+
+  // a chart picked this opening: light it up and open its dossier
+  useEffect(() => {
+    if (!selected) return;
+    setDossier(true);
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    ref.current?.scrollIntoView({ block: 'nearest', behavior: reduced ? 'auto' : 'smooth' });
+  }, [selected]);
 
   return (
-    <article id={`opp-${opp.id}`} className="card hover-raise scroll-mt-20 !p-0">
+    <article
+      id={`opp-${opp.id}`}
+      ref={ref}
+      className="card hover-raise scroll-mt-20 !p-0"
+      style={selected ? { outline: '1px solid var(--phosphor)' } : undefined}
+    >
       {/* the digest row: everything you need to triage, one glance */}
       <button
         type="button"
@@ -62,12 +90,16 @@ function Card({ opp, canGenerate, sortKey }: { opp: OppView; canGenerate: boolea
               {opp.window && <span>window {opp.window}</span>}
               <span>first seen {opp.firstSeenLabel}</span>
             </div>
+            {!opp.legacy && <LaunchChecks sub={opp.sub} />}
           </div>
           <div className="flex w-[132px] shrink-0 flex-col gap-1.5">
             <ScoreBar label="flip" value={opp.flipScore} emphasized={sortKey === 'flip'} />
             <ScoreBar label="hold" value={opp.holdScore} emphasized={sortKey === 'hold'} />
-            <span className="mono mt-0.5 text-right text-[11px]" style={{ color: 'var(--ink-4)' }}>
-              {dossier ? '▾ dossier' : '▸ dossier'}
+            <span className="mono mt-0.5 flex items-baseline justify-between text-[11px]">
+              <span style={{ color: gradeColor(primary) }} title={`${sortKey} score ${primary}/100`}>
+                {gradeBand(primary)}
+              </span>
+              <span style={{ color: 'var(--ink-4)' }}>{dossier ? '▾ dossier' : '▸ dossier'}</span>
             </span>
           </div>
         </div>
@@ -85,11 +117,45 @@ function Card({ opp, canGenerate, sortKey }: { opp: OppView; canGenerate: boolea
   );
 }
 
-/** The scored feed: money treemap + assessment matrix + dossier cards, sortable by play, filterable by sector. */
+/** Shared chip style for the toolbar: phosphor border when on, graticule when off. */
+function chipCls(on: boolean): string {
+  return `cursor-pointer rounded-[3px] border px-2 py-0.5 uppercase transition-colors ${
+    on
+      ? 'border-[var(--phosphor)] text-[var(--ink)]'
+      : 'border-[var(--grat)] text-[var(--ink-3)] hover:border-[var(--grat-strong)]'
+  }`;
+}
+
+/**
+ * The scored feed: ranked dossier cards first — the field's charts (treemap +
+ * lenses, cost scatter, assessment matrix) live behind the persisted "field
+ * analysis" toggle and act as navigation: clicking any tile/dot/row selects,
+ * scrolls to and expands the matching card.
+ */
 export default function OpportunityList({ opps, canGenerate }: { opps: OppView[]; canGenerate: boolean }) {
   const [sortKey, setSortKey] = useState<'flip' | 'hold'>('flip');
   const [sector, setSector] = useState<Domain | null>(null);
-  const [view, setView] = useState<'map' | 'scatter'>('map');
+  const [analysis, setAnalysis] = useState(false);
+  const [selectedId, setSelectedId] = useState<number | null>(null);
+
+  // restore the analyst's preferred view (client-only, like ThemeToggle)
+  useEffect(() => {
+    try {
+      if (window.localStorage.getItem(ANALYSIS_KEY) === '1') setAnalysis(true);
+    } catch {
+      // storage blocked — session default stands
+    }
+  }, []);
+
+  const toggleAnalysis = () =>
+    setAnalysis((a) => {
+      try {
+        window.localStorage.setItem(ANALYSIS_KEY, a ? '0' : '1');
+      } catch {
+        // storage blocked — toggle still works for this session
+      }
+      return !a;
+    });
 
   const sectorCounts = useMemo(() => {
     const counts = new Map<Domain, number>();
@@ -110,18 +176,25 @@ export default function OpportunityList({ opps, canGenerate }: { opps: OppView[]
   return (
     <div>
       <div className="mono mb-3 flex flex-wrap items-center gap-1.5 text-[10px] tracking-[0.06em]">
-        <span style={{ color: 'var(--ink-4)' }}>play</span>
+        <button
+          type="button"
+          onClick={toggleAnalysis}
+          aria-pressed={analysis}
+          title="show the field charts — treemap, cost scatter, assessment matrix"
+          className={chipCls(analysis)}
+        >
+          ▦ field analysis
+        </button>
+        <span className="mx-2 h-[10px] w-px" style={{ background: 'var(--grat)' }} aria-hidden />
+        <span style={{ color: 'var(--ink-4)' }}>sort</span>
         {(['flip', 'hold'] as const).map((k) => (
           <button
             key={k}
             type="button"
             onClick={() => setSortKey(k)}
             aria-pressed={sortKey === k}
-            className={`cursor-pointer rounded-[3px] border px-2 py-0.5 uppercase transition-colors ${
-              sortKey === k
-                ? 'border-[var(--phosphor)] text-[var(--ink)]'
-                : 'border-[var(--grat)] text-[var(--ink-3)] hover:border-[var(--grat-strong)]'
-            }`}
+            title={k === 'flip' ? 'flip = speed + timing window' : 'hold = margin + durable demand'}
+            className={chipCls(sortKey === k)}
           >
             {k === 'flip' ? 'flip — build & sell' : 'hold — keep for mrr'}
           </button>
@@ -132,11 +205,7 @@ export default function OpportunityList({ opps, canGenerate }: { opps: OppView[]
           type="button"
           onClick={() => setSector(null)}
           aria-pressed={sector === null}
-          className={`cursor-pointer rounded-[3px] border px-2 py-0.5 uppercase transition-colors ${
-            sector === null
-              ? 'border-[var(--phosphor)] text-[var(--ink)]'
-              : 'border-[var(--grat)] text-[var(--ink-3)] hover:border-[var(--grat-strong)]'
-          }`}
+          className={chipCls(sector === null)}
         >
           all {opps.length}
         </button>
@@ -146,42 +215,23 @@ export default function OpportunityList({ opps, canGenerate }: { opps: OppView[]
             type="button"
             onClick={() => setSector(sector === d ? null : d)}
             aria-pressed={sector === d}
-            className={`cursor-pointer rounded-[3px] border px-2 py-0.5 uppercase transition-colors ${
-              sector === d
-                ? 'border-[var(--phosphor)] text-[var(--ink)]'
-                : 'border-[var(--grat)] text-[var(--ink-3)] hover:border-[var(--grat-strong)]'
-            }`}
+            className={chipCls(sector === d)}
           >
             {DOMAIN_LABELS[d]} {sectorCounts.get(d)}
           </button>
         ))}
-        <span className="mx-2 h-[10px] w-px" style={{ background: 'var(--grat)' }} aria-hidden />
-        <span style={{ color: 'var(--ink-4)' }}>view</span>
-        {(['map', 'scatter'] as const).map((v) => (
-          <button
-            key={v}
-            type="button"
-            onClick={() => setView(v)}
-            aria-pressed={view === v}
-            className={`cursor-pointer rounded-[3px] border px-2 py-0.5 uppercase transition-colors ${
-              view === v
-                ? 'border-[var(--phosphor)] text-[var(--ink)]'
-                : 'border-[var(--grat)] text-[var(--ink-3)] hover:border-[var(--grat-strong)]'
-            }`}
-          >
-            {v}
-          </button>
-        ))}
       </div>
-      {view === 'map' ? (
-        <OpportunityMap opps={filtered} sortKey={sortKey} />
-      ) : (
-        <PortfolioScatter opps={filtered} sortKey={sortKey} />
+
+      {analysis && (
+        <>
+          <OpportunityMap opps={filtered} sortKey={sortKey} onSelect={setSelectedId} />
+          <PortfolioScatter opps={filtered} sortKey={sortKey} onSelect={setSelectedId} />
+          <AssessmentMatrix opps={sorted} sortKey={sortKey} onSelect={setSelectedId} />
+        </>
       )}
-      <AssessmentMatrix opps={sorted} sortKey={sortKey} />
       <div className="flex flex-col gap-4">
         {sorted.map((o) => (
-          <Card key={o.id} opp={o} canGenerate={canGenerate} sortKey={sortKey} />
+          <Card key={o.id} opp={o} canGenerate={canGenerate} sortKey={sortKey} selected={o.id === selectedId} />
         ))}
       </div>
     </div>

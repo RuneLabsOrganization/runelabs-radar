@@ -6,6 +6,11 @@ export function gradeColor(score: number): string {
   return score >= 70 ? 'var(--phosphor)' : score >= 45 ? 'var(--amber)' : 'var(--alert)';
 }
 
+/** One-word verdict band, same cutoffs as gradeColor — anchors a bare number. */
+export function gradeBand(score: number): string {
+  return score >= 70 ? 'strong' : score >= 45 ? 'fair' : 'weak';
+}
+
 export const SUB_KEYS = [
   'demand',
   'buildability',

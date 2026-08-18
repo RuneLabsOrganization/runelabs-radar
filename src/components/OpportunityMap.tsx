@@ -42,7 +42,16 @@ function sectorLabel(sector: Sector): string {
  * exactly what it means in each lens. Hatched tiles = missing KPI data
  * (demand-only sizing). Fluid: layout recomputed from measured width.
  */
-export default function OpportunityMap({ opps, sortKey }: { opps: OppView[]; sortKey: 'flip' | 'hold' }) {
+export default function OpportunityMap({
+  opps,
+  sortKey,
+  onSelect,
+}: {
+  opps: OppView[];
+  sortKey: 'flip' | 'hold';
+  /** when set, tile clicks select the matching list card instead of navigating */
+  onSelect?: (id: number) => void;
+}) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
   const [opticId, setOpticId] = useState('flip');
@@ -175,6 +184,12 @@ export default function OpportunityMap({ opps, sortKey }: { opps: OppView[]; sor
                     : 'transparent',
                   border: `1px solid ${color}`,
                 }}
+                onClick={(e) => {
+                  // plain click = locate the card below; modified click keeps the href
+                  if (!onSelect || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+                  e.preventDefault();
+                  onSelect(t.opp.id);
+                }}
                 onMouseEnter={(e) => {
                   const rect = wrapRef.current!.getBoundingClientRect();
                   setHover({
@@ -187,7 +202,10 @@ export default function OpportunityMap({ opps, sortKey }: { opps: OppView[]; sor
               >
                 <span aria-hidden className="absolute inset-0" style={{ background: color, opacity: t.demandOnly ? 0 : alpha }} />
                 {showText && (
-                  <span className="absolute inset-x-1.5 top-1 block">
+                  <span
+                    className="absolute inset-x-1.5 top-1 block"
+                    style={{ textShadow: '0 1px 3px var(--scope-0), 0 0 2px var(--scope-0)' }}
+                  >
                     <span className="block truncate text-[11px] leading-tight" style={{ color: 'var(--ink)' }}>
                       {t.opp.title}
                     </span>
@@ -218,11 +236,14 @@ export default function OpportunityMap({ opps, sortKey }: { opps: OppView[]; sor
               {hover.tile.opp.kpis?.timeToMvpDays != null && ` · mvp ~${Math.round(hover.tile.opp.kpis.timeToMvpDays)}d`}
               {hover.tile.demandOnly ? ' · demand-only' : ''}
             </div>
+            {onSelect && (
+              <div style={{ color: 'var(--ink-4)' }}>click → card below · ⌘/ctrl-click → full page</div>
+            )}
           </div>
         )}
       </div>
       <p className="mono mt-1.5 text-[10px]" style={{ color: 'var(--ink-4)' }}>
-        {optic.caption} &middot; hatched = no KPI data &middot; click tile for the dossier
+        {optic.caption} &middot; hatched = no KPI data &middot; click tile to open its card below
       </p>
     </div>
   );

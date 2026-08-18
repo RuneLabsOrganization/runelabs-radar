@@ -42,7 +42,7 @@ export default function FactoryPipeline({ funnel }: { funnel: FactoryFunnel }) {
           </React.Fragment>
         ))}
         <span className="mono ml-auto hidden max-w-[190px] text-right text-[10px] leading-relaxed lg:block" style={{ color: 'var(--ink-4)' }}>
-          the factory path — every stage feeds the next, detection to evergreen revenue
+          how an opening becomes revenue — every stage feeds the next
         </span>
       </div>
     </div>

@@ -38,7 +38,16 @@ const AXIS_FULL: Record<string, string> = {
  * WHERE the field is strong and where it's weak — "all flips fail moat" becomes
  * visible. Absolute 0-20 scale per cell; sticky label column on narrow screens.
  */
-export default function AssessmentMatrix({ opps, sortKey }: { opps: OppView[]; sortKey: 'flip' | 'hold' }) {
+export default function AssessmentMatrix({
+  opps,
+  sortKey,
+  onSelect,
+}: {
+  opps: OppView[];
+  sortKey: 'flip' | 'hold';
+  /** when set, row clicks select the matching list card */
+  onSelect?: (id: number) => void;
+}) {
   const [hover, setHover] = useState<{ x: number; y: number; text: string } | null>(null);
   const rows = opps.slice(0, 12);
   const legacyCount = rows.filter((o) => o.legacy).length;
@@ -71,10 +80,16 @@ export default function AssessmentMatrix({ opps, sortKey }: { opps: OppView[]; s
           </thead>
           <tbody>
             {rows.map((o) => (
-              <tr key={o.id}>
+              <tr
+                key={o.id}
+                onClick={onSelect ? () => onSelect(o.id) : undefined}
+                className={onSelect ? 'cursor-pointer' : undefined}
+                title={onSelect ? 'click to open this card below' : undefined}
+              >
                 <td className="sticky left-0 z-10 bg-[var(--scope-1)] pr-2" style={{ minWidth: 150, maxWidth: 190 }}>
                   <Link
                     href={`/opportunities/${o.id}`}
+                    onClick={(e) => e.stopPropagation()}
                     className="flex items-center gap-1.5 truncate text-[11px] hover:underline"
                     style={{ color: 'var(--ink-2)' }}
                   >
@@ -126,6 +141,7 @@ export default function AssessmentMatrix({ opps, sortKey }: { opps: OppView[]; s
       </div>
       <p className="mono mt-1.5 text-[10px]" style={{ color: 'var(--ink-4)' }}>
         cells = dossier sub-score /20 &middot; absolute scale &middot; brighter is stronger
+        {onSelect && ' · click a row to open its card below'}
         {legacyCount > 0 && ` · ${legacyCount} opening${legacyCount > 1 ? 's' : ''} pre-date the 10-axis dossier`}
       </p>
       {hover && (
