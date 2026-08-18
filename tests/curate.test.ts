@@ -102,7 +102,7 @@ describe('runCurate', () => {
     });
 
     const res = await runCurate();
-    expect(res).toEqual({ clustered: 0, curated: 1, failed: 0 });
+    expect(res).toEqual({ clustered: 0, curated: 1, failed: 0, filtered: 0 });
     expect(mockChat).toHaveBeenCalledTimes(1);
 
     // prompts carried the story, member item and vote calibration line
@@ -145,13 +145,13 @@ describe('runCurate', () => {
     });
 
     const res = await runCurate();
-    expect(res).toEqual({ clustered: 0, curated: 1, failed: 0 });
+    expect(res).toEqual({ clustered: 0, curated: 1, failed: 0, filtered: 0 });
     const [, userArg] = mockChat.mock.calls[0] as [string, string];
     expect(userArg).toContain('Source tags (prior evidence, not a verdict): video');
   });
 
   it('clamps scores to 0-100 integers and defaults missing domains to 0', async () => {
-    const story = insertStory('Model with weird scores');
+    const story = insertStory('AI model with weird scores');
     mockChat.mockResolvedValueOnce({
       domain_scores: { coding: 150, copy: -20, image: 55.6 },
       tldr: 't',
@@ -159,7 +159,7 @@ describe('runCurate', () => {
     });
 
     const res = await runCurate();
-    expect(res).toEqual({ clustered: 0, curated: 1, failed: 0 });
+    expect(res).toEqual({ clustered: 0, curated: 1, failed: 0, filtered: 0 });
 
     const updated = db.select().from(stories).where(eq(stories.id, story.id)).get()!;
     expect(JSON.parse(updated.domainScores!)).toEqual({
@@ -174,8 +174,8 @@ describe('runCurate', () => {
   });
 
   it('retryable LlmError leaves the story raw, counts failed, continues the batch (newest first, 72h window)', async () => {
-    const older = insertStory('Older story', new Date(Date.now() - 2 * 60 * 60 * 1000));
-    const newer = insertStory('Newer story', new Date(Date.now() - 1 * 60 * 60 * 1000));
+    const older = insertStory('Older AI model story', new Date(Date.now() - 2 * 60 * 60 * 1000));
+    const newer = insertStory('Newer AI model story', new Date(Date.now() - 1 * 60 * 60 * 1000));
     // outside the 72h display window — must never be sent to the LLM
     const ancient = insertStory('Ancient backfill story', new Date(Date.now() - 80 * 60 * 60 * 1000));
 
@@ -188,7 +188,7 @@ describe('runCurate', () => {
       });
 
     const res = await runCurate();
-    expect(res).toEqual({ clustered: 0, curated: 1, failed: 1 });
+    expect(res).toEqual({ clustered: 0, curated: 1, failed: 1, filtered: 0 });
     expect(mockChat).toHaveBeenCalledTimes(2);
 
     // newest-first: the failing first call hit the newer story
@@ -205,14 +205,14 @@ describe('runCurate', () => {
   });
 
   it('non-retryable LlmError aborts the remaining batch', async () => {
-    insertStory('Story one', new Date(Date.now() - 3 * 60 * 60 * 1000));
-    insertStory('Story two', new Date(Date.now() - 2 * 60 * 60 * 1000));
-    insertStory('Story three', new Date(Date.now() - 1 * 60 * 60 * 1000));
+    insertStory('AI model story one', new Date(Date.now() - 3 * 60 * 60 * 1000));
+    insertStory('AI model story two', new Date(Date.now() - 2 * 60 * 60 * 1000));
+    insertStory('AI model story three', new Date(Date.now() - 1 * 60 * 60 * 1000));
 
     mockChat.mockRejectedValue(new LlmError('Daily LLM call cap reached (500)', false));
 
     const res = await runCurate();
-    expect(res).toEqual({ clustered: 0, curated: 0, failed: 1 });
+    expect(res).toEqual({ clustered: 0, curated: 0, failed: 1, filtered: 0 });
     expect(mockChat).toHaveBeenCalledTimes(1);
 
     const all = db.select().from(stories).all();
@@ -243,10 +243,33 @@ describe('runCurate', () => {
     });
 
     const res = await runCurate();
-    expect(res).toEqual({ clustered: 1, curated: 1, failed: 0 });
+    expect(res).toEqual({ clustered: 1, curated: 1, failed: 0, filtered: 0 });
 
     const story = db.select().from(stories).all()[0];
     expect(story.title).toBe('Mistral releases new open weights model');
     expect(story.status).toBe('curated');
+  });
+
+  it('gate: off-topic stories are filtered without spending an LLM call', async () => {
+    const story = insertStory('Celebrity couple adopts a puppy in Malibu');
+
+    const res = await runCurate();
+    expect(res).toEqual({ clustered: 0, curated: 0, failed: 0, filtered: 1 });
+    expect(mockChat).not.toHaveBeenCalled();
+    expect(db.select().from(stories).where(eq(stories.id, story.id)).get()!.status).toBe('filtered');
+  });
+
+  it('gate: LLM-scored stories in the irrelevant band (<20) land as filtered', async () => {
+    const story = insertStory('OpenAI launches GPT-5.2 with agentic tools');
+    mockChat.mockResolvedValueOnce({
+      domain_scores: { coding: 12, copy: 8, image: 0, video: 0, ads: 15, agentic: 10 },
+      tldr: 't',
+      why_it_matters: 'w',
+    });
+
+    const res = await runCurate();
+    expect(res).toEqual({ clustered: 0, curated: 0, failed: 0, filtered: 1 });
+    expect(mockChat).toHaveBeenCalledTimes(1);
+    expect(db.select().from(stories).where(eq(stories.id, story.id)).get()!.status).toBe('filtered');
   });
 });

@@ -47,7 +47,7 @@ export const stories = sqliteTable('stories', {
   // effect, written once per high-score story by the second-look job
   secondLook: text('second_look'),
   secondLookAt: integer('second_look_at', { mode: 'timestamp' }),
-  status: text('status', { enum: ['raw', 'curated'] }).notNull().default('raw'),
+  status: text('status', { enum: ['raw', 'curated', 'filtered'] }).notNull().default('raw'),
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
 });
 

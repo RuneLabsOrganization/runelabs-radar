@@ -5,6 +5,7 @@ import { chatJSON, LlmError } from '../llm/minimax';
 import { DOMAINS, type Domain } from '../domains';
 import { getIdentity } from '../identity';
 import { clusterNewItems } from './cluster';
+import { passesGate } from './gate';
 
 /** Max 'raw' stories sent to MiniMax per run. */
 const CURATE_BATCH_LIMIT = 50;
@@ -152,10 +153,14 @@ function clampScore(n: unknown): number {
 /**
  * Curation job: clusters new items into stories, then scores/summarizes up to
  * 50 of the newest 'raw' stories inside the 72h display window with one MiniMax
- * call each. LLM failures leave the story 'raw' (still visible in the feed);
+ * call each. The relevance gate runs first: stories with no AI/domain vocabulary
+ * are marked 'filtered' without spending an LLM call, as are LLM-scored stories
+ * whose top score lands in the rubric's irrelevant band (<20). 'filtered'
+ * stories are invisible to every read path (all filter on curated/raw).
+ * LLM failures leave the story 'raw' (still visible in the feed);
  * a non-retryable error (daily cap, missing config) aborts the remaining batch.
  */
-export async function runCurate(): Promise<{ clustered: number; curated: number; failed: number }> {
+export async function runCurate(): Promise<{ clustered: number; curated: number; failed: number; filtered: number }> {
   const { newStories, merged } = await clusterNewItems();
   const clustered = newStories + merged;
   const db = getDb();
@@ -180,6 +185,7 @@ export async function runCurate(): Promise<{ clustered: number; curated: number;
 
   let curated = 0;
   let failed = 0;
+  let filtered = 0;
 
   for (const story of rawStories) {
     const memberItems: CurationMemberItem[] = db
@@ -211,6 +217,14 @@ export async function runCurate(): Promise<{ clustered: number; curated: number;
       ),
     ];
 
+    // relevance gate: no AI/domain vocabulary anywhere → filter without
+    // spending an LLM call (noise was ~46% of the curation budget)
+    if (!passesGate(story.title, memberItems.flatMap((m) => [m.title, m.excerpt ?? '']))) {
+      db.update(stories).set({ status: 'filtered' }).where(eq(stories.id, story.id)).run();
+      filtered++;
+      continue;
+    }
+
     const { system, user } = buildCurationPrompts(story, memberItems, recentVotes, sourceHints);
 
     try {
@@ -232,11 +246,13 @@ export async function runCurate(): Promise<{ clustered: number; curated: number;
               : null,
           entities: entities.length > 0 ? JSON.stringify(entities) : null,
           topScore,
-          status: 'curated',
+          // rubric's irrelevant band: scored, audited, but never displayed
+          status: topScore < 20 ? 'filtered' : 'curated',
         })
         .where(eq(stories.id, story.id))
         .run();
-      curated++;
+      if (topScore < 20) filtered++;
+      else curated++;
     } catch (e) {
       if (!(e instanceof LlmError)) throw e;
       failed++;
@@ -244,5 +260,5 @@ export async function runCurate(): Promise<{ clustered: number; curated: number;
     }
   }
 
-  return { clustered, curated, failed };
+  return { clustered, curated, failed, filtered };
 }
