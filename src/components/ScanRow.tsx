@@ -27,7 +27,7 @@ export default function ScanRow({
 }) {
   const href = safeHttpUrl(firstUrl);
   return (
-    <li className="row-hover flex items-center gap-3 border-b border-[var(--grat-soft)] px-1 py-[7px] last:border-b-0" data-created={story.createdAt.getTime()}>
+    <li className="row-hover flex items-center gap-3 border-b border-[var(--grat-soft)] px-1 py-[7px] last:border-b-0" data-created={story.createdAt.getTime()} data-fresh={Math.max(story.createdAt.getTime(), story.updatedAt?.getTime() ?? 0)}>
       <SignalMeter score={score} compact />
       <span className="min-w-0 flex-1 truncate text-[13px]" style={{ color: 'var(--ink-2)' }}>
         {isNew && (

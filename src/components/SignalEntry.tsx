@@ -45,6 +45,7 @@ export default function SignalEntry({
     <article
       className={`border-b border-[var(--grat-soft)] last:border-b-0 ${hero ? 'py-7' : 'py-5'}`}
       data-created={story.createdAt.getTime()}
+      data-fresh={Math.max(story.createdAt.getTime(), story.updatedAt?.getTime() ?? 0)}
     >
       <div className="flex items-start gap-3.5">
         <div className="pt-[5px]">

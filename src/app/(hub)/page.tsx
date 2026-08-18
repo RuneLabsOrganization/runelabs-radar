@@ -160,7 +160,9 @@ export default async function BriefingPage() {
       scores,
       score: personalScore(story.topScore, story.domainScores, affinity),
       createdAt: story.createdAt,
-      isNew: anchor ? story.createdAt > anchor : false,
+      // new OR updated: a merge bumps updatedAt, so fresh coverage of an
+      // existing story still counts against the visit anchor
+      isNew: anchor ? story.createdAt > anchor || (story.updatedAt !== null && story.updatedAt > anchor) : false,
     };
   });
   const { top, scan, lowCount } = splitFeed(contacts);
@@ -250,6 +252,7 @@ export default async function BriefingPage() {
       tldr: c.story.tldr,
       score: c.score,
       createdAtMs: c.story.createdAt.getTime(),
+      freshMs: Math.max(c.story.createdAt.getTime(), c.story.updatedAt?.getTime() ?? 0),
       scores: c.scores,
       domains: DOMAINS.filter((d) => (c.scores?.[d] ?? 0) >= DOMAIN_MEMBERSHIP_THRESHOLD),
       firstUrl: it.firstUrl,
@@ -358,7 +361,7 @@ export default async function BriefingPage() {
             value: tracked24h,
             series: days.map((d) => d.total),
           },
-          { label: 'new since your last visit', value: freshTotal },
+          { label: 'new or updated since your last visit', value: freshTotal },
           { label: 'corroborated by 2+ sources · 7d', value: echoStats().multiSource },
         ]}
         insights={scopeInsights}

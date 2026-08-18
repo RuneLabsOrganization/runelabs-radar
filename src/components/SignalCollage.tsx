@@ -15,6 +15,8 @@ export interface CollageEntry {
   score: number;
   /** epoch ms — stamped as data-created for AnonFresh/FeedKeys */
   createdAtMs: number;
+  /** epoch ms — max(createdAt, updatedAt); stamped as data-fresh for AnonFresh */
+  freshMs: number;
   scores: Partial<Record<Domain, number>> | null;
   /** sectors the story belongs to (membership >= threshold), precomputed server-side */
   domains: Domain[];
@@ -163,6 +165,7 @@ export default function SignalCollage({ entries }: { entries: CollageEntry[] }) 
                 key={e.id}
                 className="mb-3 break-inside-avoid rounded-[6px] border border-[var(--grat-soft)] bg-[var(--scope-1)] p-3 transition-colors hover:border-[var(--grat)]"
                 data-created={e.createdAtMs}
+                data-fresh={e.freshMs}
               >
                 <div className="flex items-start gap-2.5">
                   <div className="pt-[3px]">
