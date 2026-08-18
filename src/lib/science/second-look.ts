@@ -3,6 +3,7 @@ import { getDb } from '../db';
 import { stories } from '../db/schema';
 import { getIdentity } from '../identity';
 import { chatJSON, LlmError } from '../llm/minimax';
+import { promptLine } from '../prompt-hygiene';
 
 /** Only top-signal stories earn a second look. */
 const MIN_SCORE = 70;
@@ -78,8 +79,10 @@ export async function runSecondLook(): Promise<{ considered: number; written: nu
   const user = candidates
     .map(
       (s) =>
-        `[id ${s.id}] [score ${s.topScore}] ${s.title}\n` +
-        `TLDR: ${s.tldr ?? '(none)'}\nWhy it matters: ${s.whyItMatters ?? '(none)'}`,
+        // titles are scraped from feeds; tldr/why-it-matters derive from them —
+        // all untrusted, all prompt-lined
+        `[id ${s.id}] [score ${s.topScore}] ${promptLine(s.title, 160)}\n` +
+        `TLDR: ${promptLine(s.tldr ?? '(none)', 400)}\nWhy it matters: ${promptLine(s.whyItMatters ?? '(none)', 400)}`,
     )
     .join('\n\n');
 

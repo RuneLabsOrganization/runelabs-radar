@@ -49,6 +49,9 @@ export const stories = sqliteTable('stories', {
   secondLookAt: integer('second_look_at', { mode: 'timestamp' }),
   status: text('status', { enum: ['raw', 'curated', 'filtered'] }).notNull().default('raw'),
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+  // last time a new item merged into this story — null until first merge;
+  // the "updated" freshness signal and the re-curation trigger
+  updatedAt: integer('updated_at', { mode: 'timestamp' }),
 });
 
 export const items = sqliteTable('items', {

@@ -4,6 +4,7 @@ import { boardHistory, briefs, domainDigests, insights, stories } from '../db/sc
 import { DOMAINS, type Domain } from '../domains';
 import { getIdentity } from '../identity';
 import { chatJSON, LlmError } from '../llm/minimax';
+import { promptLine } from '../prompt-hygiene';
 
 interface InsightItem {
   headline: string;
@@ -111,9 +112,11 @@ export async function runBrief(): Promise<{ wrote: boolean; insights: number; di
   const storiesText = topStories
     .map(
       (s, i) =>
-        `${i + 1}. [score ${s.topScore}] ${s.title}\n` +
-        `   TLDR: ${s.tldr ?? '(none)'}\n` +
-        `   Why it matters: ${s.whyItMatters ?? '(none)'}`,
+        // titles are scraped from feeds; tldr/why-it-matters are LLM output derived
+        // from them — all of it gets prompt-line hygiene before interpolation
+        `${i + 1}. [score ${s.topScore}] ${promptLine(s.title, 160)}\n` +
+        `   TLDR: ${promptLine(s.tldr ?? '(none)', 400)}\n` +
+        `   Why it matters: ${promptLine(s.whyItMatters ?? '(none)', 400)}`,
     )
     .join('\n');
 

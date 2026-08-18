@@ -18,6 +18,19 @@ export function _setFetch(f: typeof fetch): void {
   _fetch = f;
 }
 
+// token usage accumulator for the current job run — drained into the job's
+// stats JSON so the admin panel sees cost, not just call counts
+let _promptTokens = 0;
+let _completionTokens = 0;
+
+/** Returns accumulated token usage since the last drain and resets the counters. */
+export function drainLlmUsageStats(): { promptTokens: number; completionTokens: number } {
+  const out = { promptTokens: _promptTokens, completionTokens: _completionTokens };
+  _promptTokens = 0;
+  _completionTokens = 0;
+  return out;
+}
+
 function today(): string {
   return new Date().toISOString().slice(0, 10);
 }
@@ -72,6 +85,8 @@ export async function chatJSON<T>(system: string, user: string): Promise<T> {
           body: JSON.stringify({
             model: config.minimaxModel,
             temperature: 0.2,
+            // bound runaway output — the curation response is ~120 tokens
+            max_tokens: 800,
             messages: [
               { role: 'system', content: system },
               { role: 'user', content: user },
@@ -85,7 +100,12 @@ export async function chatJSON<T>(system: string, user: string): Promise<T> {
       if (!res.ok) {
         throw new LlmError(`MiniMax HTTP ${res.status}`, res.status === 429 || res.status >= 500);
       }
-      const data = (await res.json()) as { choices?: { message?: { content?: string } }[] };
+      const data = (await res.json()) as {
+        choices?: { message?: { content?: string } }[];
+        usage?: { prompt_tokens?: number; completion_tokens?: number };
+      };
+      _promptTokens += Number(data.usage?.prompt_tokens) || 0;
+      _completionTokens += Number(data.usage?.completion_tokens) || 0;
       const content = data.choices?.[0]?.message?.content ?? '';
       return JSON.parse(extractJson(content)) as T;
     } catch (e) {

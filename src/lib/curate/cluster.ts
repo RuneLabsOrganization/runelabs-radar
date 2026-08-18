@@ -89,6 +89,9 @@ export async function clusterNewItems(): Promise<{ newStories: number; merged: n
 
     if (bestId !== null) {
       db.update(items).set({ storyId: bestId }).where(eq(items.id, item.id)).run();
+      // a merge is fresh coverage: bump the story so "new since last visit"
+      // and re-curation see it (createdAt alone can't — it's the FIRST item's date)
+      db.update(stories).set({ updatedAt: new Date() }).where(eq(stories.id, bestId)).run();
       merged++;
     } else {
       const story = db
