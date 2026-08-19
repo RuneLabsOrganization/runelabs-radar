@@ -16,8 +16,10 @@ export const metadata: Metadata = {
 
 /**
  * Embeddable "Best right now" widget — a chrome-free, iframe-friendly board.
- * Optional ?domain=coding scopes it to one domain. Attribution footer links
- * back to the full board (that's the citation flywheel — keep it).
+ * Optional ?domain=coding scopes it to one domain; a non-empty domain that
+ * isn't a known slug gets an "unknown domain" notice instead of silently
+ * rendering the full board. Attribution footer links back to the full board
+ * (that's the citation flywheel — keep it).
  */
 export default async function EmbedBoardPage({
   searchParams,
@@ -27,6 +29,19 @@ export default async function EmbedBoardPage({
   await requireViewer();
   const { domain } = await searchParams;
   const filter = typeof domain === 'string' && isDomain(domain) ? domain : null;
+
+  if (domain && !filter) {
+    return (
+      <div
+        className="mx-auto flex max-w-[420px] items-center justify-center px-3 py-6"
+        style={{ background: 'var(--scope-0)' }}
+      >
+        <p className="mono text-[11px]" style={{ color: 'var(--ink-4)' }}>
+          unknown domain: {domain}
+        </p>
+      </div>
+    );
+  }
 
   const rows = getDb().select().from(boardEntries)
     .orderBy(asc(boardEntries.domain), asc(boardEntries.task))

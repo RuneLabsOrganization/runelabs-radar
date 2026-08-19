@@ -69,6 +69,7 @@ export function taskCost(
 
 /** Compact dollar formatting across four orders of magnitude. */
 export function fmtUsd(v: number): string {
+  if (v === 0) return '$0';
   if (v >= 10) return `$${v.toFixed(1)}`;
   if (v >= 1) return `$${v.toFixed(2)}`;
   if (v >= 0.1) return `$${v.toFixed(3)}`;

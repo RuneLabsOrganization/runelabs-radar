@@ -8,6 +8,11 @@ import { buildRss, mdToText } from '@/lib/rss';
 
 export const dynamic = 'force-dynamic';
 
+/** The brief's own H1 duplicates the item title — drop the first heading line. */
+function stripLeadingH1(md: string): string {
+  return md.replace(/^#\s+[^\n]+\n+/, '');
+}
+
 /** Public RSS feed of the daily brief — last 14 editions. */
 export async function GET() {
   const base = config.siteUrl;
@@ -21,10 +26,10 @@ export async function GET() {
     description: 'The daily machine-written brief: what happened, why it matters, board changes.',
     items: recent.map((b) => ({
       title: `${id.briefTitle} — ${b.date}`,
-      link: `${base}/brief`,
+      link: `${base}/brief?date=${b.date}`,
       date: b.createdAt,
       guid: `brief-${b.date}`,
-      description: mdToText(b.markdown),
+      description: mdToText(stripLeadingH1(b.markdown)),
     })),
   });
 

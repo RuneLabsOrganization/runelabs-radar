@@ -17,6 +17,9 @@ interface Hit {
   createdAt: Date;
 }
 
+/** Raw FTS row: created_at is unix seconds — raw SQL bypasses drizzle's timestamp mapping. */
+type RawHit = Omit<Hit, 'createdAt'> & { createdAt: number };
+
 /** Each token double-quoted → FTS5 treats input as literal terms, never as query syntax. */
 function ftsQuery(q: string): string {
   return q
@@ -32,21 +35,20 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
   const { q } = await searchParams;
   const query = (q ?? '').trim().slice(0, 120);
 
+  // '' when no token survives the ≥2-char filter (e.g. "a b") — nothing searchable
+  const match = ftsQuery(query);
   let hits: Hit[] = [];
-  if (query.length >= 2) {
-    const match = ftsQuery(query);
-    if (match) {
-      const db = getDb();
-      hits = db.all<Hit>(
+  if (query.length >= 2 && match) {
+    const db = getDb();
+    hits = db
+      .all<RawHit>(
         sql`SELECT s.id, s.title, s.tldr, s.top_score as topScore, s.domain_scores as domainScores, s.created_at as createdAt
             FROM stories_fts f JOIN stories s ON s.id = f.rowid
             WHERE stories_fts MATCH ${match} AND s.status = 'curated'
             ORDER BY bm25(stories_fts)
             LIMIT 50`,
-      );
-      // better-sqlite3 returns created_at as number (ms) — normalize to Date
-      hits = hits.map((h) => ({ ...h, createdAt: new Date(h.createdAt) }));
-    }
+      )
+      .map((h) => ({ ...h, createdAt: new Date(h.createdAt * 1000) }));
   }
 
   return (
@@ -69,7 +71,9 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
 
       {query.length >= 2 && (
         <p className="mono mt-4 text-[10.5px] uppercase tracking-[0.08em]" style={{ color: 'var(--ink-4)' }}>
-          {hits.length} hit{hits.length === 1 ? '' : 's'} for &ldquo;{query}&rdquo;
+          {match
+            ? `${hits.length} hit${hits.length === 1 ? '' : 's'} for “${query}”`
+            : 'terms need at least 2 characters'}
         </p>
       )}
 
@@ -83,8 +87,15 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
             <span className="mono shrink-0 text-[10.5px] tabular-nums" style={{ color: 'var(--ink-4)' }}>
               {timeAgo(h.createdAt)}
             </span>
-            <span className="min-w-0 flex-1 truncate text-[13px]" style={{ color: 'var(--ink-2)' }}>
-              {h.title}
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-[13px]" style={{ color: 'var(--ink-2)' }}>
+                {h.title}
+              </span>
+              {h.tldr && (
+                <span className="block text-[13px] leading-snug" style={{ color: 'var(--ink-3)' }}>
+                  {h.tldr}
+                </span>
+              )}
             </span>
             <span className="hidden sm:inline-flex">
               <DomainTicks scores={parseDomainScores(h.domainScores)} />

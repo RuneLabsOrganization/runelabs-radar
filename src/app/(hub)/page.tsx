@@ -189,7 +189,10 @@ export default async function BriefingPage() {
 
   const days = dailyDomainCounts(14);
   const entities = topEntities(8);
-  const hype = new Map(hypeIndex(12).map((h) => [h.name.toLowerCase(), h.score]));
+  // entities with no artifact series score null — no data, so no H/S chip at all
+  const hype = new Map(
+    hypeIndex(12).flatMap((h) => (h.score === null ? [] : [[h.name.toLowerCase(), h.score] as const])),
+  );
   const notes = latestInsights();
   const noticed = latestPatterns(6);
   // sector-spike patterns were detected evaluating "yesterday" — mark that day

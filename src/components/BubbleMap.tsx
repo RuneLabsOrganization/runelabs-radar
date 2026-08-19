@@ -246,7 +246,14 @@ export default function BubbleMap({ data, compact = false }: { data: TopicNode[]
         onClick={(e) => {
           e.stopPropagation();
           if (compact) return; // compact wraps in a Link instead
-          if (isFocus) return;
+          if (isFocus) {
+            // clicking the already-focused leaf retries a failed story load
+            // (successful loads are cached in `stories`, so this only fires after errors)
+            if (isLeaf(n) && n.data.node && !stories.has(n.data.node.id) && loadingLeaf !== n.data.node.id) {
+              loadStories(n.data.node.id);
+            }
+            return;
+          }
           focusNode(n);
         }}
         onMouseEnter={(e) => {
@@ -513,6 +520,11 @@ export default function BubbleMap({ data, compact = false }: { data: TopicNode[]
                 </li>
               ))}
             </ul>
+            {leafStories && leafStories.length > 0 && focusedTopic.size > leafStories.length && (
+              <p className="mono mt-2 text-[10px]" style={{ color: 'var(--ink-4)' }}>
+                showing {leafStories.length} of {focusedTopic.size}
+              </p>
+            )}
           </aside>
         )}
       </div>
@@ -578,6 +590,11 @@ export default function BubbleMap({ data, compact = false }: { data: TopicNode[]
                 </li>
               ))}
             </ul>
+            {leafStories && leafStories.length > 0 && focusedTopic.size > leafStories.length && (
+              <p className="mono mt-2 text-[10px]" style={{ color: 'var(--ink-4)' }}>
+                showing {leafStories.length} of {focusedTopic.size}
+              </p>
+            )}
           </div>
         </div>
       )}

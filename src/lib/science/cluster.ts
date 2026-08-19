@@ -9,7 +9,8 @@ import { promptLine } from '../prompt-hygiene';
 import { parseDomainScores, topDomain } from '@/components/DomainChips';
 import { kmeans } from './math';
 
-const WINDOW_DAYS = 14;
+/** clustering window — stories older than this don't take part (surfaced on /map) */
+export const WINDOW_DAYS = 14;
 const MIN_STORIES = 12;
 const SPLIT_MIN = 24; // macro clusters below this stay leaves
 const TITLES_PER_LABEL = 6;

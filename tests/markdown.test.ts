@@ -45,6 +45,18 @@ describe('renderMarkdown', () => {
     );
   });
 
+  it('renders root-relative links in-tab (no target=_blank)', () => {
+    const out = renderMarkdown('[watch GPT-5](/entity/GPT-5)');
+    expect(out).toBe('<p><a href="/entity/GPT-5">watch GPT-5</a></p>');
+    expect(out).not.toContain('target=');
+  });
+
+  it('refuses protocol-relative links', () => {
+    const out = renderMarkdown('[x](//evil.com/phish)');
+    expect(out).not.toContain('<a ');
+    expect(out).toBe('<p>[x](//evil.com/phish)</p>');
+  });
+
   it('refuses non-http link schemes', () => {
     const out = renderMarkdown('[x](javascript:alert(1))');
     expect(out).not.toContain('<a ');

@@ -3,7 +3,7 @@
  *
  * All input HTML is escaped first — there is NO raw-HTML passthrough.
  * Supported syntax: #/##/### headings, **bold**, *italic*, `inline code`,
- * "- " lists, [text](http(s) links → target="_blank"), paragraphs.
+ * "- " lists, [text](http(s) → new tab, root-relative → same tab), paragraphs.
  */
 
 function escapeHtml(s: string): string {
@@ -19,11 +19,13 @@ function escapeHtml(s: string): string {
 function formatText(escaped: string): string {
   let out = escaped;
 
-  // Links — http(s) only, so javascript:/data: URLs never become anchors.
+  // Links — http(s) open in a new tab; root-relative paths stay in-tab.
+  // Other schemes (javascript:, data:, protocol-relative //host) never become anchors.
   out = out.replace(
     /\[([^\]\n]+)\]\((https?:\/\/[^)\s]+)\)/g,
     '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>',
   );
+  out = out.replace(/\[([^\]\n]+)\]\((\/(?!\/)[^)\s]*)\)/g, '<a href="$2">$1</a>');
 
   // Bold before italic so ** pairs are not consumed as two * pairs.
   out = out.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');

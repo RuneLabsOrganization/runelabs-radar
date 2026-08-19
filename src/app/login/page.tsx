@@ -1,11 +1,18 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import Link from 'next/link';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { Suspense, useState } from 'react';
 import RadarBackdrop from '@/components/RadarBackdrop';
 
-export default function LoginPage() {
+/** Open-redirect guard: only same-site absolute paths (no protocol-relative '//'). */
+function safeNext(next: string | null): string {
+  return next && next.startsWith('/') && !next.startsWith('//') ? next : '/';
+}
+
+function LoginForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [name, setName] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -24,7 +31,7 @@ export default function LoginPage() {
       });
       if (res.ok) {
         // Keep the button disabled while navigating.
-        router.push('/');
+        router.push(safeNext(searchParams.get('next')));
         router.refresh();
         return;
       }
@@ -90,7 +97,26 @@ export default function LoginPage() {
         >
           {busy ? 'Signing in…' : 'Sign in'}
         </button>
+
+        <p className="mt-4 text-center">
+          <Link
+            href="/"
+            className="mono text-[10px] uppercase tracking-[0.08em]"
+            style={{ color: 'var(--ink-4)' }}
+          >
+            ← back to radar
+          </Link>
+        </p>
       </form>
     </main>
+  );
+}
+
+export default function LoginPage() {
+  // Next 15 requires a Suspense boundary around useSearchParams for prerendering
+  return (
+    <Suspense>
+      <LoginForm />
+    </Suspense>
   );
 }

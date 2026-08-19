@@ -17,7 +17,9 @@ import {
   topicClusters,
 } from './db/schema';
 import { DOMAINS, DOMAIN_MEMBERSHIP_THRESHOLD, type Domain } from './domains';
+import { TOP_SIGNAL_MIN } from './feed';
 import { canonicalEntityKey, canonicalEntityName } from './entity';
+import { RUNNING_FRESH_MS, type JobName } from './jobs';
 import { safeHttpUrl } from './safe-url';
 import { parseDomainScores, topDomain } from '@/components/DomainChips';
 
@@ -461,24 +463,39 @@ export interface JobRunCell {
   durationMs: number | null;
 }
 
-/** Recent runs per job for the health timeline (oldest → newest). */
+// known pipeline jobs in display order — anything else with recorded runs
+// (rescore, second-look, gate-audit, CLI-only jobs…) follows alphabetically,
+// so the timeline can never silently drop a scheduled job again
+const KNOWN_JOBS: readonly JobName[] = [
+  'ingest',
+  'curate',
+  'embed',
+  'snapshot',
+  'velocity',
+  'launches',
+  'pain',
+  'science',
+  'opportunities',
+  'board',
+  'brief',
+  'stacks',
+];
+
+/** Recent runs per job for the health timeline (oldest → newest), for every job present in job_runs. */
 export function jobHistory(perJob = 28): Record<string, JobRunCell[]> {
   const db = getDb();
+  const present = db
+    .selectDistinct({ job: jobRuns.job })
+    .from(jobRuns)
+    .all()
+    .map((r) => r.job);
+  const known = new Set<string>(KNOWN_JOBS);
+  const jobs = [
+    ...KNOWN_JOBS.filter((j) => present.includes(j)),
+    ...present.filter((j) => !known.has(j)).sort(),
+  ];
   const out: Record<string, JobRunCell[]> = {};
-  for (const job of [
-    'ingest',
-    'curate',
-    'embed',
-    'snapshot',
-    'velocity',
-    'launches',
-    'pain',
-    'science',
-    'opportunities',
-    'board',
-    'brief',
-    'stacks',
-  ] as const) {
+  for (const job of jobs) {
     const rows = db
       .select()
       .from(jobRuns)
@@ -489,7 +506,9 @@ export function jobHistory(perJob = 28): Record<string, JobRunCell[]> {
     out[job] = rows
       .reverse()
       .map((r) => ({
-        status: r.status,
+        // a 'running' row past the reap threshold means the process died
+        // mid-run — present it as failed, not as still running
+        status: r.status === 'running' && r.startedAt.getTime() < Date.now() - RUNNING_FRESH_MS ? 'error' : r.status,
         startedAt: r.startedAt,
         durationMs: r.finishedAt ? r.finishedAt.getTime() - r.startedAt.getTime() : null,
       }));
@@ -568,7 +587,7 @@ export function pipelineFunnel(days = 7): Funnel {
     items: itemCount,
     stories: storyRows.length,
     curated: curated.length,
-    topSignals: curated.filter((s) => s.topScore >= 70).length,
+    topSignals: curated.filter((s) => s.topScore >= TOP_SIGNAL_MIN).length,
   };
 }
 
@@ -613,7 +632,6 @@ export interface TopicNode {
   summary: string | null;
   size: number;
   heat: number;
-  coherence: number;
   sector: Domain | null;
   children: TopicNode[];
 }
@@ -630,7 +648,6 @@ export function topicHierarchy(): TopicNode[] | null {
     summary: r.summary,
     size: r.size,
     heat: r.heat,
-    coherence: r.coherence,
     sector: r.sector && (DOMAINS as readonly string[]).includes(r.sector) ? (r.sector as Domain) : null,
     children: [],
   });
@@ -644,6 +661,18 @@ export function topicHierarchy(): TopicNode[] | null {
   for (const m of macros) m.children.sort((a, b) => b.size - a.size);
   macros.sort((a, b) => b.size - a.size);
   return macros;
+}
+
+/** Day (YYYY-MM-DD UTC) of the latest clustering run — the topic map's as-of date. */
+export function topicHierarchyAsOf(): string | null {
+  const db = getDb();
+  const latest = db
+    .select({ date: topicClusters.date })
+    .from(topicClusters)
+    .orderBy(desc(topicClusters.date))
+    .limit(1)
+    .get();
+  return latest?.date ?? null;
 }
 
 export interface ClusterStory {

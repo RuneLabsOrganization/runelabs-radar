@@ -30,7 +30,8 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
     .from(stories)
     .where(eq(stories.id, Number(id)))
     .get();
-  if (!story) return {};
+  // only curated stories are public — the page itself 404s on anything else
+  if (!story || story.status !== 'curated') return {};
   const description = story.tldr ?? story.whyItMatters ?? undefined;
   return {
     title: story.title,
@@ -47,7 +48,8 @@ export default async function StoryPage({ params }: { params: Promise<{ id: stri
   await requireViewer();
   const db = getDb();
   const story = db.select().from(stories).where(eq(stories.id, storyId)).get();
-  if (!story) notFound();
+  // only curated stories are public — 'raw'/'filtered' are never-display bands
+  if (!story || story.status !== 'curated') notFound();
 
   const srcs = storySources(db, storyId);
   const scores = parseDomainScores(story.domainScores);
@@ -82,7 +84,7 @@ export default async function StoryPage({ params }: { params: Promise<{ id: stri
   };
 
   // entities mentioned in the story → watch-page chips
-  const entities: { name: string; kind?: string }[] = (() => {
+  const entities: { name: string }[] = (() => {
     try {
       const parsed = JSON.parse(story.entities ?? '[]') as { name?: unknown }[];
       return Array.isArray(parsed)

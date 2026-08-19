@@ -17,6 +17,7 @@ import {
   metricWeeklyDelta,
   weeklyDelta,
   type Delta,
+  type MetricDelta,
 } from '@/lib/entity-extras';
 import MiniTrend from '@/components/MiniTrend';
 import { DOMAIN_LABELS, isDomain } from '@/lib/domains';
@@ -35,7 +36,8 @@ function fmtNum(v: number): string {
   if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(1)}M`;
   if (v >= 10_000) return `${Math.round(v / 1000)}k`;
   if (v >= 1000) return `${(v / 1000).toFixed(1)}k`;
-  return String(v);
+  // small values can be raw floats (metric deltas) — trim binary-float noise
+  return String(Number(v.toFixed(2)));
 }
 
 /** Stake/Yahoo delta chip: arrow + abs + % + range label, direction-colored. */
@@ -116,7 +118,7 @@ export default async function EntityPage({ params }: { params: Promise<{ name: s
   }
   const velocity = [...perSeries.entries()]
     .map(([key, points]) => ({ key, delta: metricWeeklyDelta(points) }))
-    .filter((v): v is { key: string; delta: Delta } => v.delta !== null)
+    .filter((v): v is { key: string; delta: MetricDelta } => v.delta !== null)
     .sort((a, b) => b.delta.current - a.delta.current);
 
   const placements = boardPlacements(entity.name);
@@ -143,7 +145,7 @@ export default async function EntityPage({ params }: { params: Promise<{ name: s
     .all();
 
   const hypeChip =
-    hype === undefined ? null : hype.score > 70 ? (
+    hype === undefined || hype.score === null ? null : hype.score > 70 ? (
       <span className="mono rounded-[3px] border border-[var(--grat)] px-1.5 py-0.5 text-[10px] uppercase tracking-[0.06em]" style={{ color: 'var(--amber)' }}>
         hype {hype.score}
       </span>
@@ -190,10 +192,11 @@ export default async function EntityPage({ params }: { params: Promise<{ name: s
             label={humanizeMetricKey(v.key)}
             value={fmtNum(v.delta.current)}
             delta={v.delta}
+            range={`${v.delta.days}d`}
           />
         ))}
       </div>
-      {hype && (
+      {hype && hype.score !== null && (
         <p className="mono mt-2 text-[10px]" style={{ color: 'var(--ink-4)' }}>
           hype vs substance — high is loud, low is shipping (mentions vs github/hf/npm artifacts, 7d)
         </p>
@@ -237,7 +240,7 @@ export default async function EntityPage({ params }: { params: Promise<{ name: s
                   <span className="mono tabular-nums text-[11px]" style={{ color: 'var(--ink-2)' }}>
                     {v.delta.current.toLocaleString('en-US')}
                   </span>
-                  <DeltaChip delta={v.delta} range="7d" />
+                  <DeltaChip delta={v.delta} range={`${v.delta.days}d`} />
                 </span>
               </div>
             ))}

@@ -115,6 +115,21 @@ export default async function BoardPage() {
   // history minus "no field changes" noise, capped — full log lives on /changelog
   const meaningfulHistory = history.filter((h) => !isNoopChange(h.change)).slice(0, 8);
 
+  // nav anchors mirror the exact render conditions below — no dead links for
+  // anonymous visitors (AA sections) or missing media arenas
+  const navSections: [string, string][] = [['boards', 'Rankings']];
+  if (aa && aa.models.length > 0) {
+    navSections.push(
+      ['market', 'Market'],
+      ['race', 'Race'],
+      ['forecast', 'Forecast'],
+      ['costs', 'Costs'],
+      ['value', 'Value'],
+    );
+  }
+  if (media) navSections.push(['arenas', 'Arenas']);
+  navSections.push(['changes', 'Changes']);
+
   return (
     <div className="mx-auto max-w-[860px] px-6 py-7">
       <PageHeader
@@ -124,7 +139,7 @@ export default async function BoardPage() {
       />
 
       <div className="mt-3">
-        <BoardNav />
+        <BoardNav sections={navSections} />
       </div>
 
       {/* the rankings first — the tables are the point of the page */}

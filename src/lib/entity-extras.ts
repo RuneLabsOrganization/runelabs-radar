@@ -21,6 +21,11 @@ export function makeDelta(current: number, previous: number): Delta {
   };
 }
 
+/** Delta plus the actual day span between the two compared points (usually 7, less on young series). */
+export interface MetricDelta extends Delta {
+  days: number;
+}
+
 /** Mentions this week vs last week from a daily series (second half vs first half). */
 export function weeklyDelta(series: number[]): Delta {
   const half = Math.floor(series.length / 2);
@@ -30,7 +35,7 @@ export function weeklyDelta(series: number[]): Delta {
 }
 
 /** Latest value vs the value ~7 days earlier, from a dated metric series. */
-export function metricWeeklyDelta(points: { date: string; value: number }[]): Delta | null {
+export function metricWeeklyDelta(points: { date: string; value: number }[]): MetricDelta | null {
   if (points.length === 0) return null;
   const sorted = [...points].sort((a, b) => (a.date < b.date ? -1 : 1));
   const latest = sorted[sorted.length - 1];
@@ -43,7 +48,10 @@ export function metricWeeklyDelta(points: { date: string; value: number }[]): De
     if (p.date <= target) prev = p;
     else break;
   }
-  return makeDelta(latest.value, prev.value);
+  const days = Math.round(
+    (new Date(`${latest.date}T00:00:00Z`).getTime() - new Date(`${prev.date}T00:00:00Z`).getTime()) / 864e5,
+  );
+  return { ...makeDelta(latest.value, prev.value), days };
 }
 
 export interface BoardPlacement {
@@ -122,26 +130,40 @@ export function coMentioned(name: string, limit = 6): CoMentioned[] {
     .map((m) => ({ name: m.name, slug: entitySlug(m.name), count: m.count }));
 }
 
-/** "github:owner/repo:stars" → "github stars · owner/repo". */
+/** Display names for the metric_points sources; unknown sources fall back to the raw id. */
+const SOURCE_LABELS: Record<string, string> = {
+  aa: 'Artificial Analysis',
+  github: 'GitHub',
+  huggingface: 'Hugging Face',
+  npm: 'npm',
+  launches: 'launches',
+};
+
+/** "github:owner/repo:stars" → "GitHub stars · owner/repo". */
 export function humanizeMetricKey(key: string): string {
   const [source, entity, metric] = key.split(':');
   const metricLabel =
     metric === 'weekly_downloads' ? 'weekly downloads' : metric === 'downloads' ? 'downloads' : metric ?? '';
-  return `${source} ${metricLabel} · ${entity}`;
+  const sourceLabel = SOURCE_LABELS[source] ?? (source.startsWith('aa-media-') ? 'Artificial Analysis' : source);
+  return `${sourceLabel} ${metricLabel} · ${entity}`;
 }
 
 /**
- * Top entities inside one sector: entities from curated stories whose score for
- * the domain clears the membership threshold (>= 40), canonical-merged, ranked
- * by distinct story count, latest-72h+ scope (whole corpus — sectors trend).
+ * Top entities inside one sector over the last 7 days (same window as
+ * topEntities()): entities from curated stories whose score for the domain
+ * clears the membership threshold (>= 40), canonical-merged, ranked by
+ * distinct story count.
  */
 export function topEntitiesInDomain(domain: string, limit = 6): CoMentioned[] {
   const db = getDb();
+  // created_at is unix seconds (drizzle timestamp mode)
+  const weekAgo = Math.floor((Date.now() - 7 * 864e5) / 1000);
   const rows = db.all<{ name: string; count: number }>(
     sql`SELECT e.value->>'name' AS name, count(DISTINCT s.id) AS count
         FROM stories s, json_each(s.entities) e
         WHERE s.status = 'curated'
           AND CAST(coalesce(json_extract(s.domain_scores, '$.' || ${domain}), 0) AS INTEGER) >= 40
+          AND s.created_at >= ${weekAgo}
         GROUP BY lower(e.value->>'name')
         ORDER BY count DESC`,
   );

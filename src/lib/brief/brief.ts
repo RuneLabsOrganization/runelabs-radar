@@ -77,8 +77,8 @@ function quietDayMarkdown(date: string, historyLines: string[]): string {
 /**
  * Deterministic watch-alerts section appended to every brief: the freshest
  * pattern detections (entity surges, price drops, launch spikes), linked to
- * their watch pages. No LLM call — and it lands in /brief.xml, so RSS readers
- * get the alerts too.
+ * their watch pages. No LLM call. RSS readers never see it: /brief.xml
+ * truncates descriptions to 300 chars, well before this trailing section.
  */
 function watchCrossingsMarkdown(): string {
   const db = getDb();

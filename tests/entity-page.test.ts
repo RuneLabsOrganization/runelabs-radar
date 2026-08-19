@@ -102,8 +102,9 @@ describe('coMentioned', () => {
 });
 
 describe('humanizeMetricKey', () => {
-  it('renders readable labels', () => {
-    expect(humanizeMetricKey('github:owner/repo:stars')).toBe('github stars · owner/repo');
+  it('renders readable labels with display names for known sources', () => {
+    expect(humanizeMetricKey('github:owner/repo:stars')).toBe('GitHub stars · owner/repo');
     expect(humanizeMetricKey('npm:react:weekly_downloads')).toBe('npm weekly downloads · react');
+    expect(humanizeMetricKey('aa:GPT-5:speed')).toBe('Artificial Analysis speed · GPT-5');
   });
 });

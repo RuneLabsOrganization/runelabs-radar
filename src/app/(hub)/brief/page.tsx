@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, lt } from 'drizzle-orm';
+import { and, desc, eq, gte, lte } from 'drizzle-orm';
 import Link from 'next/link';
 import { requireViewer } from '@/lib/auth/user';
 import { getDb } from '@/lib/db';
@@ -34,6 +34,11 @@ function editionLabel(date: string): string {
   return `${WEEKDAYS[d.getUTCDay()]} ${String(d.getUTCDate()).padStart(2, '0')} ${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
 }
 
+/** UTC wall-clock time of the edition's last write (reruns overwrite createdAt). */
+function utcTime(d: Date): string {
+  return `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`;
+}
+
 /** The brief's own H1 duplicates the edition header — drop the first heading line. */
 function stripLeadingH1(md: string): string {
   return md.replace(/^#\s+[^\n]+\n+/, '');
@@ -66,7 +71,8 @@ export default async function BriefPage({
 
   const currentDate = selected?.date ?? date;
 
-  // the stories behind the edition: that day's strongest curated contacts
+  // the stories behind the edition: curated contacts from the 24h before it was
+  // last written (createdAt is overwritten on rerun, so the window tracks the write)
   const behindTheBrief = selected
     ? db
         .select({ id: stories.id, title: stories.title, topScore: stories.topScore })
@@ -74,8 +80,8 @@ export default async function BriefPage({
         .where(
           and(
             eq(stories.status, 'curated'),
-            gte(stories.createdAt, new Date(`${selected.date}T00:00:00Z`)),
-            lt(stories.createdAt, new Date(new Date(`${selected.date}T00:00:00Z`).getTime() + 864e5)),
+            gte(stories.createdAt, new Date(selected.createdAt.getTime() - 864e5)),
+            lte(stories.createdAt, selected.createdAt),
           ),
         )
         .orderBy(desc(stories.topScore))
@@ -93,7 +99,7 @@ export default async function BriefPage({
       <style>{briefStyles}</style>
 
       <PageHeader
-        kicker="daily brief &middot; written at 07:00 sharp"
+        kicker={selected ? `daily brief · written at ${utcTime(selected.createdAt)} utc` : 'daily brief'}
         title="Brief"
         description="Yesterday's AI news in five minutes — written every morning, with the board changes that matter."
       />
@@ -137,7 +143,7 @@ export default async function BriefPage({
                   )}
                 </div>
                 <div className="mono mt-1 text-[10.5px] tracking-[0.06em] uppercase" style={{ color: 'var(--ink-4)' }}>
-                  written at 07:00 &middot; {readMinutes} min read
+                  written at {utcTime(selected.createdAt)} utc &middot; {readMinutes} min read
                 </div>
               </div>
 

@@ -5,6 +5,7 @@ import { boardHistory, stories } from '@/lib/db/schema';
 import { config } from '@/lib/config';
 import { getIdentity } from '@/lib/identity';
 import { buildRss, mdToText, type RssItem } from '@/lib/rss';
+import { isNoopChange } from '@/lib/board/change';
 
 export const dynamic = 'force-dynamic';
 
@@ -28,7 +29,9 @@ export async function GET() {
     .from(boardHistory)
     .where(gt(boardHistory.appliedAt, cutoff))
     .orderBy(desc(boardHistory.appliedAt))
-    .all();
+    .all()
+    // consistency with /changelog: "no field changes" rows are noise, not changelog
+    .filter((h) => !isNoopChange(h.change));
 
   const items: RssItem[] = [
     ...moves.map((h) => ({

@@ -106,6 +106,7 @@ export default function ModelScatter({
             onClick={() => {
               setMetric(m);
               setHover(null);
+              setPlayIdx(null); // history is intelligence-only — stop playback under the new label
             }}
             aria-pressed={metric === m}
             className={`cursor-pointer rounded-[3px] border px-2 py-0.5 uppercase transition-colors ${

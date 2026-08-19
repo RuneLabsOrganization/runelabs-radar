@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { useTestDb } from './helpers/db';
 import { getDb } from '@/lib/db';
 import type { Db } from '@/lib/db';
-import { benchmarkSnapshots, items, jobRuns, sources, stories } from '@/lib/db/schema';
+import { benchmarkSnapshots, items, jobRuns, sources, stories, topicClusters } from '@/lib/db/schema';
 import {
   aaModels,
   dailyDomainCounts,
@@ -13,7 +13,7 @@ import {
 } from '@/lib/analytics';
 import { compactAaMediaSnapshot, compactAaSnapshot } from '@/lib/board/sync';
 import { fmtPtsPerDollar, fmtUsd, taskCost, TASK_ARCHETYPES } from '@/lib/costs';
-import { aaMedia, llmUsageHistory, llmUsageTodayByJob, pipelineFunnel, sourceVolume } from '@/lib/analytics';
+import { aaMedia, jobHistory, llmUsageHistory, llmUsageTodayByJob, pipelineFunnel, sourceVolume, topicHierarchyAsOf } from '@/lib/analytics';
 import { llmUsage } from '@/lib/db/schema';
 import { sanitizeEntities } from '@/lib/curate/curate';
 import { sanitizeInsights } from '@/lib/brief/brief';
@@ -369,5 +369,57 @@ describe('sourceVolume yield', () => {
     const row = sourceVolume(14).find((r) => r.name === 'Feed X')!;
     expect(row.total7d).toBe(4);
     expect(row.used7d).toBe(1);
+  });
+});
+
+describe('jobHistory', () => {
+  beforeEach(() => useTestDb());
+
+  it('covers every job present in job_runs — known pipeline first, extras alphabetical', () => {
+    const db = getDb();
+    const now = new Date();
+    db.insert(jobRuns)
+      .values([
+        { job: 'ingest', startedAt: now, status: 'ok', finishedAt: now },
+        { job: 'second-look', startedAt: now, status: 'error', finishedAt: now },
+        { job: 'gate-audit', startedAt: now, status: 'ok', finishedAt: now },
+        { job: 'opp-rescore', startedAt: now, status: 'ok', finishedAt: now },
+        { job: 'rescore', startedAt: now, status: 'ok', finishedAt: now },
+      ])
+      .run();
+
+    const history = jobHistory();
+    expect(Object.keys(history)).toEqual(['ingest', 'gate-audit', 'opp-rescore', 'rescore', 'second-look']);
+    expect(history['second-look'][0].status).toBe('error');
+  });
+
+  it('presents a running row older than the reap threshold as failed, not running', () => {
+    const db = getDb();
+    db.insert(jobRuns)
+      .values([
+        { job: 'curate', startedAt: new Date(Date.now() - 60 * 60e3), status: 'running' }, // died mid-run
+        { job: 'ingest', startedAt: new Date(), status: 'running' }, // still fresh
+      ])
+      .run();
+
+    const history = jobHistory();
+    expect(history.curate[0].status).toBe('error');
+    expect(history.ingest[0].status).toBe('running');
+  });
+});
+
+describe('topicHierarchyAsOf', () => {
+  beforeEach(() => useTestDb());
+
+  it('returns the latest cluster date, null when no clusters exist', () => {
+    expect(topicHierarchyAsOf()).toBeNull();
+    const db = getDb();
+    db.insert(topicClusters)
+      .values([
+        { label: 'older', size: 3, date: '2026-08-10', createdAt: new Date() },
+        { label: 'newer', size: 5, date: '2026-08-18', createdAt: new Date() },
+      ])
+      .run();
+    expect(topicHierarchyAsOf()).toBe('2026-08-18');
   });
 });

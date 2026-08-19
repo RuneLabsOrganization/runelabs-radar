@@ -73,7 +73,8 @@ export function lagFindings(): LagFinding[] {
   for (const pair of PAIRS) {
     const s = aligned(dailySeries(...pair.leader), dailySeries(...pair.follower));
     const best = crossCorrelate(s.a, s.b, MAX_LAG);
-    if (best && Math.abs(best.coefficient) >= 0.4 && best.lag > 0) {
+    // positive correlation only — an anti-correlated pair is not "X leads Y"
+    if (best && best.coefficient >= 0.4 && best.lag > 0) {
       out.push({
         leader: pair.label[0],
         follower: pair.label[1],

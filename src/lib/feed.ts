@@ -110,11 +110,15 @@ export const AFFINITY_MAX_BOOST = 12;
  * Applies the taste vector to a story's top score. The boost uses the
  * single best-matching domain (max, not sum) so broad stories don't stack
  * boosts; result stays within ±AFFINITY_MAX_BOOST and [0, 100].
+ * Pass `domain` to restrict the boost to that one sector's affinity — sector
+ * pages re-rank by their own score, so an unrelated domain's taste must not
+ * contribute.
  */
 export function personalScore(
   topScore: number,
   domainScores: string | null,
   affinity: Partial<Record<string, number>>,
+  domain?: string,
 ): number {
   let scores: Record<string, number> = {};
   try {
@@ -124,6 +128,7 @@ export function personalScore(
   }
   let best = 0;
   for (const [d, v] of Object.entries(scores)) {
+    if (domain !== undefined && d !== domain) continue;
     const a = affinity[d] ?? 0;
     if (a === 0 || typeof v !== 'number') continue;
     const contribution = a * (v / 100);

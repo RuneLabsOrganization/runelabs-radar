@@ -63,7 +63,7 @@ export default async function ChangelogPage({
     // consistency with /board: "no field changes" rows are noise, not changelog
     .filter((h) => !isNoopChange(h.change));
 
-  // per day: up to 5 strongest contacts + every board move
+  // per day: the 5 newest strong contacts (score ≥40, list is desc createdAt) + every board move
   const byDay = new Map<string, { contacts: typeof curated; moves: typeof history }>();
   for (const s of curated) {
     const k = dayKey(s.createdAt);
@@ -83,11 +83,8 @@ export default async function ChangelogPage({
     history.map((h) => h.domain),
   );
 
-  const counts = {
-    all: { contacts: summary.contacts, moves: summary.moves },
-    contacts: { contacts: summary.contacts, moves: 0 },
-    board: { contacts: 0, moves: summary.moves },
-  }[type];
+  // contacts under the rendered rule (score ≥40, ≤5/day) — not the raw DB window
+  const renderedContacts = [...byDay.values()].reduce((n, d) => n + d.contacts.length, 0);
 
   const days = [...byDay.entries()]
     .map(([key, day]) => ({
@@ -97,6 +94,8 @@ export default async function ChangelogPage({
     }))
     .filter((d) => d.contacts.length + d.moves.length > 0)
     .sort((a, b) => (a.key < b.key ? 1 : -1));
+
+  const shown = days.reduce((n, d) => n + d.contacts.length + d.moves.length, 0);
 
   const chip = (value: EntryType, label: string, n: number) => (
     <Link
@@ -122,18 +121,18 @@ export default async function ChangelogPage({
       </div>
       <PageHeader
         title="Changelog"
-        description="The full audit trail: every story the radar kept, and every board move and stack update that followed."
+        description="The strongest contacts — score ≥40, up to 5 a day — plus every board move."
       />
       <p className="mono mt-2.5 text-[10.5px] tracking-[0.06em] uppercase" style={{ color: 'var(--ink-4)' }}>
-        {summary.contacts} stories &middot; {summary.moves} board moves
+        {renderedContacts} stories &middot; {summary.moves} board moves
         {summary.topSector && isDomain(summary.topSector) && (
           <span> &middot; busiest sector: {DOMAIN_LABELS[summary.topSector]}</span>
         )}
       </p>
 
       <div className="mono mt-4 flex flex-wrap items-center gap-1.5 text-[10.5px] tracking-[0.06em]">
-        {chip('all', 'all', summary.contacts + summary.moves)}
-        {chip('contacts', 'stories', summary.contacts)}
+        {chip('all', 'all', renderedContacts + summary.moves)}
+        {chip('contacts', 'stories', renderedContacts)}
         {chip('board', 'board moves', summary.moves)}
       </div>
 
@@ -177,7 +176,11 @@ export default async function ChangelogPage({
                 key={`s${s.id}`}
                 className="row-hover flex items-baseline gap-3 border-b border-[var(--grat-soft)] py-[7px] text-[13px] last:border-b-0"
               >
-                <span className="mono w-8 shrink-0 text-right text-[10.5px]" style={{ color: 'var(--ink-4)' }}>
+                <span
+                  className="mono w-8 shrink-0 text-right text-[10.5px]"
+                  style={{ color: 'var(--ink-4)' }}
+                  title="radar score"
+                >
                   {s.topScore}
                 </span>
                 <Link
@@ -194,7 +197,7 @@ export default async function ChangelogPage({
       ))}
 
       <p className="mono mt-8 text-[10px]" style={{ color: 'var(--ink-4)' }}>
-        {counts.contacts + counts.moves} entries shown &middot; empty sync rows hidden by design
+        {shown} entries shown &middot; empty sync rows hidden by design
       </p>
     </div>
   );

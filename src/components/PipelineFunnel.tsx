@@ -1,5 +1,6 @@
 // Namespace import keeps JSX working under vitest's classic transform (jsx: preserve).
 import * as React from 'react';
+import { TOP_SIGNAL_MIN } from '@/lib/feed';
 import type { Funnel } from '@/lib/analytics';
 
 /** 7-day pipeline conversion: raw items → stories → curated → top signals. */
@@ -8,7 +9,7 @@ export default function PipelineFunnel({ funnel }: { funnel: Funnel }) {
     { label: 'items fetched', value: funnel.items },
     { label: 'stories', value: funnel.stories },
     { label: 'curated', value: funnel.curated },
-    { label: 'top signals', value: funnel.topSignals },
+    { label: `top signals ≥${TOP_SIGNAL_MIN}`, value: funnel.topSignals },
   ];
   const max = Math.max(1, stages[0].value);
 

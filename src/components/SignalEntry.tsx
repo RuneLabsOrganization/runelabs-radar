@@ -12,6 +12,7 @@ import VoteButtons from './VoteButtons';
 /** A top-signal contact: full briefing entry, hairline-divided — no card chrome. */
 export default function SignalEntry({
   story,
+  score,
   itemCount,
   firstUrl,
   sourceName,
@@ -26,6 +27,8 @@ export default function SignalEntry({
   hero = false,
 }: {
   story: FeedStory;
+  /** meter override — sector pages show the sector score the row ranks by; defaults to the global top score */
+  score?: number;
   itemCount: number;
   firstUrl: string | null;
   sourceName: string | null;
@@ -52,7 +55,7 @@ export default function SignalEntry({
     >
       <div className="flex items-start gap-3.5">
         <div className="pt-[5px]">
-          <SignalMeter score={story.topScore} />
+          <SignalMeter score={score ?? story.topScore} />
         </div>
         <div className="min-w-0 flex-1">
           <h3

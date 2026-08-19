@@ -43,6 +43,7 @@ export default async function DomainPage({ params }: { params: Promise<{ slug: s
   const db = getDb();
 
   // Same 72h scope as the briefing, re-scored through this sector's lens.
+  // No row cap: every count on this page (strip, scan log, kicker) must be exact.
   const curated = db
     .select()
     .from(stories)
@@ -50,7 +51,6 @@ export default async function DomainPage({ params }: { params: Promise<{ slug: s
       and(eq(stories.status, 'curated'), gt(stories.createdAt, new Date(Date.now() - 72 * 36e5))),
     )
     .orderBy(desc(stories.topScore))
-    .limit(100)
     .all();
 
   const anchor = user ? visitAnchor(user) : null;
@@ -61,7 +61,8 @@ export default async function DomainPage({ params }: { params: Promise<{ slug: s
     .orderBy(desc(domainDigests.date))
     .limit(1)
     .get();
-  // same vote-affinity re-ranking as the home feed (logged-in users only)
+  // vote-affinity re-ranking (logged-in users only), restricted to this sector's
+  // affinity — an unrelated domain's taste must not pull stories in or out
   const affinity = user
     ? domainAffinity(
         db
@@ -78,7 +79,7 @@ export default async function DomainPage({ params }: { params: Promise<{ slug: s
     return {
       story,
       scores,
-      score: user ? personalScore(raw, story.domainScores, affinity) : raw,
+      score: user ? personalScore(raw, story.domainScores, affinity, slug) : raw,
       createdAt: story.createdAt,
       isNew: anchor ? story.createdAt > anchor : false,
     };
@@ -97,7 +98,9 @@ export default async function DomainPage({ params }: { params: Promise<{ slug: s
     return { domain, count: n, fresh, deltaPct: momentum.get(domain) ?? null };
   });
 
-  const member = all.filter((c) => c.score >= DOMAIN_MEMBERSHIP_THRESHOLD);
+  // membership is judged on the RAW sector score — personalization only re-ranks
+  // within the sector, so this count always agrees with the sector strip
+  const member = all.filter((c) => (c.scores?.[slug] ?? 0) >= DOMAIN_MEMBERSHIP_THRESHOLD);
   const { top, scan, lowCount } = splitFeed(member);
   const ids = member.map((c) => c.story.id);
 
@@ -189,6 +192,7 @@ export default async function DomainPage({ params }: { params: Promise<{ slug: s
                   <SignalEntry
                     key={c.story.id}
                     story={c.story}
+                    score={c.score}
                     itemCount={it.count}
                     firstUrl={it.firstUrl}
                     sourceName={it.sourceName}
@@ -265,7 +269,7 @@ export default async function DomainPage({ params }: { params: Promise<{ slug: s
 
           {hot.length > 0 && (
             <div className="mt-7">
-              <div className="readout mb-2">hot in {DOMAIN_LABELS[slug]}</div>
+              <div className="readout mb-2">hot in {DOMAIN_LABELS[slug]} &middot; 7d</div>
               <div className="flex flex-wrap gap-1.5">
                 {hot.map((h) => (
                   <Link

@@ -7,12 +7,10 @@ function truncate(s: string, n: number): string {
   return s.length > n ? `${s.slice(0, n)}…` : s;
 }
 
-function pad(n: number): string {
-  return String(n).padStart(2, '0');
-}
-
+// UTC, same ISO style as JobTimeline — LLM usage buckets and the timeline
+// tooltip are all UTC, so the jobs table must not render server-local time
 function fmtStarted(d: Date): string {
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return d.toISOString().replace('T', ' ').slice(0, 16);
 }
 
 function fmtDuration(run: JobRun): string {

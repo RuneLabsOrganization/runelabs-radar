@@ -1,6 +1,7 @@
 import { and, desc, eq, gte, lt } from 'drizzle-orm';
 import { getDb } from './db';
 import { jobRuns } from './db/schema';
+import { drainLlmUsageStats } from './llm/minimax';
 
 export type JobName =
   | 'ingest'
@@ -25,8 +26,8 @@ export type JobName =
 // the same raw stories and double-burn the daily LLM cap.
 const running = new Set<JobName>();
 
-/** A 'running' row younger than this means another live process owns the job. */
-const RUNNING_FRESH_MS = 30 * 60 * 1000;
+/** A 'running' row younger than this means another live process owns the job. Also the read-side threshold (jobHistory) past which a running row is shown as failed. */
+export const RUNNING_FRESH_MS = 30 * 60 * 1000;
 
 /** Runs fn inside a recorded job run. Returns fn's stats, or null when it threw or the job was already running. */
 export async function withJobRun<T extends Record<string, unknown>>(
@@ -84,6 +85,10 @@ async function runRecorded<T extends Record<string, unknown>>(
       .run();
     return stats;
   } catch (e) {
+    // drain-and-discard: a failed run's LLM usage must not linger in the
+    // module-level counters and leak into the next successful job's stats
+    // (success paths drain into their own stats JSON, e.g. curate.ts)
+    drainLlmUsageStats();
     db.update(jobRuns)
       .set({
         status: 'error',

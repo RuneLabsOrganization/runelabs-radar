@@ -9,8 +9,8 @@ export interface HypeEntry {
   mentions: number;
   /** observed artifacts in the last 7d: github star delta + hf download delta + npm weekly downloads */
   artifacts: number;
-  /** 0 = quiet substance, 100 = pure hype. Heuristic v1. */
-  score: number;
+  /** 0 = quiet substance, 100 = pure hype. Heuristic v1. null = no artifact series matched (no data, not max hype). */
+  score: number | null;
 }
 
 /**
@@ -21,7 +21,9 @@ export interface HypeEntry {
  *
  * score = 100 · mentions / (mentions + 3 · log10(1 + artifacts))
  * — log scale keeps one viral download spike from drowning everything;
- * an entity with zero artifacts and any mentions scores 100 (pure hype).
+ * an entity with matched series but zero artifact movement scores 100
+ * (pure hype). An entity with NO matched artifact series scores null —
+ * absence of data must not read as maximum hype.
  */
 export function hypeIndex(limit = 12): HypeEntry[] {
   const db = getDb();
@@ -29,7 +31,7 @@ export function hypeIndex(limit = 12): HypeEntry[] {
 
   return topEntities(limit).map((e) => {
     const needle = e.name.toLowerCase();
-    if (needle.length < 3) return { name: e.name, mentions: e.count, artifacts: 0, score: 100 };
+    if (needle.length < 3) return { name: e.name, mentions: e.count, artifacts: 0, score: null };
 
     // matched series across the velocity sources
     const series = db
@@ -50,6 +52,8 @@ export function hypeIndex(limit = 12): HypeEntry[] {
       )
       .groupBy(metricPoints.source, metricPoints.entity, metricPoints.metric)
       .all();
+
+    if (series.length === 0) return { name: e.name, mentions: e.count, artifacts: 0, score: null };
 
     let artifacts = 0;
     for (const s of series) {
