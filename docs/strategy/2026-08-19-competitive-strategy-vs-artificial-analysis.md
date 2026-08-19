@@ -2,6 +2,12 @@
 
 *Draft v1 — 2026-08-19 — for review and iteration, not yet for execution.*
 
+> **Superseded in part (same day):** the data-independence and monetization sections of this
+> draft were revised after review — no dataset copying/republication (ToS), no BYOK, no
+> token resale; first-party pipelines + artifact-based pricing instead. The canonical,
+> current plan is the MCP-first plan (phases 6-9). The AA product inventory below remains
+> useful reference.
+
 ## 1. Executive summary
 
 Artificial Analysis (AA) is the trusted **benchmark authority**: they test models themselves and
