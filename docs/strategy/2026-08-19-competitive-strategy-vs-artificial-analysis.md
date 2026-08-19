@@ -4,9 +4,9 @@
 
 > **Superseded in part (same day):** the data-independence and monetization sections of this
 > draft were revised after review — no dataset copying/republication (ToS), no BYOK, no
-> token resale; first-party pipelines + artifact-based pricing instead. The canonical,
-> current plan is the MCP-first plan (phases 6-9). The AA product inventory below remains
-> useful reference.
+> token resale; first-party pipelines + artifact-based pricing instead. **The canonical,
+> current plan is [docs/strategy/2026-08-19-master-plan.md](./2026-08-19-master-plan.md)**
+> (phases 6-9). The AA product inventory below remains useful reference.
 
 ## 1. Executive summary
 
