@@ -5,6 +5,8 @@ import {
   calibrationBuckets,
   calibrationMonotonic,
   gradingSince,
+  pendingGrades,
+  spearman,
   type CalibrationBucket,
 } from '@/lib/science/accuracy';
 import { useTestDb } from './helpers/db';
@@ -28,6 +30,30 @@ const bucket = (label: string, meanHindsight: number | null): CalibrationBucket 
   meanScore: 50,
   meanHindsight,
   medianHindsight: meanHindsight,
+  followThroughRate: 50,
+});
+
+describe('spearman', () => {
+  it('1 for a perfect monotone relationship', () => {
+    expect(spearman([10, 20, 30, 40], [1, 2, 3, 4])).toBeCloseTo(1);
+  });
+
+  it('-1 for a perfect inverse relationship', () => {
+    expect(spearman([10, 20, 30, 40], [4, 3, 2, 1])).toBeCloseTo(-1);
+  });
+
+  it('handles ties with average ranks (zero-inflated hindsight)', () => {
+    // scores rise while hindsight is mostly 0 — still a positive signal
+    const rho = spearman([10, 20, 30, 40, 50], [0, 0, 0, 10, 20]);
+    expect(rho).not.toBeNull();
+    expect(rho!).toBeGreaterThan(0.8);
+  });
+
+  it('null when n<2 or one side is constant', () => {
+    expect(spearman([50], [10])).toBeNull();
+    expect(spearman([], [])).toBeNull();
+    expect(spearman([50, 50, 50], [1, 2, 3])).toBeNull();
+  });
 });
 
 describe('calibrationMonotonic', () => {
@@ -67,11 +93,48 @@ describe('calibrationBuckets', () => {
     expect(buckets[2].meanHindsight).toBe(50);
   });
 
+  it('followThroughRate = % of the band with any hindsight at all', () => {
+    const db = useTestDb();
+    addGraded(db, 45, 0);
+    addGraded(db, 50, 0);
+    addGraded(db, 60, 25);
+    const buckets = calibrationBuckets();
+    // 40–69 band: 1 of 3 stories earned hindsight > 0 → 33%
+    expect(buckets[1].followThroughRate).toBe(33);
+    expect(buckets[0].followThroughRate).toBe(0);
+  });
+
   it('ignores raw stories and ungraded rows', () => {
     const db = useTestDb();
     db.insert(stories).values({ title: 'raw', status: 'raw', topScore: 90, createdAt: new Date() }).run();
     db.insert(stories).values({ title: 'ungraded', status: 'curated', topScore: 90, createdAt: new Date() }).run();
     expect(calibrationBuckets().every((b) => b.count === 0)).toBe(true);
+  });
+});
+
+describe('pendingGrades', () => {
+  beforeEach(() => {
+    useTestDb();
+  });
+
+  it('counts ungraded curated stories still inside the 60h window', () => {
+    const db = useTestDb();
+    // fresh, ungraded → pending
+    db.insert(stories)
+      .values({ title: 'fresh', status: 'curated', topScore: 80, createdAt: new Date() })
+      .run();
+    // already graded → not pending
+    addGraded(db, 80, 20);
+    // stale ungraded (older than 60h, missed the rescore window) → not pending
+    db.insert(stories)
+      .values({
+        title: 'stale',
+        status: 'curated',
+        topScore: 80,
+        createdAt: new Date(Date.now() - 72 * 36e5),
+      })
+      .run();
+    expect(pendingGrades()).toBe(1);
   });
 });
 

@@ -71,6 +71,12 @@ Content column: 760px (reading pages), 860px (tables/admin).
   (mono 11px, org muted) + right-aligned mono value, 3px track (`--grat-soft`) with
   phosphor/grat-strong fill. Winner/frontier = phosphor. Caption line states
   assumptions (e.g. token budgets from `lib/costs.ts` TASK_ARCHETYPES).
+- **CalibrationScatter** (accuracy page) — every graded story as a 1.8px phosphor dot
+  at 0.3 opacity (overdraw = density; integer scores pile honestly), band medians as
+  ringed markers joined by a phosphor trace, dashed verticals at the feed's score
+  bands (40/70, labeled archive/scan/top signals). Y-axis scales to observed max
+  (rounded up to 10s, floor 50). Never an "ideal" diagonal — the hypothesis is
+  monotonic rise, not score == hindsight.
 - **Ops deck** (admin): PipelineFunnel (stage bars + conversion %), LlmBudget (gauge,
   amber ≥60% / alert ≥90%, 14d columns), JobTimeline (7px status blocks: ok phosphor
   0.45, error alert, running amber), SourceVolume (100×16 sparkline polylines).

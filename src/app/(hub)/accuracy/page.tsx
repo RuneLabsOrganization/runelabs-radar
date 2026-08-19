@@ -4,65 +4,135 @@ import {
   accuracyMisses,
   calibrationBuckets,
   calibrationMonotonic,
+  calibrationPoints,
   forecastGrades,
   gradingSince,
+  pendingGrades,
+  spearman,
 } from '@/lib/science/accuracy';
 import PageHeader from '@/components/PageHeader';
 
 export const metadata = {
   title: 'Accuracy — our track record',
   description:
-    'Do our scores hold up? Score calibration against hindsight (echoes, launches, follow-ups measured 2 days later), published misses, and forecast grades. Published, not claimed.',
+    'Do our scores hold up? The scoring parameters (LLM rubric at publish; echoes, launches, follow-ups and votes weighed 2 days later), the full calibration scatter, published misses, and forecast grades. Published, not claimed.',
 };
 
-/** Expected-vs-observed: the diagonal is what "calibrated" looks like. */
-function CalibrationChart({
-  buckets,
+/** The curation rubric — mirrors the scoring bands in lib/curate/curate.ts. */
+const RUBRIC: { range: string; label: string; gloss: string }[] = [
+  { range: '80–100', label: 'critical', gloss: 'act now — major launch, pricing shift, capability jump' },
+  { range: '60–79', label: 'important', gloss: 'changes tool or technique choice in that domain' },
+  { range: '40–59', label: 'relevant', gloss: 'worth a look for teams working in that domain' },
+  { range: '20–39', label: 'tangential', gloss: 'background awareness only' },
+  { range: '0–19', label: 'irrelevant', gloss: 'auto-filtered at curation, never shown' },
+];
+
+/** The hindsight weights — mirrors lib/science/hindsight.ts (bar scale: 30 = full width). */
+const HINDSIGHT_PARTS: { name: string; weight: string; pct: string; gloss: string }[] = [
+  { name: 'entity echo', weight: '≤30', pct: '100%', gloss: 'later stories mention the same entities · 5+ = full marks' },
+  { name: 'launch materialized', weight: '25', pct: '83%', gloss: 'a tracked launch (Show HN / Product Hunt) ships a named entity' },
+  { name: 'follow-through', weight: '≤25', pct: '83%', gloss: 'later stories develop the same topic · 5+ = full marks' },
+  { name: 'team votes', weight: '±15', pct: '50%', gloss: '(up − down) × 5 — the human override' },
+];
+
+/**
+ * Every graded story as a dot (score at publish × hindsight two days later),
+ * band medians traced on top, split by the feed's own bands. Dot overdraw
+ * shows density; integer scores pile honestly. No "ideal" diagonal — the
+ * hypothesis under test is monotonic rise, not score == hindsight.
+ */
+function CalibrationScatter({
+  points,
+  medians,
 }: {
-  buckets: { label: string; meanScore: number; medianHindsight: number | null; count: number }[];
+  points: { score: number; hindsight: number }[];
+  medians: { meanScore: number; median: number; label: string }[];
 }) {
   const W = 560;
-  const H = 200;
-  const PAD = { top: 10, right: 12, bottom: 22, left: 30 };
-  const x = (score: number) => PAD.left + (score / 100) * (W - PAD.left - PAD.right);
-  const y = (h: number) => PAD.top + (1 - h / 100) * (H - PAD.top - PAD.bottom);
+  const H = 220;
+  const PAD = { top: 16, right: 14, bottom: 28, left: 34 };
+  const plotW = W - PAD.left - PAD.right;
+  const plotH = H - PAD.top - PAD.bottom;
+  const maxObserved = points.reduce((m, p) => Math.max(m, p.hindsight), 0);
+  const yMax = Math.max(50, Math.ceil(maxObserved / 10) * 10);
+  const x = (score: number) => PAD.left + (score / 100) * plotW;
+  const y = (h: number) => PAD.top + (1 - h / yMax) * plotH;
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="block w-full" role="img" aria-label="Calibration: score vs realized hindsight per band">
-      {[0, 50, 100].map((v) => (
+    <svg
+      viewBox={`0 0 ${W} ${H}`}
+      className="block w-full"
+      role="img"
+      aria-label="Scatter of every graded story: score at publish versus realized hindsight, with band medians traced"
+    >
+      {/* graticule — horizontal at 0 / mid / max */}
+      {[0, yMax / 2, yMax].map((v) => (
         <g key={v}>
           <line x1={PAD.left} x2={W - PAD.right} y1={y(v)} y2={y(v)} stroke="var(--grat-soft)" />
-          <text x={PAD.left - 5} y={y(v) + 3} textAnchor="end" fontSize={10} fill="var(--ink-4)" fontFamily="var(--font-readout)">
+          <text x={PAD.left - 6} y={y(v) + 3} textAnchor="end" fontSize={10} fill="var(--ink-4)" fontFamily="var(--font-readout)">
             {v}
           </text>
         </g>
       ))}
-      {/* the ideal: score == hindsight */}
-      <line x1={x(0)} y1={y(0)} x2={x(100)} y2={y(100)} stroke="var(--grat-strong)" strokeDasharray="4 4" />
-      <text x={x(96)} y={y(96) - 6} textAnchor="end" fontSize={10} fill="var(--ink-4)" fontFamily="var(--font-readout)">
-        ideal
-      </text>
-      {buckets.map((b) =>
-        b.medianHindsight === null ? null : (
-          <g key={b.label}>
-            <circle cx={x(b.meanScore)} cy={y(b.medianHindsight)} r={6} fill="var(--phosphor)" fillOpacity={0.85} />
-            <text
-              x={x(b.meanScore)}
-              y={y(b.medianHindsight) - 11}
-              textAnchor="middle"
-              fontSize={10}
-              fill="var(--ink-2)"
-              fontFamily="var(--font-readout)"
-            >
-              {b.label} · n={b.count}
-            </text>
-          </g>
-        ),
+      {/* the feed's own bands: archive <40 · scan 40–69 · top signals 70+ */}
+      {[40, 70].map((v) => (
+        <line key={v} x1={x(v)} x2={x(v)} y1={PAD.top} y2={H - PAD.bottom} stroke="var(--grat)" strokeDasharray="3 3" />
+      ))}
+      {[
+        { at: 20, label: 'archive' },
+        { at: 55, label: 'scan' },
+        { at: 85, label: 'top signals' },
+      ].map((b) => (
+        <text key={b.label} x={x(b.at)} y={PAD.top - 5} textAnchor="middle" fontSize={9} fill="var(--ink-4)" fontFamily="var(--font-readout)" letterSpacing="0.1em">
+          {b.label}
+        </text>
+      ))}
+      {[0, 40, 70, 100].map((v) => (
+        <text key={v} x={x(v)} y={H - PAD.bottom + 13} textAnchor="middle" fontSize={10} fill="var(--ink-4)" fontFamily="var(--font-readout)">
+          {v}
+        </text>
+      ))}
+      {/* every graded story */}
+      {points.map((p, i) => (
+        <circle key={i} cx={x(p.score)} cy={y(p.hindsight)} r={1.8} fill="var(--phosphor)" fillOpacity={0.3} />
+      ))}
+      {/* the hypothesis under test: band medians rise left to right */}
+      {medians.length > 1 && (
+        <polyline
+          points={medians.map((m) => `${x(m.meanScore)},${y(m.median)}`).join(' ')}
+          fill="none"
+          stroke="var(--phosphor)"
+          strokeWidth={1.5}
+          strokeOpacity={0.6}
+        />
       )}
-      <text x={W - PAD.right} y={H - 6} textAnchor="end" fontSize={10} fill="var(--ink-4)" fontFamily="var(--font-readout)">
-        score at curation →
+      {medians.map((m) => (
+        <g key={m.label}>
+          <circle cx={x(m.meanScore)} cy={y(m.median)} r={5} fill="var(--phosphor)" stroke="var(--scope-0)" strokeWidth={2} />
+          <text
+            x={x(m.meanScore)}
+            y={y(m.median) - 10}
+            textAnchor="middle"
+            fontSize={10}
+            fill="var(--phosphor)"
+            fontFamily="var(--font-readout)"
+          >
+            {m.median}
+          </text>
+        </g>
+      ))}
+      <text x={W - PAD.right} y={H - 4} textAnchor="end" fontSize={10} fill="var(--ink-4)" fontFamily="var(--font-readout)">
+        score at publish →
       </text>
-      <text x={PAD.left - 22} y={PAD.top + 4} fontSize={10} fill="var(--ink-4)" fontFamily="var(--font-readout)" transform={`rotate(-90 ${PAD.left - 22} ${PAD.top + 4})`}>
-        hindsight →
+      <text
+        x={10}
+        y={PAD.top + plotH / 2}
+        fontSize={10}
+        fill="var(--ink-4)"
+        fontFamily="var(--font-readout)"
+        textAnchor="middle"
+        transform={`rotate(-90 10 ${PAD.top + plotH / 2})`}
+      >
+        hindsight (2 days later) →
       </text>
     </svg>
   );
@@ -92,8 +162,7 @@ function MissList({
               {m.title}
             </Link>
             <span className="mono text-[10.5px]" style={{ color: 'var(--ink-4)' }}>
-              scored {m.topScore}
-              {kind === 'over' ? ' → hindsight ' : ' → hindsight '}
+              scored {m.topScore} → hindsight{' '}
               <span style={{ color: kind === 'over' ? 'var(--amber)' : 'var(--phosphor)' }}>{m.hindsight}</span>
             </span>
           </li>
@@ -111,12 +180,25 @@ function MissList({
 export default async function AccuracyPage() {
   await requireViewer();
   const buckets = calibrationBuckets();
+  const points = calibrationPoints();
   const grades = forecastGrades();
   const graded = grades.filter((g) => g.realized !== null);
   const totalHindsight = buckets.reduce((n, b) => n + b.count, 0);
   const monotonic = calibrationMonotonic(buckets);
   const since = gradingSince();
   const misses = accuracyMisses();
+  const pending = pendingGrades();
+  const rho = spearman(
+    points.map((p) => p.score),
+    points.map((p) => p.hindsight),
+  );
+  const medians = buckets
+    .filter((b) => b.medianHindsight !== null && b.count > 0)
+    .map((b) => ({ meanScore: b.meanScore, median: b.medianHindsight!, label: b.label }));
+  const oldestForecast = grades[grades.length - 1];
+  const firstGradeLands = oldestForecast
+    ? new Date(new Date(`${oldestForecast.date}T00:00:00Z`).getTime() + 30 * 864e5).toISOString().slice(0, 10)
+    : null;
 
   return (
     <div className="mx-auto max-w-[760px] px-6 py-7">
@@ -125,42 +207,109 @@ export default async function AccuracyPage() {
         title="Accuracy"
         description={
           <>
-            Every story gets a relevance score when it is published. Two days later the machine checks what
-            actually happened — did the ecosystem echo it, did it ship, did anyone follow up? This page publishes
-            the result, misses included. Predictions we can&rsquo;t grade yet are shown as pending, not hidden.
+            Every story gets a score at publish — one LLM call grading relevance against a fixed rubric. 36–60
+            hours later the machine grades what actually happened — did the ecosystem echo it, did it ship, did
+            anyone follow up. This page publishes the comparison, misses included, and the misses feed back into
+            the scorer. Predictions we can&rsquo;t grade yet are shown as pending, not hidden.
           </>
         }
       />
       {since && (
         <p className="mono mt-2 text-[10.5px] tracking-[0.06em] uppercase" style={{ color: 'var(--ink-4)' }}>
-          grading since {since} &middot; {totalHindsight} stories graded &middot; times in UTC
+          grading since {since} &middot; {totalHindsight} graded &middot; {pending} pending &middot; times in UTC
         </p>
       )}
 
       <section className="mt-8">
+        <div className="readout mb-3">how the scoring works — the parameters</div>
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="card">
+            <div className="readout" style={{ color: 'var(--ink-3)' }}>
+              the prediction — at publish
+            </div>
+            <ul className="mt-3 flex flex-col gap-1.5">
+              {RUBRIC.map((r) => (
+                <li key={r.range} className="flex items-baseline gap-3 text-[12px]">
+                  <span className="mono w-[52px] shrink-0 text-[11px]" style={{ color: 'var(--ink-4)' }}>
+                    {r.range}
+                  </span>
+                  <span style={{ color: 'var(--ink-3)' }}>
+                    <span style={{ color: 'var(--ink)' }}>{r.label}</span> — {r.gloss}
+                  </span>
+                </li>
+              ))}
+            </ul>
+            <p className="mt-3 border-t border-[var(--grat-soft)] pt-2.5 text-[11.5px] leading-relaxed" style={{ color: 'var(--ink-4)' }}>
+              One MiniMax call per story scores six domains — coding, copy, image, video, ads, agentic — and the
+              story&rsquo;s score is the highest. Calibrated by recent team votes, source priors, and our own
+              misses below.
+            </p>
+            <p className="mono mt-2 text-[10.5px]" style={{ color: 'var(--ink-3)' }}>
+              ≥70 top signals &middot; 40–69 scan log &middot; &lt;40 archive
+            </p>
+          </div>
+          <div className="card">
+            <div className="readout" style={{ color: 'var(--ink-3)' }}>
+              the grade — hindsight, 36–60h later
+            </div>
+            <ul className="mt-3 flex flex-col gap-2.5">
+              {HINDSIGHT_PARTS.map((c) => (
+                <li key={c.name}>
+                  <div className="flex items-baseline justify-between gap-3">
+                    <span className="mono text-[11px]" style={{ color: 'var(--ink-2)' }}>
+                      {c.name}
+                    </span>
+                    <span className="mono text-[10.5px]" style={{ color: 'var(--ink-4)' }}>
+                      {c.weight}
+                    </span>
+                  </div>
+                  <div className="mt-1 h-[3px] overflow-hidden rounded-[1px]" style={{ background: 'var(--grat-soft)' }}>
+                    <div className="anim-bar h-full rounded-[1px]" style={{ width: c.pct, background: 'var(--phosphor)', opacity: 0.8 }} />
+                  </div>
+                  <div className="mt-1 text-[11px] leading-snug" style={{ color: 'var(--ink-4)' }}>
+                    {c.gloss}
+                  </div>
+                </li>
+              ))}
+            </ul>
+            <p className="mt-3 border-t border-[var(--grat-soft)] pt-2.5 text-[11.5px] leading-relaxed" style={{ color: 'var(--ink-4)' }}>
+              No LLM at grading — observed signals only. Each story is graded once; the grade never changes.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section className="mt-10">
         <div className="readout mb-1.5">score calibration — does a higher score mean it mattered?</div>
-        <p className="mono mb-3 text-[10.5px]" style={{ color: monotonic ? 'var(--phosphor)' : 'var(--amber)' }}>
-          {monotonic
-            ? 'calibration: monotonic — higher scores are following through'
-            : `calibration: not yet monotonic — early data, small n per band${since ? ` (grading since ${since})` : ''}`}
-        </p>
         {totalHindsight === 0 ? (
           <p className="text-[13px]" style={{ color: 'var(--ink-3)' }}>
             Collecting hindsight data — the first batch lands 36&ndash;60h after the rescore job starts running.
           </p>
         ) : (
           <>
-            <CalibrationChart buckets={buckets} />
+            <p className="mono mb-3 text-[10.5px]" style={{ color: monotonic ? 'var(--phosphor)' : 'var(--amber)' }}>
+              {monotonic
+                ? 'calibration: monotonic — higher scores are following through'
+                : 'calibration: not yet monotonic — early data, small n per band'}
+              {rho !== null && ` · ρ ${rho.toFixed(2)} · n=${totalHindsight}`}
+            </p>
+            <CalibrationScatter points={points} medians={medians} />
+            <p className="mono mt-2 text-[10px]" style={{ color: 'var(--ink-4)' }}>
+              <span style={{ color: 'var(--phosphor)' }}>●</span> one graded story &nbsp;
+              <span style={{ color: 'var(--phosphor)' }}>—●—</span> band medians (value = median hindsight) &nbsp;&middot;&nbsp;
+              verticals: the feed&rsquo;s score bands
+            </p>
             <div className="mt-4 flex flex-col gap-2.5">
               {buckets.map((b) => (
-                <div key={b.label} className="flex items-center gap-3">
-                  <span className="mono w-[80px] shrink-0 text-[11px]" style={{ color: 'var(--ink-3)' }}>
+                <div key={b.label} className="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-3">
+                  <span className="mono shrink-0 text-[11px] sm:w-[80px]" style={{ color: 'var(--ink-3)' }}>
                     score {b.label}
                   </span>
                   <div className="relative h-[14px] min-w-0 flex-1 overflow-hidden rounded-[2px] bg-[var(--scope-1)]">
                     {b.medianHindsight !== null && (
                       <div
-                        className="absolute inset-y-0 left-0"
+                        key={b.medianHindsight}
+                        className="anim-bar absolute inset-y-0 left-0"
                         style={{
                           width: `${Math.min(100, b.medianHindsight)}%`,
                           background: b.medianHindsight >= 50 ? 'var(--phosphor)' : 'var(--grat-strong)',
@@ -169,13 +318,14 @@ export default async function AccuracyPage() {
                       />
                     )}
                   </div>
-                  <span className="mono w-[220px] shrink-0 text-right text-[10.5px]" style={{ color: 'var(--ink-3)' }}>
-                    median {b.medianHindsight ?? '—'} &middot; mean {b.meanHindsight ?? '—'} &middot; n={b.count}
+                  <span className="mono shrink-0 text-[10.5px] sm:w-[250px] sm:text-right" style={{ color: 'var(--ink-3)' }}>
+                    median {b.medianHindsight ?? '—'} &middot; mean {b.meanHindsight ?? '—'} &middot; n={b.count} &middot;{' '}
+                    {b.followThroughRate}% followed
                   </span>
                 </div>
               ))}
               <p className="mono mt-1 text-[10px]" style={{ color: 'var(--ink-4)' }}>
-                hindsight = observed follow-through (entity echoes, launches, developments, team votes), 0-100
+                bar = median hindsight &middot; % followed = stories with any follow-through at all (hindsight &gt; 0)
               </p>
             </div>
           </>
@@ -183,14 +333,26 @@ export default async function AccuracyPage() {
       </section>
 
       {(misses.overRated.length > 0 || misses.underRated.length > 0) && (
-        <section className="mt-10 grid gap-8 md:grid-cols-2">
-          <MissList label="we over-rated" tone="amber" misses={misses.overRated} kind="over" />
-          <MissList label="we under-rated" tone="phosphor" misses={misses.underRated} kind="under" />
+        <section className="mt-10">
+          <div className="readout mb-1.5">the misses — published, and fed back into the scorer</div>
+          <p className="mb-4 text-[12px] leading-relaxed" style={{ color: 'var(--ink-3)' }}>
+            These stories are shown to the scoring model as calibration: over-rates teach it to discount hype,
+            under-rates to notice quiet signal.
+          </p>
+          <div className="grid gap-8 md:grid-cols-2">
+            <MissList label="we over-rated" tone="amber" misses={misses.overRated} kind="over" />
+            <MissList label="we under-rated" tone="phosphor" misses={misses.underRated} kind="under" />
+          </div>
         </section>
       )}
 
       <section className="mt-10">
-        <div className="readout mb-3">forecast grades — frontier price, 30d horizon</div>
+        <div className="readout mb-1.5">forecast grades — frontier price, 30d horizon</div>
+        <p className="mb-3 text-[12px] leading-relaxed" style={{ color: 'var(--ink-3)' }}>
+          Every night we record the projected price of frontier intelligence — cheapest blended $/1M tokens among
+          models within 90% of the day&rsquo;s intelligence ceiling (Artificial Analysis), from a log-linear fit,
+          30 days out. Realized = the actual frontier price on the target date.
+        </p>
         {grades.length === 0 ? (
           <p className="text-[13px]" style={{ color: 'var(--ink-3)' }}>
             No forecasts stored yet — the nightly job records one per day; grades appear 30 days later.
@@ -230,6 +392,11 @@ export default async function AccuracyPage() {
               ))}
             </tbody>
           </table>
+        )}
+        {graded.length === 0 && firstGradeLands && grades.length > 0 && (
+          <p className="mono mt-2 text-[10.5px]" style={{ color: 'var(--ink-4)' }}>
+            first grade lands {firstGradeLands} — a forecast is graded when its 30d target passes
+          </p>
         )}
         {graded.length > 0 && (
           <p className="mono mt-2 text-[10.5px]" style={{ color: 'var(--ink-3)' }}>

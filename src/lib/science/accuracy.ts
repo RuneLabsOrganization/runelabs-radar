@@ -1,7 +1,7 @@
-import { and, desc, eq, isNotNull, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, isNotNull, isNull } from 'drizzle-orm';
 import { getDb } from '../db';
-import { forecasts, metricPoints, stories } from '../db/schema';
-import { forecastFrontierPrice } from './forecast';
+import { forecasts, stories } from '../db/schema';
+import { forecastFrontierPrice, frontierPriceSeries } from './forecast';
 import { utcDay } from '../metrics';
 
 export interface CalibrationBucket {
@@ -10,6 +10,8 @@ export interface CalibrationBucket {
   meanScore: number;
   meanHindsight: number | null;
   medianHindsight: number | null;
+  /** % of the band with hindsight > 0 — "did anything follow at all". */
+  followThroughRate: number;
 }
 
 function median(values: number[]): number | null {
@@ -17,6 +19,47 @@ function median(values: number[]): number | null {
   const sorted = [...values].sort((a, b) => a - b);
   const mid = Math.floor(sorted.length / 2);
   return sorted.length % 2 === 1 ? sorted[mid] : Math.round((sorted[mid - 1] + sorted[mid]) / 2);
+}
+
+/** Average ranks (1-based); tied values share the mean of their positions. */
+function ranks(values: number[]): number[] {
+  const order = values.map((v, i) => ({ v, i })).sort((a, b) => a.v - b.v);
+  const out = new Array<number>(values.length);
+  let i = 0;
+  while (i < order.length) {
+    let j = i;
+    while (j + 1 < order.length && order[j + 1]!.v === order[i]!.v) j++;
+    const rank = (i + j) / 2 + 1;
+    for (let k = i; k <= j; k++) out[order[k]!.i] = rank;
+    i = j + 1;
+  }
+  return out;
+}
+
+/**
+ * Spearman rank correlation — the precise single number for "does a higher
+ * score mean it mattered". Robust to the zero-inflated hindsight distribution
+ * (ties get average ranks). Null when n<2 or one side is constant.
+ */
+export function spearman(xs: number[], ys: number[]): number | null {
+  if (xs.length !== ys.length || xs.length < 2) return null;
+  const rx = ranks(xs);
+  const ry = ranks(ys);
+  const n = rx.length;
+  const mx = rx.reduce((a, v) => a + v, 0) / n;
+  const my = ry.reduce((a, v) => a + v, 0) / n;
+  let num = 0;
+  let dx = 0;
+  let dy = 0;
+  for (let i = 0; i < n; i++) {
+    const a = rx[i]! - mx;
+    const b = ry[i]! - my;
+    num += a * b;
+    dx += a * a;
+    dy += b * b;
+  }
+  if (dx === 0 || dy === 0) return null;
+  return num / Math.sqrt(dx * dy);
 }
 
 /**
@@ -50,7 +93,42 @@ export function calibrationBuckets(): CalibrationBucket[] {
       ? Math.round(b.hindsights.reduce((a, h) => a + h, 0) / b.hindsights.length)
       : null,
     medianHindsight: median(b.hindsights),
+    followThroughRate: b.hindsights.length
+      ? Math.round((b.hindsights.filter((h) => h > 0).length / b.hindsights.length) * 100)
+      : 0,
   }));
+}
+
+/** Every graded story as a {score, hindsight} point — the scatter behind the bands. */
+export function calibrationPoints(): { score: number; hindsight: number }[] {
+  const db = getDb();
+  return db
+    .select({ score: stories.topScore, hindsight: stories.hindsight })
+    .from(stories)
+    .where(and(eq(stories.status, 'curated'), isNotNull(stories.hindsight)))
+    .all()
+    .map((r) => ({ score: r.score, hindsight: r.hindsight ?? 0 }));
+}
+
+/**
+ * Curated stories not yet graded but still inside (or approaching) the 36-60h
+ * rescore window — the "pending, not hidden" count. Stories older than 60h
+ * without hindsight missed the window and are excluded.
+ */
+export function pendingGrades(): number {
+  const db = getDb();
+  const rows = db
+    .select({ id: stories.id })
+    .from(stories)
+    .where(
+      and(
+        eq(stories.status, 'curated'),
+        isNull(stories.hindsight),
+        gte(stories.createdAt, new Date(Date.now() - 60 * 36e5)),
+      ),
+    )
+    .all();
+  return rows.length;
 }
 
 /**
@@ -137,27 +215,20 @@ export interface ForecastGrade {
 }
 
 /**
- * Past forecasts vs what actually happened (realized = cheapest frontier-tier
- * price in metric_points at date+horizon). Nulls until enough time passes.
+ * Past forecasts vs what actually happened. Realized = the frontier-tier
+ * blended price AT the 30d target (first series point on/after the target
+ * date), computed with the same frontier definition the forecast predicts —
+ * not the cheapest price of any model at any later date, which drifted as
+ * prices fell. Nulls until the target date passes.
  */
 export function forecastGrades(): ForecastGrade[] {
   const db = getDb();
   const rows = db.select().from(forecasts).orderBy(desc(forecasts.date)).limit(60).all();
+  const series = frontierPriceSeries();
   return rows.map((r) => {
-    const targetDate = new Date(new Date(`${r.date}T00:00:00Z`).getTime() + 30 * 864e5);
-    const realized = db
-      .select({ value: sql<number>`min(${metricPoints.value})` })
-      .from(metricPoints)
-      .where(
-        and(
-          eq(metricPoints.source, 'aa'),
-          eq(metricPoints.metric, 'price_blended'),
-          sql`date(${metricPoints.date}) >= date(${targetDate.toISOString().slice(0, 10)})`,
-        ),
-      )
-      .limit(1)
-      .get();
-    const rv = realized?.value ?? null;
+    const target = new Date(new Date(`${r.date}T00:00:00Z`).getTime() + 30 * 864e5).toISOString().slice(0, 10);
+    const point = series.find((p) => p.date >= target);
+    const rv = point?.value ?? null;
     return {
       date: r.date,
       predicted: r.predicted,
