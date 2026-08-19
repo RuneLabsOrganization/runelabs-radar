@@ -84,9 +84,11 @@ function checkJobBudget(job: string): void {
  * One curation call to MiniMax (OpenAI-compatible chat completions).
  * Counts against the daily cap once per invocation; 3 attempts with backoff
  * on retryable failures (429/5xx/network/malformed JSON). opts.job enforces
- * the per-job daily budget (worker jobs only).
+ * the per-job daily budget (worker jobs only). opts.maxTokens overrides the
+ * 6000 default (MiniMax-M2 spends thinking tokens from the same budget —
+ * long structured jobs like plan phases need headroom).
  */
-export async function chatJSON<T>(system: string, user: string, opts?: { job?: string }): Promise<T> {
+export async function chatJSON<T>(system: string, user: string, opts?: { job?: string; maxTokens?: number }): Promise<T> {
   if (!config.minimaxApiKey) {
     throw new LlmError('MINIMAX_API_KEY not set', false);
   }
@@ -112,7 +114,7 @@ export async function chatJSON<T>(system: string, user: string, opts?: { job?: s
             // bound runaway output WITHOUT clipping the long jobs: MiniMax-M2
             // spends thinking tokens (<think>) from this same budget — 800
             // truncated the brief mid-think; 6000 fits thinking + a full brief
-            max_tokens: 6000,
+            max_tokens: opts?.maxTokens ?? 6000,
             messages: [
               { role: 'system', content: system },
               { role: 'user', content: user },

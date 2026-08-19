@@ -39,7 +39,7 @@ services:
       DATABASE_PATH: /data/radar.db
       MCP_PORT: 3122
     volumes:
-      - ./data:/data:ro # read-only mount — the MCP server never writes
+      - ./data:/data # NOT :ro — the MCP process writes the plan cache (opportunities.plan*)
     restart: unless-stopped
     depends_on:
       - web

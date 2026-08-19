@@ -11,10 +11,30 @@ Design: [docs/superpowers/specs/2026-07-10-runelabs-radar-design.md](docs/superp
 ## How it works
 
 - **worker** (node-cron): ingests ~19 sources every 30 min (RSS, Hacker News, Reddit, arXiv, Hugging Face, GitHub trending), clusters + scores stories hourly with MiniMax, drafts weekly board proposals (Artificial Analysis API + benchmark snapshots), writes a daily brief at 07:00.
-- **web** (Next.js): the hub — Today feed with "since your last visit", per-domain tabs, board with editable Runelabs verdicts, brief archive, admin (sources health, job runs, proposal review). Public surfaces: `/changelog.xml` + `/brief.xml` RSS feeds, `/embed/board` iframe widget, `/story/[id]` + `/entity/[name]` SEO pages, and a read-only MCP server at `/mcp`.
+- **web** (Next.js): the hub — Today feed with "since your last visit", per-domain tabs, board with editable Runelabs verdicts, brief archive, admin (sources health, job runs, proposal review). Public surfaces: `/changelog.xml` + `/brief.xml` RSS feeds, `/embed/board` iframe widget, `/story/[id]` + `/entity/[name]` SEO pages. It is also the OAuth 2.1 authorization server for MCP clients.
+- **mcp** (`npm run mcp`, port 3122): the agent-facing product surface — every intelligence surface as MCP tools (signals, launches, board, stacks, opportunities, pains, patterns, topic map, market prices, forecasts, accuracy, entities, comps), `radar://` resources, guided workflow prompts, and the flagship `generate_plan`: opportunity → full-lifecycle execution plan (validation → build → launch → GTM → revenue) a local coding agent can execute.
 - **SQLite** (WAL) shared by both, one file under `data/`.
 
 Stories are never blackholed: if MiniMax is down or the daily call cap is hit, items still appear in the raw feed.
+
+## Connect your agent (MCP)
+
+The MCP server exposes the whole intelligence database to AI agents — 26 tools, `radar://` resources, and guided prompts — and can turn any detected opportunity into a granular, full-lifecycle execution plan (`generate_plan`) that a coding agent executes on your machine.
+
+Point any MCP client at the endpoint (streamable HTTP) — or open **`/connect`** on the hub for guided, per-client instructions:
+
+```
+https://<your-host>/mcp          # behind your reverse proxy, or http://127.0.0.1:3122/mcp locally
+```
+
+- **Claude Code**: `claude mcp add --transport http radar https://<your-host>/mcp`
+- **Claude Desktop / Cursor / ChatGPT**: add the URL as a remote/HTTP MCP server in the client's settings.
+
+**Auth.** Default (self-host) is anonymous + IP rate-limited — nothing to do. For a shared/hosted deployment set `MCP_AUTH_REQUIRED=true`: clients then run the OAuth 2.1 flow automatically (PKCE + dynamic client registration, no keys to copy) — the hub shows a consent screen at `/oauth/authorize` and issues tokens. Scopes: `read` (all intelligence) and `plans` (plan generation, which spends LLM budget).
+
+**The flagship workflow** (also available as the `find_and_plan` prompt): `get_opportunities` → pick by flip/hold score → `get_opportunity` for the dossier → `generate_plan` → receive a task graph with dependencies, files to touch, acceptance criteria, verification steps, time estimates and rollback notes, plus a markdown rendering to save as `PLAN.md` and execute.
+
+Other prompts: `whats_new_today`, `what_should_i_use`, `validate_idea`, `builder_weekly_review`. Call `get_server_guide` from any agent for the live tour.
 
 ## Local development
 
@@ -41,6 +61,10 @@ Other commands: `npm test` (vitest), `npm run build`, `npm run worker` (cron loo
 | `MINIMAX_DAILY_CALL_CAP` | default 500 calls/day |
 | `AA_API_KEY` | optional; enables Artificial Analysis data (board sync + market scatter) |
 | `PUBLIC_MODE` | `true` = anonymous read-only access; votes/verdicts/admin still require login |
+| `MCP_AUTH_REQUIRED` | `true` = MCP endpoint requires OAuth 2.1 bearer tokens (hub is the authorization server); default anonymous |
+| `MCP_RATE_LIMIT` | requests/hour per token (authed) or per IP (anonymous); default 300 |
+| `MCP_PLAN_DAILY_CAP` | plan generations/day per token or IP (each costs 6-7 LLM calls); default 10 |
+| `OAUTH_ISSUER` / `MCP_PUBLIC_URL` | public URLs for the OAuth metadata endpoints; default derived from `SITE_URL` |
 
 ## Deploy on the Hetzner box
 

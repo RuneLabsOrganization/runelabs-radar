@@ -282,6 +282,9 @@ export const opportunities = sqliteTable('opportunities', {
   // JSON launchable brief — generated on first expand, cached
   brief: text('brief'),
   briefGeneratedAt: integer('brief_generated_at', { mode: 'timestamp' }),
+  // JSON execution plan (full task graph) — generated on first MCP request, cached
+  plan: text('plan'),
+  planGeneratedAt: integer('plan_generated_at', { mode: 'timestamp' }),
   firstSeenAt: integer('first_seen_at', { mode: 'timestamp' }).notNull(),
   lastSeenAt: integer('last_seen_at', { mode: 'timestamp' }).notNull(),
 });
@@ -321,4 +324,46 @@ export const jobRuns = sqliteTable('job_runs', {
 export const llmUsage = sqliteTable('llm_usage', {
   date: text('date').primaryKey(),
   calls: integer('calls').notNull().default(0),
+});
+
+/**
+ * OAuth 2.1 for the MCP server (Next.js is the authorization server, the MCP
+ * process only validates). Clients register dynamically (RFC 7591) so any MCP
+ * client can connect without manual key copying.
+ */
+export const oauthClients = sqliteTable('oauth_clients', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  clientId: text('client_id').notNull().unique(),
+  name: text('name'),
+  // JSON string[] of allowed redirect URIs from dynamic registration
+  redirectUris: text('redirect_uris').notNull().default('[]'),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+});
+
+/** Short-lived authorization codes (PKCE S256), exchanged once at the token endpoint. */
+export const oauthCodes = sqliteTable('oauth_codes', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  code: text('code').notNull().unique(),
+  clientId: text('client_id').notNull(),
+  userId: integer('user_id')
+    .notNull()
+    .references(() => users.id),
+  redirectUri: text('redirect_uri').notNull(),
+  scope: text('scope').notNull().default('read'),
+  codeChallenge: text('code_challenge').notNull(),
+  expiresAt: integer('expires_at', { mode: 'timestamp' }).notNull(),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+});
+
+export const oauthTokens = sqliteTable('oauth_tokens', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  accessToken: text('access_token').notNull().unique(),
+  refreshToken: text('refresh_token').unique(),
+  clientId: text('client_id').notNull(),
+  userId: integer('user_id')
+    .notNull()
+    .references(() => users.id),
+  scope: text('scope').notNull().default('read'),
+  expiresAt: integer('expires_at', { mode: 'timestamp' }).notNull(),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
 });

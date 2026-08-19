@@ -18,6 +18,7 @@ export function buildLinks(pathname: string, isAdmin: boolean): NavLinkItem[] {
     { href: '/board', label: 'Best Tools', active: pathname.startsWith('/board') },
     { href: '/stacks', label: 'Stacks', active: pathname.startsWith('/stacks') },
     { href: '/brief', label: 'Brief', active: pathname.startsWith('/brief') },
+    { href: '/connect', label: 'Connect', active: pathname.startsWith('/connect') },
     { href: '/changelog', label: 'Changelog', active: pathname.startsWith('/changelog') },
     { href: '/accuracy', label: 'Accuracy', active: pathname.startsWith('/accuracy') },
     ...(isAdmin ? [{ href: '/admin', label: 'Admin', active: pathname.startsWith('/admin') }] : []),

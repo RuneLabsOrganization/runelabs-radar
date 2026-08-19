@@ -1,8 +1,8 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-09-29/server.schema.json",
   "name": "io.github.RuneLabsOrganization/runelabs-radar",
-  "description": "AI stack & opportunity intelligence: daily brief, top scored signals, best-right-now cost-benefit board, stack playbooks and monetizable openings — from a self-hosted curation pipeline.",
-  "version": "0.1.0",
+  "description": "AI stack & opportunity intelligence for agents: daily brief, scored signals, launches, best-right-now board, stack playbooks, pains, patterns, market prices, forecasts — plus generate_plan, which turns a detected opportunity into a full-lifecycle execution plan (validation → build → launch → GTM → revenue) a local coding agent can run.",
+  "version": "0.2.0",
   "repository": {
     "url": "https://github.com/RuneLabsOrganization/runelabs-radar",
     "source": "github"
