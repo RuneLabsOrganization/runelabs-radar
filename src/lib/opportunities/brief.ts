@@ -3,7 +3,7 @@ import { aaModels } from '../analytics';
 import { getDb } from '../db';
 import { comps, opportunities, painPoints, stacks } from '../db/schema';
 import { chatJSON } from '../llm/minimax';
-import { promptLine } from '../prompt-hygiene';
+import { promptLine, stripCjkDeep } from '../prompt-hygiene';
 import { VENTURES } from '../stacks/generate';
 
 export interface UnitEconomics {
@@ -40,6 +40,7 @@ function posNum(v: unknown, max = 1e7): number | null {
 
 /** Validates the LLM's launch brief. Exported for tests. */
 export function sanitizeBrief(v: unknown): OppBrief | null {
+  v = stripCjkDeep(v); // output-side hygiene: these artifacts are English by design
   if (typeof v !== 'object' || v === null) return null;
   const rec = v as Record<string, unknown>;
   const icp = typeof rec.icp === 'string' ? promptLine(rec.icp, 250) : '';

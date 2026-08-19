@@ -4,7 +4,7 @@ import { benchmarkSnapshots, stacks, stories } from '../db/schema';
 import { aaPromptLines } from '../board/sync';
 import { getIdentity } from '../identity';
 import { chatJSON, drainLlmUsageStats } from '../llm/minimax';
-import { promptLine } from '../prompt-hygiene';
+import { promptLine, stripCjkDeep } from '../prompt-hygiene';
 
 /** Venture archetypes Runelabs actually ships and sells. */
 export const VENTURES = [
@@ -52,6 +52,7 @@ function optStr(v: unknown, max: number): string | null {
 
 /** Validates the LLM's stack draft: title + at least 5 known layers required. */
 export function sanitizeStack(v: unknown): StackDraft | null {
+  v = stripCjkDeep(v); // output-side hygiene: playbooks are English by design
   if (typeof v !== 'object' || v === null) return null;
   const rec = v as Record<string, unknown>;
   const title = optStr(rec.title, 80);

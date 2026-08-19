@@ -4,7 +4,7 @@ import { boardHistory, briefs, domainDigests, insights, patterns, stories } from
 import { DOMAINS, type Domain } from '../domains';
 import { getIdentity } from '../identity';
 import { chatJSON, drainLlmUsageStats, LlmError } from '../llm/minimax';
-import { promptLine } from '../prompt-hygiene';
+import { promptLine, stripCjkLeak } from '../prompt-hygiene';
 
 interface InsightItem {
   headline: string;
@@ -173,7 +173,7 @@ export async function runBrief(): Promise<{ wrote: boolean; insights: number; di
 
   try {
     const res = await chatJSON<{ markdown?: unknown; insights?: unknown }>(system, user);
-    const markdown = typeof res.markdown === 'string' ? res.markdown.trim() : '';
+    const markdown = typeof res.markdown === 'string' ? stripCjkLeak(res.markdown).trim() : '';
     if (!markdown) throw new LlmError('Brief response missing "markdown"', false);
     upsertBrief(date, markdown + watchCrossingsMarkdown());
     const items = sanitizeInsights(res.insights);
@@ -243,7 +243,7 @@ async function writeDomainDigests(date: string): Promise<number> {
 
   let written = 0;
   for (const d of DOMAINS) {
-    const text = typeof res[d] === 'string' ? (res[d] as string).trim().slice(0, 280) : '';
+    const text = typeof res[d] === 'string' ? stripCjkLeak(res[d] as string).slice(0, 280) : '';
     if (!text) continue;
     db.insert(domainDigests)
       .values({ domain: d, date, text, createdAt: new Date() })

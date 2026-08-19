@@ -1,4 +1,4 @@
-import { promptLine } from '../prompt-hygiene';
+import { promptLine, stripCjkDeep } from '../prompt-hygiene';
 
 /**
  * The execution plan — Radar's flagship artifact. One opportunity becomes a
@@ -97,6 +97,7 @@ function sanitizeTask(v: unknown, phase: PlanPhase, index: number): PlanTask | n
  * tests. `slug`/`grounding` come from the caller (never from the LLM).
  */
 export function sanitizePlan(slug: string, grounding: string[], v: unknown): ExecutionPlan | null {
+  v = stripCjkDeep(v); // output-side hygiene: plans are English by design
   if (typeof v !== 'object' || v === null) return null;
   const rec = v as Record<string, unknown>;
   const title = typeof rec.title === 'string' ? promptLine(rec.title, 140) : '';
