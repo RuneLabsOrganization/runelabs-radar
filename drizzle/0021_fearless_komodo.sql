@@ -1,0 +1,1 @@
+ALTER TABLE `opportunities` ADD `plan_runs` integer DEFAULT 0 NOT NULL;
