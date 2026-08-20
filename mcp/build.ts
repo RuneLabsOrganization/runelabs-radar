@@ -18,6 +18,7 @@ import { registerMetaTools } from './tools/meta';
 import { registerUsageTools } from './tools/usage';
 import { registerDebateTools } from './tools/debate';
 import { registerScoutTools } from './tools/scout';
+import { registerWeeklyTools } from './tools/weekly';
 import { registerResources } from './resources';
 import { registerPrompts } from './prompts';
 
@@ -49,6 +50,7 @@ export function buildServer(auth: AuthContext): McpServer {
   registerUsageTools(server, auth);
   registerDebateTools(server, auth);
   registerScoutTools(server, auth);
+  registerWeeklyTools(server, auth);
   registerResources(server, auth);
   registerPrompts(server);
   return server;
