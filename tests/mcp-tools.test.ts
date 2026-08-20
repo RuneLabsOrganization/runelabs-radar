@@ -129,6 +129,7 @@ describe('mcp server', () => {
     const names = tools.map((t) => t.name).sort();
     expect(names).toEqual(
       [
+        'debate_idea',
         'generate_plan',
         'get_accuracy',
         'get_best_right_now',
@@ -155,6 +156,7 @@ describe('mcp server', () => {
         'get_usage',
         'list_metrics',
         'list_stacks',
+        'scout_opportunities',
         'search_stories',
       ].sort(),
     );

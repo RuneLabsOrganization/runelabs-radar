@@ -71,13 +71,12 @@ Synthesize into one briefing: 3-5 things that actually matter (with why), 1-2 an
       argsSchema: { idea: z.string().describe('the idea in one or two sentences') },
     },
     ({ idea }) =>
-      userMessage(`Pressure-test this idea against the intelligence stream: "${idea}"
-1. Call get_pain_points (limit 25) — is the pain this idea solves actually observed? How often (intensity)?
-2. Call search_stories with 2-3 keywords from the idea — what's the news momentum around it?
-3. Call get_launches (days 30, limit 25) — has anyone launched this recently? How did it land (points/comments)?
-4. Call get_comps — any exit/revenue numbers for comparable products?
-5. Call get_opportunities (limit 10) — does the opportunity engine already track something adjacent? What verdict?
-Then give me a verdict: pursue / adapt / drop, the three strongest pieces of evidence for it, and the biggest risk. Be honest — I'd rather hear "drop" now than fail in month two.`),
+      userMessage(`Pressure-test this idea: "${idea}"
+1. Call the debate_idea tool with idea="${idea}". It runs a multi-role debate (advocate → skeptic → market realist → judge) grounded in the platform's live intelligence — observed pains, money comps, launch activity, the model market, and the closest detected opportunities.
+2. Present the result: the verdict (pursue / watch / reject) and confidence, the kill risks (the concrete ways this dies), and the conditions to succeed.
+3. Show me the 2-3 strengthened variants the judge proposed and recommend the strongest one, with the reasons.
+4. If it surfaced a closest existing opportunity that already has a plan, mention it.
+Be honest — I'd rather hear "reject" now than fail in month two. If the verdict is watch or reject, offer to run scout_opportunities to find a stronger opening fitted to my constraints.`),
   );
 
   server.registerPrompt(

@@ -1,0 +1,196 @@
+import { eq } from 'drizzle-orm';
+import { z } from 'zod';
+import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { getDb } from '../../src/lib/db';
+import { opportunities } from '../../src/lib/db/schema';
+import { normalizeSlug, proposeOpportunities, type ScoutConstraints } from '../../src/lib/opportunities/engine';
+import { envelopeSchema, respond, type NextAction } from '../lib/payload';
+import type { AuthContext } from '../lib/auth';
+
+// --- per-caller daily cap (§9c): every scout run is a fresh LLM call, so
+// every call counts — recorded at entry, same pattern as debate_idea ---
+const SCOUT_DAILY_CAP = Number(process.env.MCP_SCOUT_DAILY_CAP ?? 10);
+const scoutUsage = new Map<string, { date: string; count: number }>();
+function scoutCapExceeded(key: string): boolean {
+  const today = new Date().toISOString().slice(0, 10);
+  const rec = scoutUsage.get(key);
+  return (rec?.date === today ? rec.count : 0) >= SCOUT_DAILY_CAP;
+}
+function recordScout(key: string): void {
+  const today = new Date().toISOString().slice(0, 10);
+  const rec = scoutUsage.get(key);
+  scoutUsage.set(key, { date: today, count: (rec?.date === today ? rec.count : 0) + 1 });
+}
+
+const kpiSchema = z.object({
+  initialCostUsd: z.number().nullable(),
+  monthlyCostUsd: z.number().nullable(),
+  priceUsd: z.number().nullable(),
+  timeToMvpDays: z.number().nullable(),
+  breakEvenCustomers: z.number().nullable(),
+  competitorCount: z.number().nullable(),
+  competitionNote: z.string().nullable(),
+  regulatoryNote: z.string().nullable(),
+});
+
+const openingSchema = z.object({
+  slug: z.string(),
+  title: z.string(),
+  thesis: z.string(),
+  sector: z.string().nullable(),
+  window: z.string().nullable(),
+  sub_scores: z.record(z.string(), z.number()),
+  kpis: kpiSchema,
+  evidence_refs: z.array(z.string()),
+});
+
+/** Active opportunity slugs, normalized the way the daily engine keys them. */
+function activeSlugs(): Set<string> {
+  const db = getDb();
+  return new Set(
+    db
+      .select({ slug: opportunities.slug })
+      .from(opportunities)
+      .where(eq(opportunities.status, 'active'))
+      .all()
+      .map((r) => normalizeSlug(r.slug)),
+  );
+}
+
+export function registerScoutTools(server: McpServer, auth: AuthContext): void {
+  server.registerTool(
+    'scout_opportunities',
+    {
+      description:
+        'Scout FRESH monetizable openings fitted to you — your skills, capital, hours, sector and risk appetite — instead of the global top-5 everyone else sees. Runs the opportunity proposer seeded with your constraints over the current intelligence stream (pains, launches, market, surging entities, top stories), then drops anything already tracked as an active opportunity so what comes back is personal and new. Pressure-test a pick with debate_idea afterwards. Returns zero openings (honestly) when nothing is genuinely actionable.',
+      inputSchema: {
+        skills: z.string().max(400).optional().describe('what you can build with, e.g. "typescript, next.js, some python"'),
+        capital: z.string().max(120).optional().describe('budget band, e.g. "<$500", "$2k runway"'),
+        hoursPerWeek: z.number().int().min(0).max(80).optional().describe('hours per week you can put in'),
+        sector: z.string().max(60).optional().describe('sector focus, e.g. devtools, ai-coding'),
+        b2b: z.boolean().optional().describe('true for B2B openings, false for B2C'),
+        riskAppetite: z.enum(['low', 'medium', 'high']).optional(),
+      },
+      outputSchema: {
+        ...envelopeSchema,
+        ok: z.boolean(),
+        error: z.string().optional(),
+        openings: z.array(openingSchema),
+        skipped_existing: z.number(),
+      },
+    },
+    async ({ skills, capital, hoursPerWeek, sector, b2b, riskAppetite }) => {
+      if (scoutCapExceeded(auth.rateKey)) {
+        return respond(
+          { ok: false, error: `daily scout cap reached (${SCOUT_DAILY_CAP}) — the cap resets tomorrow`, openings: [], skipped_existing: 0 },
+          {
+            summary: `Daily scout cap reached (${SCOUT_DAILY_CAP}).`,
+            next: [
+              {
+                tool: 'get_opportunities',
+                arguments: { limit: 10 },
+                reason: 'the tracked openings cost nothing to browse',
+              },
+            ],
+          },
+        );
+      }
+      // every call counts — record at entry, before the LLM run
+      recordScout(auth.rateKey);
+
+      const constraints: ScoutConstraints = {
+        ...(skills !== undefined ? { skills } : {}),
+        ...(capital !== undefined ? { capital } : {}),
+        ...(hoursPerWeek !== undefined ? { hoursPerWeek } : {}),
+        ...(sector !== undefined ? { sector } : {}),
+        ...(b2b !== undefined ? { b2b } : {}),
+        ...(riskAppetite !== undefined ? { riskAppetite } : {}),
+      };
+      const hasConstraints = Object.keys(constraints).length > 0;
+
+      let drafts;
+      let signalCount;
+      try {
+        const res = await proposeOpportunities(hasConstraints ? constraints : undefined);
+        drafts = res.drafts;
+        signalCount = res.ctx.signalCount;
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        return respond(
+          { ok: false, error: `scout failed: ${msg}`, openings: [], skipped_existing: 0 },
+          { summary: `The scout could not run: ${msg}.` },
+        );
+      }
+
+      if (signalCount < 5) {
+        return respond(
+          {
+            ok: false,
+            error: `the scope is too thin to scout (${signalCount} signals in the last 2 weeks; need at least 5) — let the daily ingest accumulate and try again`,
+            openings: [],
+            skipped_existing: 0,
+          },
+          {
+            summary: `Scope too thin to scout — only ${signalCount} signals on the radar right now.`,
+            next: [
+              {
+                tool: 'get_pain_points',
+                arguments: { limit: 10 },
+                reason: 'browse the raw unmet needs collected so far',
+              },
+            ],
+          },
+        );
+      }
+
+      // anti-homogeneity: these must be FRESH personal openings — drop any
+      // draft whose slug is already tracked as an active opportunity
+      const existing = activeSlugs();
+      const fresh = drafts.filter((d) => !existing.has(normalizeSlug(d.slug)));
+      const skipped = drafts.length - fresh.length;
+      const openings = fresh.map((d) => ({
+        slug: d.slug,
+        title: d.title,
+        thesis: d.thesis,
+        sector: d.sector,
+        window: d.window,
+        sub_scores: d.sub,
+        kpis: d.kpis,
+        evidence_refs: d.evidenceRefs,
+      }));
+
+      const top = openings[0];
+      const next: NextAction[] = [];
+      if (top) {
+        next.push(
+          {
+            tool: 'debate_idea',
+            arguments: { idea: `${top.title} — ${top.thesis}` },
+            reason: 'pressure-test the top opening in a multi-role debate before committing',
+          },
+          {
+            tool: 'generate_plan',
+            arguments: { opportunity: top.slug },
+            reason:
+              'only works for slugs already persisted in the DB (see get_opportunities) — this fresh proposal is NOT stored yet, so the call will miss until the daily engine adopts it',
+          },
+        );
+      } else if (skipped > 0) {
+        next.push({
+          tool: 'get_opportunities',
+          arguments: { limit: 10 },
+          reason: 'everything proposed is already tracked — browse those openings here',
+        });
+      }
+
+      const summary =
+        openings.length === 0
+          ? skipped > 0
+            ? `The scout proposed ${skipped} opening${skipped === 1 ? '' : 's'}, but every one is already tracked as an active opportunity — nothing fresh for these constraints right now.`
+            : 'The scout found nothing genuinely actionable for these constraints — zero is an acceptable answer.'
+          : `${openings.length} fresh opening${openings.length === 1 ? '' : 's'} fitted to your constraints — top: "${top!.title}"${top!.sector ? ` (${top!.sector})` : ''}${skipped > 0 ? `; ${skipped} skipped (already tracked)` : ''}.`;
+
+      return respond({ ok: true, openings, skipped_existing: skipped }, { summary, next });
+    },
+  );
+}
