@@ -18,6 +18,8 @@ import { runScience } from '../src/lib/science/run';
 import { runOpportunities } from '../src/lib/opportunities/engine';
 import { runOppRescore } from '../src/lib/opportunities/rescore';
 import { runSecondLook } from '../src/lib/science/second-look';
+import { runPricingSync } from '../src/lib/ingest/pricing';
+import { runOpenBenchSync } from '../src/lib/ingest/openbench';
 
 const jobs: Record<JobName, () => Promise<Record<string, unknown>>> = {
   ingest: runIngest,
@@ -36,6 +38,8 @@ const jobs: Record<JobName, () => Promise<Record<string, unknown>>> = {
   opportunities: runOpportunities,
   'opp-rescore': runOppRescore,
   'second-look': runSecondLook,
+  pricing: runPricingSync,
+  openbench: runOpenBenchSync,
 };
 
 const name = process.argv[2] as JobName | undefined;

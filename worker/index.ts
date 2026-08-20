@@ -16,6 +16,8 @@ import { runPain } from '../src/lib/pain';
 import { runScience } from '../src/lib/science/run';
 import { runOpportunities } from '../src/lib/opportunities/engine';
 import { runSecondLook } from '../src/lib/science/second-look';
+import { runPricingSync } from '../src/lib/ingest/pricing';
+import { runOpenBenchSync } from '../src/lib/ingest/openbench';
 
 loadDotEnv();
 
@@ -41,6 +43,9 @@ const tasks = [
   cron.schedule('20 7 * * *', () => void withJobRun('second-look', runSecondLook)),
   // weekly: audit the relevance gate's false-kill rate on a filtered sample
   cron.schedule('15 9 * * 0', () => void withJobRun('gate-audit', runGateAudit)),
+  // weekly: first-party provider prices + open benchmarks (Phase 6 data foundations)
+  cron.schedule('10 5 * * 2', () => void withJobRun('pricing', runPricingSync)),
+  cron.schedule('20 4 * * 3', () => void withJobRun('openbench', runOpenBenchSync)),
 ];
 
 // Populate immediately on boot instead of waiting for the first tick
