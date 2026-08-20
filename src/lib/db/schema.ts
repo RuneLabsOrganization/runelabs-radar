@@ -418,3 +418,13 @@ export const debates = sqliteTable('debates', {
   confidence: integer('confidence').notNull().default(40),
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
 });
+
+/**
+ * Weekly "State of the Builder Market" report (Phase 10) — one markdown issue
+ * per Sunday, written by runWeeklyReport; public /reports archive + MCP tool.
+ */
+export const reports = sqliteTable('reports', {
+  date: text('date').primaryKey(), // YYYY-MM-DD (UTC, Sunday issue)
+  markdown: text('markdown').notNull(),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+});
