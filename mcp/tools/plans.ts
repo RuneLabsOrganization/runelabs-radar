@@ -13,10 +13,22 @@ import { marketVisible, type AuthContext } from '../lib/auth';
 // global MiniMax cap is shared with the curation worker ---
 const PLAN_DAILY_CAP = Number(process.env.MCP_PLAN_DAILY_CAP ?? 10);
 const planUsage = new Map<string, { date: string; count: number }>();
+// in-flight generations count against the cap at ENTRY — otherwise N parallel
+// calls all pass the check before any of them records (N× cap, N× LLM spend)
+const planPending = new Map<string, number>();
 function planCapExceeded(key: string): boolean {
   const today = new Date().toISOString().slice(0, 10);
   const rec = planUsage.get(key);
-  return rec?.date === today && rec.count >= PLAN_DAILY_CAP;
+  const used = (rec?.date === today ? rec.count : 0) + (planPending.get(key) ?? 0);
+  return used >= PLAN_DAILY_CAP;
+}
+function markPlanPending(key: string): void {
+  planPending.set(key, (planPending.get(key) ?? 0) + 1);
+}
+function clearPlanPending(key: string): void {
+  const n = (planPending.get(key) ?? 1) - 1;
+  if (n <= 0) planPending.delete(key);
+  else planPending.set(key, n);
 }
 function recordPlanGeneration(key: string): void {
   const today = new Date().toISOString().slice(0, 10);
@@ -138,40 +150,51 @@ export function registerPlanTools(server: McpServer, auth: AuthContext): void {
                 })
                 .catch(() => {});
             };
-      const result = await generatePlan(opp.id, { force, includeMarket: canSeeMarket, onProgress });
-      if (!result.ok) {
-        return respond({ ok: false, error: result.error }, { summary: `Plan generation failed: ${result.error}` });
-      }
-      if (!result.cached) recordPlanGeneration(auth.rateKey);
-      if (!canSeeMarket && includesMarket(result.plan)) {
+      markPlanPending(auth.rateKey);
+      try {
+        const result = await generatePlan(opp.id, {
+          force,
+          includeMarket: canSeeMarket,
+          onProgress,
+          userId: auth.userId,
+        });
+        if (!result.ok) {
+          return respond({ ok: false, error: result.error }, { summary: `Plan generation failed: ${result.error}` });
+        }
+        if (!canSeeMarket && includesMarket(result.plan)) {
+          // refusal BEFORE recording: a refused caller must not burn a cap slot
+          return respond(
+            {
+              ok: false,
+              error:
+                'the cached plan is grounded in restricted market data (AA_PUBLIC=false for anonymous access) — call again with force=true to generate a shareable plan without it',
+            },
+            { summary: 'The cached plan contains restricted market data and cannot be served to this caller.' },
+          );
+        }
+        if (!result.cached) recordPlanGeneration(auth.rateKey);
+        const p = result.plan;
         return respond(
           {
-            ok: false,
-            error:
-              'the cached plan is grounded in restricted market data (AA_PUBLIC=false for anonymous access) — call again with force=true to generate a shareable plan without it',
+            ok: true,
+            cached: result.cached,
+            plan: planToWire(p),
+            markdown: renderPlanMarkdown(p),
           },
-          { summary: 'The cached plan contains restricted market data and cannot be served to this caller.' },
+          {
+            summary: `${result.cached ? 'Cached' : 'New'} plan "${p.title}" — ${p.phases.length} phases, ${p.phases.reduce((n, x) => n + x.tasks.length, 0)} tasks${p.totalEstimateHours !== null ? `, ~${p.totalEstimateHours}h total` : ''}.`,
+            next: [
+              {
+                tool: 'get_plan',
+                arguments: { opportunity: p.opportunity, format: 'markdown' },
+                reason: 'the document rendering to save as PLAN.md and execute',
+              },
+            ],
+          },
         );
+      } finally {
+        clearPlanPending(auth.rateKey);
       }
-      const p = result.plan;
-      return respond(
-        {
-          ok: true,
-          cached: result.cached,
-          plan: planToWire(p),
-          markdown: renderPlanMarkdown(p),
-        },
-        {
-          summary: `${result.cached ? 'Cached' : 'New'} plan "${p.title}" — ${p.phases.length} phases, ${p.phases.reduce((n, x) => n + x.tasks.length, 0)} tasks${p.totalEstimateHours !== null ? `, ~${p.totalEstimateHours}h total` : ''}.`,
-          next: [
-            {
-              tool: 'get_plan',
-              arguments: { opportunity: p.opportunity, format: 'markdown' },
-              reason: 'the document rendering to save as PLAN.md and execute',
-            },
-          ],
-        },
-      );
     },
   );
 

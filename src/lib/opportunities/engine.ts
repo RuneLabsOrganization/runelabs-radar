@@ -336,7 +336,7 @@ export async function runOpportunities(): Promise<{
 
   const user = `${ctx.blocks}\n\n<existing-opportunities>\n${existingText}\n</existing-opportunities>`;
 
-  const res = await chatJSON<{ opportunities?: unknown }>(system, user);
+  const res = await chatJSON<{ opportunities?: unknown }>(system, user, { feature: 'opportunity' });
   const drafts = sanitizeOpportunities(res.opportunities, new Set(ctx.refMap.keys()));
 
   // layers 2+3: the red team attacks every proposal, then the deterministic

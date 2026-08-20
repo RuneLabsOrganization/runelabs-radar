@@ -280,7 +280,7 @@ export async function runAnomalies(): Promise<{ patterns: number }> {
     const user = detections
       .map((d, i) => JSON.stringify({ index: i, kind: d.kind, text: promptLine(d.fallback, 300) }))
       .join('\n');
-    const res = await chatJSON<{ patterns?: unknown }>(system, user);
+    const res = await chatJSON<{ patterns?: unknown }>(system, user, { feature: 'anomaly' });
     narrations = sanitizeNarrations(res.patterns, detections.length);
   } catch (e) {
     console.error('[science] narration failed, using template text:', e);

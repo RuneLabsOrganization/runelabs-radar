@@ -133,7 +133,7 @@ export async function runPain(): Promise<{ pains: number; comps: number }> {
         .join('\n') +
       '\n</untrusted_items>';
     try {
-      const res = await chatJSON<{ pains?: unknown }>(system, user);
+      const res = await chatJSON<{ pains?: unknown }>(system, user, { feature: 'pain' });
       for (const p of sanitizePains(res.pains, batch.length)) {
         const evidence = p.itemIndexes.map((idx) => ({ title: batch[idx].title, url: batch[idx].url }));
         const match = byNorm.get(p.summary.toLowerCase());
@@ -197,7 +197,7 @@ export async function runPain(): Promise<{ pains: number; comps: number }> {
       'Respond with STRICT JSON only: {"comps":[{"kind":"exit|revenue","product":"...","amountUsd":123,"note":"..."}]}';
     const user = candidates.map((s) => `- ${s.title}${s.tldr ? ` — ${s.tldr}` : ''}`).join('\n');
     try {
-      const res = await chatJSON<{ comps?: unknown }>(system, user);
+      const res = await chatJSON<{ comps?: unknown }>(system, user, { feature: 'pain' });
       const existing = db
         .select()
         .from(comps)

@@ -49,7 +49,7 @@ export async function runGateAudit(): Promise<GateAuditStats> {
       .all();
     const { system, user } = buildCurationPrompts(story, memberItems, [], []);
     try {
-      const res = await chatJSON<CurationResponse>(system, user);
+      const res = await chatJSON<CurationResponse>(system, user, { feature: 'gate-audit' });
       const { topScore } = curationScores(res);
       if (topScore >= FALSE_KILL_MIN) {
         falseKills++;

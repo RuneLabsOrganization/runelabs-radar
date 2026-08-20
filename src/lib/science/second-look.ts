@@ -88,7 +88,7 @@ export async function runSecondLook(): Promise<{ considered: number; written: nu
 
   let results: SecondLookItem[];
   try {
-    const res = await chatJSON<{ results?: unknown }>(system, user);
+    const res = await chatJSON<{ results?: unknown }>(system, user, { feature: 'second-look' });
     results = sanitizeSecondLooks(res.results, new Set(candidates.map((c) => c.id)));
   } catch (e) {
     if (e instanceof LlmError) return { considered: candidates.length, written: 0 };

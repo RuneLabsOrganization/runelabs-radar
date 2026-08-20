@@ -172,7 +172,7 @@ export async function runBrief(): Promise<{ wrote: boolean; insights: number; di
     }`;
 
   try {
-    const res = await chatJSON<{ markdown?: unknown; insights?: unknown }>(system, user);
+    const res = await chatJSON<{ markdown?: unknown; insights?: unknown }>(system, user, { feature: 'brief' });
     const markdown = typeof res.markdown === 'string' ? stripCjkLeak(res.markdown).trim() : '';
     if (!markdown) throw new LlmError('Brief response missing "markdown"', false);
     upsertBrief(date, markdown + watchCrossingsMarkdown());
@@ -235,7 +235,7 @@ async function writeDomainDigests(date: string): Promise<number> {
 
   let res: Record<string, unknown>;
   try {
-    res = await chatJSON<Record<string, unknown>>(system, userText);
+    res = await chatJSON<Record<string, unknown>>(system, userText, { feature: 'digest' });
   } catch (e) {
     if (e instanceof LlmError) return 0; // cap/outage — digests are optional
     throw e;

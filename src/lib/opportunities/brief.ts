@@ -83,15 +83,24 @@ const inflight = new Map<number, Promise<BriefResult>>();
  * Grounded in the opportunity itself, the Stacks playbooks, the model
  * market, sector pains, and recent money comps.
  */
-export function generateBrief(oppId: number): Promise<BriefResult> {
+export function generateBrief(
+  oppId: number,
+  opts?: { userId?: number | null; allowMarket?: boolean },
+): Promise<BriefResult> {
   const existing = inflight.get(oppId);
   if (existing) return existing;
-  const p = generateBriefInner(oppId).finally(() => inflight.delete(oppId));
+  const p = generateBriefInner(oppId, opts?.userId ?? null, opts?.allowMarket ?? true).finally(() =>
+    inflight.delete(oppId),
+  );
   inflight.set(oppId, p);
   return p;
 }
 
-async function generateBriefInner(oppId: number): Promise<BriefResult> {
+async function generateBriefInner(
+  oppId: number,
+  userId: number | null,
+  allowMarket: boolean,
+): Promise<BriefResult> {
   const db = getDb();
   const opp = db.select().from(opportunities).where(eq(opportunities.id, oppId)).get();
   if (!opp) return { ok: false, error: 'opportunity not found' };
@@ -112,7 +121,8 @@ async function generateBriefInner(oppId: number): Promise<BriefResult> {
           .join('\n')
       : '(no stack playbooks yet)';
 
-  const aa = aaModels();
+  // AA redistribution terms: market prices only enter the prompt for callers allowed to see them
+  const aa = allowMarket ? aaModels() : null;
   const marketText = aa
     ? aa.models
         .filter((m) => m.priceIn !== null && m.priceOut !== null)
@@ -120,7 +130,7 @@ async function generateBriefInner(oppId: number): Promise<BriefResult> {
         .slice(0, 6)
         .map((m) => `- ${promptLine(m.name, 60)}: intel ${m.intelligence}, in $${m.priceIn}/1M, out $${m.priceOut}/1M`)
         .join('\n')
-    : '(no market data)';
+    : '(market data withheld for this caller)';
 
   const sectorPains = opp.sector
     ? db
@@ -176,7 +186,7 @@ async function generateBriefInner(oppId: number): Promise<BriefResult> {
     `<money-comps>\n${compsText}\n</money-comps>`;
 
   try {
-    const res = await chatJSON<Record<string, unknown>>(system, user);
+    const res = await chatJSON<Record<string, unknown>>(system, user, { feature: 'opportunity-brief', userId });
     const brief = sanitizeBrief(res);
     if (!brief) return { ok: false, error: 'brief failed validation — try again' };
     db.update(opportunities)

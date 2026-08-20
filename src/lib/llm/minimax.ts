@@ -1,7 +1,8 @@
 import { eq } from 'drizzle-orm';
 import { getDb } from '../db';
-import { llmUsage } from '../db/schema';
+import { llmCalls, llmUsage } from '../db/schema';
 import { config } from '../config';
+import { estimateCostUsd } from './pricing';
 
 export class LlmError extends Error {
   retryable: boolean;
@@ -87,8 +88,19 @@ function checkJobBudget(job: string): void {
  * the per-job daily budget (worker jobs only). opts.maxTokens overrides the
  * 6000 default (MiniMax-M2 spends thinking tokens from the same budget —
  * long structured jobs like plan phases need headroom).
+ *
+ * Metering (§7b): every SUCCESSFUL call writes one llm_calls row — feature,
+ * job, userId, model, token usage, wall time, estimated USD cost — for
+ * per-feature/per-user cost attribution. opts.feature tags the calling
+ * feature ('unknown' when omitted); opts.userId carries the OAuth user for
+ * MCP-triggered calls. Metering is best-effort: insert failures are logged,
+ * never thrown, and failed attempts meter nothing.
  */
-export async function chatJSON<T>(system: string, user: string, opts?: { job?: string; maxTokens?: number }): Promise<T> {
+export async function chatJSON<T>(
+  system: string,
+  user: string,
+  opts?: { job?: string; maxTokens?: number; feature?: string; userId?: number | null },
+): Promise<T> {
   if (!config.minimaxApiKey) {
     throw new LlmError('MINIMAX_API_KEY not set', false);
   }
@@ -97,6 +109,7 @@ export async function chatJSON<T>(system: string, user: string, opts?: { job?: s
   _calls++;
   const backoffs = [1000, 4000];
   for (let attempt = 0; ; attempt++) {
+    const startedAt = Date.now();
     try {
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), 120_000);
@@ -132,10 +145,32 @@ export async function chatJSON<T>(system: string, user: string, opts?: { job?: s
         choices?: { message?: { content?: string } }[];
         usage?: { prompt_tokens?: number; completion_tokens?: number };
       };
-      _promptTokens += Number(data.usage?.prompt_tokens) || 0;
-      _completionTokens += Number(data.usage?.completion_tokens) || 0;
+      const promptTokens = Number(data.usage?.prompt_tokens) || 0;
+      const completionTokens = Number(data.usage?.completion_tokens) || 0;
+      _promptTokens += promptTokens;
+      _completionTokens += completionTokens;
       const content = data.choices?.[0]?.message?.content ?? '';
-      return JSON.parse(extractJson(content)) as T;
+      const parsed = JSON.parse(extractJson(content)) as T;
+      // meter the success — one row per call; must never break the caller
+      try {
+        getDb()
+          .insert(llmCalls)
+          .values({
+            ts: new Date(),
+            feature: opts?.feature ?? 'unknown',
+            job: opts?.job ?? null,
+            userId: opts?.userId ?? null,
+            model: config.minimaxModel,
+            promptTokens,
+            completionTokens,
+            durationMs: Date.now() - startedAt,
+            estCostUsd: estimateCostUsd(config.minimaxModel, promptTokens, completionTokens),
+          })
+          .run();
+      } catch (meterErr) {
+        console.error('[llm] metering insert failed:', meterErr);
+      }
+      return parsed;
     } catch (e) {
       const err =
         e instanceof LlmError ? e : new LlmError(e instanceof Error ? e.message : String(e), true);

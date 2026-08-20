@@ -146,7 +146,7 @@ export async function runStacks(): Promise<{ updated: number; failed: number }> 
         `This week's AI signals:\n<untrusted_stories>\n${newsText}\n</untrusted_stories>\n\n` +
         `Model market (Artificial Analysis):\n${marketText}`;
 
-      const res = await chatJSON<Record<string, unknown>>(system, user);
+      const res = await chatJSON<Record<string, unknown>>(system, user, { feature: 'stack' });
       const draft = sanitizeStack(res);
       if (!draft) {
         failed++;

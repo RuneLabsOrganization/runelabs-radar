@@ -16,8 +16,14 @@ import {
 
 export type PlanResult = { ok: true; plan: ExecutionPlan; cached: boolean } | { ok: false; error: string };
 
-// in-flight dedupe: concurrent requests for the same opportunity share one generation
-const inflight = new Map<number, Promise<PlanResult>>();
+// in-flight dedupe: concurrent requests for the same opportunity AND the same
+// market-visibility share one generation (mixing visibilities would hand a
+// market-grounded plan to a restricted caller). Progress listeners fan out to
+// every waiter instead of only the first.
+const inflight = new Map<
+  string,
+  { p: Promise<PlanResult>; listeners: Set<(done: number, total: number, label: string) => void> }
+>();
 
 /**
  * Full-lifecycle execution plan for an opportunity, cached on the row.
@@ -32,19 +38,36 @@ export function generatePlan(
     includeMarket?: boolean;
     /** Step reporter: (done, total, label) — wired to MCP progress notifications by the caller. */
     onProgress?: (done: number, total: number, label: string) => void;
+    /** OAuth user when MCP-triggered — metered onto every llm_calls row of the generation. */
+    userId?: number | null;
   },
 ): Promise<PlanResult> {
+  const includeMarket = opts?.includeMarket ?? true;
+  const key = `${oppId}:${includeMarket}`;
   if (!opts?.force) {
-    const existing = inflight.get(oppId);
-    if (existing) return existing;
+    const existing = inflight.get(key);
+    if (existing) {
+      if (opts?.onProgress) existing.listeners.add(opts.onProgress);
+      return existing.p;
+    }
   }
-  const p = generatePlanInner(oppId, opts?.force ?? false, opts?.includeMarket ?? true, opts?.onProgress).finally(
+  const listeners = new Set(opts?.onProgress ? [opts.onProgress] : []);
+  const broadcast = (done: number, total: number, label: string) => {
+    for (const fn of listeners) {
+      try {
+        fn(done, total, label);
+      } catch {
+        /* a dead listener must not kill the generation */
+      }
+    }
+  };
+  const p = generatePlanInner(oppId, opts?.force ?? false, includeMarket, broadcast, opts?.userId ?? null).finally(
     () => {
       // delete only our own entry — a force call may have replaced it meanwhile
-      if (inflight.get(oppId) === p) inflight.delete(oppId);
+      if (inflight.get(key)?.p === p) inflight.delete(key);
     },
   );
-  inflight.set(oppId, p);
+  inflight.set(key, { p, listeners });
   return p;
 }
 
@@ -90,6 +113,7 @@ async function generatePlanInner(
   force: boolean,
   includeMarket: boolean,
   onProgress?: (done: number, total: number, label: string) => void,
+  userId: number | null = null,
 ): Promise<PlanResult> {
   const db = getDb();
   let opp = db.select().from(opportunities).where(eq(opportunities.id, oppId)).get();
@@ -111,7 +135,7 @@ async function generatePlanInner(
 
   // the plan builds on the launch brief — generate it first when missing
   if (!opp.brief) {
-    const briefRes = await generateBrief(oppId);
+    const briefRes = await generateBrief(oppId, { userId, allowMarket: includeMarket });
     report('launch brief');
     if (!briefRes.ok) return { ok: false, error: `brief generation failed: ${briefRes.error}` };
     opp = db.select().from(opportunities).where(eq(opportunities.id, oppId)).get() ?? opp;
@@ -212,14 +236,14 @@ async function generatePlanInner(
       `${dossier}\n\nWrite the plan frame for this opportunity as JSON: ` +
         `{"title":"...","overview":"3-5 sentences: what we build, for whom, why now","icp":"who pays, specific",` +
         `"pricing":{"model":"e.g. subscription / usage credits / one-time","priceUsd":0,"notes":"..."},"stackVenture":"${stackVenture ?? ''}"}`,
-      { maxTokens: 4000 },
+      { maxTokens: 4000, feature: 'plan', userId },
     );
     report('plan frame');
 
     // calls 2-6: one task graph per lifecycle phase
     const phases: Record<string, unknown>[] = [];
     for (const phase of PLAN_PHASES) {
-      const draft = await generatePhase(SYSTEM, dossier, frame, phase);
+      const draft = await generatePhase(SYSTEM, dossier, frame, phase, userId);
       report(`phase: ${phase}`);
       if (!draft) return { ok: false, error: `phase "${phase}" failed validation — try again` };
       phases.push({ phase, goal: draft.goal, tasks: draft.tasks });
@@ -260,6 +284,7 @@ async function generatePhase(
   dossier: string,
   frame: Record<string, unknown>,
   phase: PlanPhase,
+  userId: number | null,
 ): Promise<PhaseDraft | null> {
   for (let attempt = 0; attempt < 2; attempt++) {
     const draft = await chatJSON<Record<string, unknown>>(
@@ -270,7 +295,7 @@ async function generatePhase(
         `"dependsOn":["${phase}-M"],"filesToTouch":["path/from/repo/root"],"tools":["library/service"],` +
         `"acceptance":["observable criterion"],"verify":"command or manual check","estimateHours":2,` +
         `"rollback":"how to undo safely"}.\nPhase guidance: ${PHASE_BRIEFS[phase]}`,
-      { maxTokens: 8000 },
+      { maxTokens: 8000, feature: 'plan', userId },
     );
     if (typeof draft.goal === 'string' && Array.isArray(draft.tasks) && draft.tasks.length >= 2) {
       return { goal: draft.goal, tasks: draft.tasks };

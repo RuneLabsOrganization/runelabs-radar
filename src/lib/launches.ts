@@ -142,7 +142,7 @@ export async function tagCategories(): Promise<number> {
     'Respond with STRICT JSON only: {"categories":{"<id>":"<category>"}} — one key per launch id given.';
   const user = untagged.map((l) => `Launch ${l.id}: ${l.title}`).join('\n');
 
-  const res = await chatJSON<{ categories?: Record<string, unknown> }>(system, user);
+  const res = await chatJSON<{ categories?: Record<string, unknown> }>(system, user, { feature: 'launches' });
   const map = res.categories;
   if (typeof map !== 'object' || map === null || Object.keys(map).length === 0) {
     console.warn('[launches] tagging response missing "categories" — leaving launches untagged for retry');

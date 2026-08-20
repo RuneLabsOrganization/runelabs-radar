@@ -301,7 +301,7 @@ export async function runCurate(): Promise<CurateStats> {
 
     const { system, user } = buildCurationPrompts(story, memberItems, recentVotes, sourceHints, missLines);
 
-    const res = await chatJSON<CurationResponse>(system, user, { job: 'curate' });
+    const res = await chatJSON<CurationResponse>(system, user, { job: 'curate', feature: 'curate' });
     const { scores, topScore } = curationScores(res);
     const entities = sanitizeEntities(res.entities);
     db.update(stories)

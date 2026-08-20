@@ -60,7 +60,7 @@ export async function runCritique(
 
   let reviews: CriticResult[];
   try {
-    const res = await chatJSON<{ reviews?: unknown }>(system, user);
+    const res = await chatJSON<{ reviews?: unknown }>(system, user, { feature: 'critic' });
     reviews = sanitizeCritiques(
       res.reviews,
       new Set(drafts.map((d) => d.slug)),

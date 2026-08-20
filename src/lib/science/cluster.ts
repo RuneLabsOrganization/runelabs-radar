@@ -134,7 +134,7 @@ async function labelGroups(
         return `Cluster ${idx} (${g.members.length} stories):\n<titles>\n${titles.join('\n')}\n</titles>`;
       })
       .join('\n');
-  const res = await chatJSON<{ clusters?: unknown }>(system, user);
+  const res = await chatJSON<{ clusters?: unknown }>(system, user, { feature: 'cluster' });
   return sanitizeClusterLabels(res.clusters, groups.length);
 }
 

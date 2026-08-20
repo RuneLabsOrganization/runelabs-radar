@@ -230,7 +230,7 @@ async function proposeForDomain(
     }\n\n` +
     `Top curated stories from the last 7 days:\n<untrusted_stories>\n${storiesText}\n</untrusted_stories>`;
 
-  const res = await chatJSON<{ proposals?: unknown[] }>(system, user);
+  const res = await chatJSON<{ proposals?: unknown[] }>(system, user, { feature: 'board' });
   const list = Array.isArray(res.proposals) ? res.proposals : [];
 
   let inserted = 0;
