@@ -96,6 +96,29 @@ AA is the **benchmark authority**: self-run benchmarks (Intelligence Index, prop
 - [ ] merged reader + tests (`tests/market-firstparty.test.ts`: seed metric_points, assert shape + fallback)
 - [ ] live check: `npx tsx mcp/test/live.ts` still 44/44
 
+### 6e. Radar Score — our own composite, feeding the sorting algo
+
+**Why**: every ranking surface (board picks, `get_market_models` sort, plan grounding) currently leans on AA's intelligence number. We need our own defensible composite computed only from series we own, versioned and charted over time.
+
+- **Create** `src/lib/science/score.ts`: `export function computeRadarScores(date = utcDay()): { scored: number }`.
+  - **Inputs** (all from `metric_points` + our story graph): `capability` (open-bench intelligence, blended with `radar-eval` when present), `price` (`provider-pricing` blended in/out), `speed` (`radar-speed` from `llm_calls.durationMs`, Phase 7), `momentum` (mention-heat delta for the model entity from `entityDailySeries`/`topEntities` in `src/lib/analytics.ts` — models the conversation is moving toward).
+  - **Math**: min-max or percentile-normalize each input within the day's cohort; composite = weighted sum, weights in one tunable const with a comment:
+    ```ts
+    // v1 weights — tunable after calibration (§6e checklist)
+    const WEIGHTS = { capability: 0.45, costEfficiency: 0.25, speed: 0.15, momentum: 0.15 } as const;
+    // costEfficiency = capability / max(price_blended, floor) — floored to avoid div-by-zero on free models
+    ```
+  - **Output**: per model write `metric_points` rows (`source: 'radar-score'`, `metric: 'composite' | 'capability' | 'cost_efficiency' | 'speed' | 'momentum'`) — sub-scores stored separately so the explorer can chart components and the weights can be re-evaluated historically.
+  - **Register**: nightly inside the existing `science` job (`worker/index.ts`, cron `50 6 * * *`) — after sources sync, before the brief.
+- **Consumers (the sorting algo)**:
+  - `src/lib/board/sync.ts`: rank candidates by `radar-score.composite` instead of AA intelligence; keep the AA value in the proposal rationale for comparison during transition.
+  - `mcp/tools/market.ts`: `sort: 'value'` uses `cost_efficiency`; add `sort: 'radar'` using composite; payload rows gain `radar_score` when present.
+  - `src/lib/plans/generate.ts` market grounding block: order by composite.
+- **Calibration (before weights are trusted)**: for overlapping models, log divergence between our composite and AA intelligence as a nightly metric (`source: 'radar-score', metric: 'aa_divergence'`); review on `/admin` for 2-4 weeks; only then flip `sort: 'radar'` to the default. Big divergences get investigated, not silently accepted.
+- [ ] score.ts + normalization helpers + `tests/radar-score.test.ts` (cohort normalization, weight math, missing-input fallbacks — a model with no speed data must still score)
+- [ ] science-job registration + consumers rewired behind the calibration flag
+- [ ] divergence dashboard note on `/admin/usage` (Phase 7d page)
+
 ## Phase 7 — Consumption tracking + margin dashboard
 
 **Goal**: every LLM call attributed (feature, user/token, tokens, est. cost); admin visibility into per-artifact margins. This is the monetization prerequisite (rule 1.3.4).
