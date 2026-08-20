@@ -7,6 +7,8 @@
 > **Forward plan**: Phases 6-11 in Part 2 — first-party data, margin observability, artifact monetization, idea-engine overhaul, data-surface parity, persona expansion.
 >
 > **Status (2026-08-20)**: Wave 1 data foundations LIVE — `llm_calls` metering on every chatJSON call (7a/7b/7c), provider-pricing (6a) + open-bench/openrouter (6b) weekly ingests registered and deployed. 367 unit tests green. Commits `6adcd47`..`d84487c`. From here prices, benchmarks, and per-call costs accumulate for Waves 2+.
+>
+> **Status (2026-08-20, Wave 2)**: Readers + surfaces LIVE — merged first-party market reader (6d; AA now fallback-only), Radar Score running dark nightly with `aa_divergence` calibration logging (6e; `RADAR_SCORE_CONSUMERS` flips consumers after 2-4 weeks of low divergence), `/admin/usage` margin dashboard + admin-scoped `get_usage` (7d/7e; 27 tools), entitlements + monthly plan-quota enforcement for authed users (8a; anonymous path unchanged). 429 unit tests + live 44/44 + oauth-e2e 31/31 green. Commits `ba6d51a`, `0356eaf`, `17ec315`. **Watch**: first nightly science run after this deploy writes `radar-speed` + `radar-score` series — check `job_runs` stats for the science job tomorrow.
 
 ---
 
@@ -95,8 +97,8 @@ AA is the **benchmark authority**: self-run benchmarks (Intelligence Index, prop
 - `src/lib/board/sync.ts` (`aaPromptLines`) and `src/lib/plans/generate.ts` (market grounding block): consume the merged reader — no call-site shape changes.
 - `mcp/tools/market.ts` `get_market_models`: payload rows gain `source: 'first_party' | 'artificial_analysis'`.
 - **Sunset rule** (documented in code comment on the reader): when first-party covers ≥90% of board-referenced models for 2 consecutive weekly syncs, AA defaults to disabled.
-- [ ] merged reader + tests (`tests/market-firstparty.test.ts`: seed metric_points, assert shape + fallback)
-- [ ] live check: `npx tsx mcp/test/live.ts` still 44/44
+- [x] merged reader + tests (`tests/market-firstparty.test.ts`: seed metric_points, assert shape + fallback) ✅ 2026-08-20 (`ba6d51a`; `marketModels()` in analytics.ts — AA snapshot only for uncovered models; fallback gate is snapshot-existence, not API-key, so the seeded-snapshot suite stays green)
+- [x] live check: `npx tsx mcp/test/live.ts` still 44/44 ✅ post-deploy
 
 ### 6e. Radar Score — our own composite, feeding the sorting algo
 
@@ -117,9 +119,9 @@ AA is the **benchmark authority**: self-run benchmarks (Intelligence Index, prop
   - `mcp/tools/market.ts`: `sort: 'value'` uses `cost_efficiency`; add `sort: 'radar'` using composite; payload rows gain `radar_score` when present.
   - `src/lib/plans/generate.ts` market grounding block: order by composite.
 - **Calibration (before weights are trusted)**: for overlapping models, log divergence between our composite and AA intelligence as a nightly metric (`source: 'radar-score', metric: 'aa_divergence'`); review on `/admin` for 2-4 weeks; only then flip `sort: 'radar'` to the default. Big divergences get investigated, not silently accepted.
-- [ ] score.ts + normalization helpers + `tests/radar-score.test.ts` (cohort normalization, weight math, missing-input fallbacks — a model with no speed data must still score)
-- [ ] science-job registration + consumers rewired behind the calibration flag
-- [ ] divergence dashboard note on `/admin/usage` (Phase 7d page)
+- [x] score.ts + normalization helpers + `tests/radar-score.test.ts` (cohort normalization, weight math, missing-input fallbacks — a model with no speed data must still score) ✅ 2026-08-20 (`ba6d51a`)
+- [x] science-job registration + consumers rewired behind the calibration flag ✅ 2026-08-20 (end of `runScience`: `rollupModelSpeed` + `computeRadarScores`; consumers gated on `RADAR_SCORE_CONSUMERS=true`, default off; `sort: 'radar'` opt-in available unflagged)
+- [x] divergence dashboard note on `/admin/usage` (Phase 7d page) ✅ 2026-08-20 (calibration panel; divergence rows appear after the first nightly science run)
 
 ## Phase 7 — Consumption tracking + margin dashboard
 
@@ -156,11 +158,11 @@ export const llmCalls = sqliteTable('llm_calls', {
 ### 7d. Admin dashboard `/admin/usage`
 - **Create** `src/app/(hub)/admin/usage/page.tsx` (server component, `requireAdmin()`): daily cost chart (aggregate `llm_calls` by day), per-feature table (calls, tokens, cost), per-user table, "cost per plan" card (plan rows ÷ count), margin view (reads tier prices from a `const TIER_PRICES` in `src/lib/billing.ts` — placeholder constants until Phase 8). Reuse chart idioms from `src/components/LlmBudget.tsx`/`JobTimeline.tsx`.
 - Add the query helpers to `src/lib/analytics.ts` (follow `llmUsageHistory` style). Link from `src/app/(hub)/admin/page.tsx`.
-- [ ] page + helpers + link; build green; screenshot check with Playwright
+- [x] page + helpers + link; build green; screenshot check with Playwright ✅ 2026-08-20 (`17ec315`; helpers in `src/lib/usage.ts` instead of analytics.ts — parallel-ownership split; cost-per-plan is avg-per-call × 6 estimate, rows carry no run id)
 
 ### 7e. `get_usage` MCP tool (admin-scoped)
 - **Create** `mcp/tools/usage.ts`: returns the same aggregates. Gate: `auth.userId` must map to `users.role === 'admin'` (query `users` table); else a polite restricted payload. Register in `mcp/build.ts`.
-- [ ] tool + registration + admin-gate test in `tests/mcp-tools.test.ts`
+- [x] tool + registration + admin-gate test ✅ 2026-08-20 (`17ec315`; gate test lives in `tests/usage.test.ts`; 27th tool registered in `mcp/build.ts`)
 
 ## Phase 8 — Artifact monetization
 
@@ -178,7 +180,7 @@ export const planEntitlements = sqliteTable('plan_entitlements', {
 ```
 - `src/lib/billing.ts` (new): `TIER_PRICES = { free: 0, builder: 19, factory: 49 }`, `quotaFor(tier)`, `usageThisCycle(userId)` (count `llm_calls` where `feature='plan'` and `userId=?` within the current reset cycle), `canGeneratePlan(userId)`.
 - `mcp/tools/plans.ts`: for authed users replace `planCapExceeded` with `canGeneratePlan`; anonymous mode keeps the flat `MCP_PLAN_DAILY_CAP`. Error payload includes the tier + upgrade hint.
-- [ ] migration + billing.ts + enforcement + tests (quota window edges, anonymous path unchanged)
+- [x] migration + billing.ts + enforcement + tests (quota window edges, anonymous path unchanged) ✅ 2026-08-20 (`0356eaf`; migration `0019_confused_gunslinger.sql`; authed gate counts in-flight pending too; **units fix**: phase calls re-tagged `plan-phase` so `feature='plan'` = one row per generation — without it tiers were 1/5/16 generations, not 3/30/100)
 
 ### 8b. `/pricing` page + flip auth
 - **Create** `src/app/(hub)/pricing/page.tsx` (public): three tier cards from `TIER_PRICES`, "what's a plan" explainer, self-host note. Add to `NavLinks.tsx` (`buildLinks`).
