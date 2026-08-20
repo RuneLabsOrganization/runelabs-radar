@@ -327,6 +327,25 @@ export const llmUsage = sqliteTable('llm_usage', {
 });
 
 /**
+ * One row per successful LLM call — the monetization prerequisite (§1.3.4):
+ * per-feature/per-user cost attribution. durationMs is deliberate double-duty:
+ * completionTokens / durationMs per model = our own measured output-speed
+ * series, rolled into metric_points (source 'radar-speed') by the science job.
+ */
+export const llmCalls = sqliteTable('llm_calls', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  ts: integer('ts', { mode: 'timestamp' }).notNull(),
+  feature: text('feature').notNull(), // 'curate'|'brief'|'plan'|'stack'|'pain'|'opportunity'|'debate'|'scout'|'digest'|'second-look'|...
+  job: text('job'), // worker job name when applicable
+  userId: integer('user_id'), // oauth user when MCP-triggered; null = pipeline/anonymous
+  model: text('model').notNull(),
+  promptTokens: integer('prompt_tokens').notNull().default(0),
+  completionTokens: integer('completion_tokens').notNull().default(0),
+  durationMs: integer('duration_ms').notNull().default(0), // wall time — also powers first-party speed data
+  estCostUsd: real('est_cost_usd').notNull().default(0),
+});
+
+/**
  * OAuth 2.1 for the MCP server (Next.js is the authorization server, the MCP
  * process only validates). Clients register dynamically (RFC 7591) so any MCP
  * client can connect without manual key copying.
