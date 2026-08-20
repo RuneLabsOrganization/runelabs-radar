@@ -21,6 +21,7 @@ import { runOpenBenchSync } from '../src/lib/ingest/openbench';
 import { runDatasetDump } from '../src/lib/dump';
 import { runWeeklyReport } from '../src/lib/brief/weekly';
 import { syncAgentPlans } from '../src/lib/agent-plans';
+import { runRadarEval } from '../src/lib/science/eval';
 
 loadDotEnv();
 
@@ -53,6 +54,9 @@ const tasks = [
   cron.schedule('20 5 * * *', () => void withJobRun('dataset-dump', runDatasetDump)),
   // weekly: coding-agent plan prices (manual seed, idempotent re-sync)
   cron.schedule('40 4 * * 4', () => void withJobRun('agent-plans', syncAgentPlans)),
+  // weekly: micro-eval vs keyed models (Thu 04:30 — the series exists before
+  // Friday's nightly science job blends it into the Radar Score)
+  cron.schedule('30 4 * * 4', () => void withJobRun('radar-eval', runRadarEval)),
   // weekly: State of the Builder Market report (Sunday 08:00, after the brief)
   cron.schedule('0 8 * * 0', () => void withJobRun('weekly-report', runWeeklyReport)),
 ];

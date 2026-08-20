@@ -23,6 +23,7 @@ import { runOpenBenchSync } from '../src/lib/ingest/openbench';
 import { runDatasetDump } from '../src/lib/dump';
 import { runWeeklyReport } from '../src/lib/brief/weekly';
 import { syncAgentPlans } from '../src/lib/agent-plans';
+import { runRadarEval } from '../src/lib/science/eval';
 
 const jobs: Record<JobName, () => Promise<Record<string, unknown>>> = {
   ingest: runIngest,
@@ -46,6 +47,7 @@ const jobs: Record<JobName, () => Promise<Record<string, unknown>>> = {
   'dataset-dump': runDatasetDump,
   'weekly-report': runWeeklyReport,
   'agent-plans': syncAgentPlans,
+  'radar-eval': runRadarEval,
 };
 
 const name = process.argv[2] as JobName | undefined;
