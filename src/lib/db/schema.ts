@@ -285,6 +285,10 @@ export const opportunities = sqliteTable('opportunities', {
   // JSON execution plan (full task graph) — generated on first MCP request, cached
   plan: text('plan'),
   planGeneratedAt: integer('plan_generated_at', { mode: 'timestamp' }),
+  // crowdedness signal (Phase 9e): successful plan generations for this
+  // opportunity — "N builders exploring this", with a ranking penalty above
+  // the threshold in the get_opportunities tool
+  planRuns: integer('plan_runs').notNull().default(0),
   firstSeenAt: integer('first_seen_at', { mode: 'timestamp' }).notNull(),
   lastSeenAt: integer('last_seen_at', { mode: 'timestamp' }).notNull(),
 });
@@ -397,4 +401,20 @@ export const planEntitlements = sqliteTable('plan_entitlements', {
   tier: text('tier', { enum: ['free', 'builder', 'factory'] }).notNull().default('free'),
   plansPerMonth: integer('plans_per_month').notNull().default(3), // free=3, builder=30, factory=100
   resetDay: integer('reset_day').notNull().default(1), // day of month the quota resets
+});
+
+/**
+ * Multi-role debate transcripts (Phase 9a): Advocate → Skeptic → Market
+ * Realist → Judge over either a stored opportunity (opportunityId) or a
+ * free-text idea (ideaText) from the debate_idea tool — exactly one is set.
+ */
+export const debates = sqliteTable('debates', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  opportunityId: integer('opportunity_id').references(() => opportunities.id),
+  ideaText: text('idea_text'),
+  // JSON [{role: 'advocate'|'skeptic'|'realist'|'judge', text}]
+  transcript: text('transcript').notNull(),
+  verdict: text('verdict', { enum: ['pursue', 'watch', 'reject'] }).notNull(),
+  confidence: integer('confidence').notNull().default(40),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
 });
