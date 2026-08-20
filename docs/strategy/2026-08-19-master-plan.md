@@ -22,7 +22,7 @@ AA is the **benchmark authority**: self-run benchmarks (Intelligence Index, prop
 
 **Positioning**: *AA is the Bloomberg terminal for model performance; Radar is the copilot for people building businesses with those models.* Target: indie founders, solopreneurs, small product teams. *"AA tells you which model wins. Radar tells you what to build — and hands your agent the plan."* We undercut 10-20× on price and own the discover → debate → decide → plan → build loop.
 
-**Deliberately not chasing**: proprietary benchmark suites, arenas, hardware/inference benchmarking, compute-market forecasting (years + millions + trust moat). Our own micro-eval (Phase 6c) is deliberately modest.
+**Deliberately not chasing**: proprietary benchmark suites, arenas, hardware/inference benchmarking, compute-market forecasting, enterprise services (workshops/advisory) — years + millions + trust moat, or simply not our game. Our own micro-eval (Phase 6c) is deliberately modest. **Second-pass gap review (2026-08-19, against the live AA site)**: speed data, cache pricing, media arenas, provider-level throughput, agent-plan tracking, and trust-page freshness/independence assets were missing — all now folded into Phases 6/7/8/10 as first-party-cheap items.
 
 ## 1.3 Hard rules (user-locked decisions)
 
@@ -72,15 +72,17 @@ AA is the **benchmark authority**: self-run benchmarks (Intelligence Index, prop
 ### 6a. Provider price pipeline
 - **Create** `src/lib/ingest/pricing.ts`: `export async function runPricingSync(): Promise<{ recorded: number }>`.
   - Static provider table (in-file const): OpenAI, Anthropic, Google, DeepSeek, Moonshot, MiniMax, Qwen — each with a pricing-page URL + a deterministic parser (regex/HTML-table scrape via `fetchJson`/`fetchText` patterns in `src/lib/ingest/adapters/shared.ts`). Manual-fallback map for unparseable pages.
-  - Write via `recordMetrics()` (`src/lib/metrics.ts`): `{ source: 'provider-pricing', entity: <model>, metric: 'price_in' | 'price_out', value }` — lands in `metric_points` (schema: `src/lib/db/schema.ts:163`).
+  - Write via `recordMetrics()` (`src/lib/metrics.ts`): `{ source: 'provider-pricing', entity: <model>, metric: 'price_in' | 'price_out' | 'price_cache_hit', value }` — lands in `metric_points` (schema: `src/lib/db/schema.ts:163`). Cache-hit/write prices are a first-class series (AA segments them; builders' real bills depend on them).
   - Keep the raw page/snapshot in `benchmarkSnapshots` (`source: 'pricing-<provider>'`) for audit.
 - **Register** in `worker/index.ts`: weekly, e.g. `cron.schedule('10 5 * * 2', () => void withJobRun('pricing', runPricingSync))`, and in `worker/run.ts` job map.
 - [ ] implement pricing.ts + worker registration + `npm run job -- pricing` smoke
 - [ ] `tests/pricing.test.ts`: parsers against fixture HTML in `tests/fixtures/`
 
-### 6b. Open benchmark ingest
+### 6b. Open benchmark + media + provider ingest
 - **Create** `src/lib/ingest/openbench.ts`: `runOpenBenchSync()` pulling capability scores from public sources (LMArena exports, official model cards) into `metric_points` (`source: 'open-bench'`, `metric: 'intelligence' | 'elo'`). Weekly cron, same pattern as 6a.
-- [ ] implement + register + fixture test
+- Media coverage matters to us (two of six domains are image/video): include open image/video arena exports where published; speech only if a clean public source exists.
+- Optional, cheap: per-provider throughput/price for major open models from OpenRouter's public model endpoints (`source: 'openrouter'`) — the builder-facing slice of AA's provider-level analysis.
+- [ ] implement + register + fixture tests
 
 ### 6c. Radar micro-eval (stretch; do 6a/6b first)
 - **Create** `src/lib/science/eval.ts`: `runRadarEval()` — a small fixed suite (~12 tasks: 4 coding, 4 extraction, 4 copy) run weekly against the top ~8 models via `chatJSON`-compatible provider calls; deterministic graders (exact-match/regex/rubric-lite); scores → `metric_points` (`source: 'radar-eval'`).
@@ -110,13 +112,15 @@ export const llmCalls = sqliteTable('llm_calls', {
   model: text('model').notNull(),
   promptTokens: integer('prompt_tokens').notNull().default(0),
   completionTokens: integer('completion_tokens').notNull().default(0),
+  durationMs: integer('duration_ms').notNull().default(0), // wall time — also powers first-party speed data
   estCostUsd: real('est_cost_usd').notNull().default(0),
 });
 ```
+- `durationMs` is deliberate double-duty: `completionTokens / durationMs` per model = our own measured output-speed series (AA sells speed data; we generate it as a by-product of running). Roll it into `metric_points` (`source: 'radar-speed'`, `metric: 'output_toks_per_s'`) via a nightly rollup in the science job.
 - [ ] schema + `npm run db:generate`
 
 ### 7b. Instrument chatJSON (single funnel)
-- `src/lib/llm/minimax.ts`: `chatJSON(system, user, opts?: { job?, maxTokens?, feature?, userId? })`. After a successful response (it already reads `data.usage`), insert one `llm_calls` row. Cost via `src/lib/llm/pricing.ts` (new): static map `{ 'MiniMax-M2': { in: 0.30, out: 1.20 } }` per 1M tokens; fall back to zeros for unknown models. Insert must never break the caller: wrap in try/catch.
+- `src/lib/llm/minimax.ts`: `chatJSON(system, user, opts?: { job?, maxTokens?, feature?, userId? })`. Time the fetch (`Date.now()` around the await), and after a successful response (it already reads `data.usage`) insert one `llm_calls` row incl. `durationMs`. Cost via `src/lib/llm/pricing.ts` (new): static map `{ 'MiniMax-M2': { in: 0.30, out: 1.20 } }` per 1M tokens; fall back to zeros for unknown models. Insert must never break the caller: wrap in try/catch.
 - Feature tags at call sites: curate.ts (`feature: 'curate'`), brief/brief.ts (`'brief'` + `'digest'`), opportunities/brief.ts (`'opportunity-brief'`), plans/generate.ts (`'plan'` — plus `userId` threaded from the MCP tool), stacks/generate.ts (`'stack'`), pain.ts (`'pain'`), engine.ts (`'opportunity'`), critic.ts (`'critic'`).
 - [ ] implement + `tests/llm-calls.test.ts` (mock `_setFetch` w/ usage payload → assert row + cost math)
 
@@ -156,7 +160,9 @@ export const planEntitlements = sqliteTable('plan_entitlements', {
 - Ops step (documented in README): set `MCP_AUTH_REQUIRED=true` in box `.env`, `docker compose up -d mcp`. OAuth + `/connect` already handle onboarding.
 - [ ] page + nav + README ops note + build + Playwright render check
 
-### 8c. Later (not this phase): Stripe checkout/webhooks, seat management, invoices.
+### 8c. Later (not this phase)
+- **Team tier (~$99/mo)**: shared verdicts/votes, multiple seats, shared idea history — the seat model is AA's single-seat pain point; ours should be explicitly multi-seat. Needs seat management UX first.
+- Stripe checkout/webhooks, invoices, annual pricing.
 
 ## Phase 9 — Idea-engine overhaul
 
@@ -193,10 +199,11 @@ export const planEntitlements = sqliteTable('plan_entitlements', {
 
 Cheap wins on data we already store; each is independent.
 
-- [ ] **Metrics explorer** `/metrics` (`src/app/(hub)/metrics/page.tsx`): chart/compare any `metric_points` series, CSV export. First-party series only in public mode (`source != 'aa*'` unless `AA_PUBLIC`).
+- [ ] **Metrics explorer** `/metrics` (`src/app/(hub)/metrics/page.tsx`): chart/compare any `metric_points` series, CSV + PNG export, and a daily public dataset dump (gzip of first-party series — our free "databook"). First-party series only in public mode (`source != 'aa*'` unless `AA_PUBLIC`).
+- [ ] **Coding-agent subscription tracker**: AA benchmarks agents end-to-end; our audience asks "which agent plan is worth it." Track coding-agent plan pricing/limits (Cursor, Claude Code, Codex, Copilot, etc.) as `metric_points` series (`source: 'agent-plans'`, manual-seeded + review quarterly) with a public comparison page. Very cheap, very on-brand.
 - [ ] **Weekly "State of the Builder Market" report**: `src/lib/brief/weekly.ts` `runWeeklyReport()` (Sunday 08:00 cron) → new `reports` table (date, markdown) → public `/reports` archive (SEO) + MCP `get_weekly_report` tool.
 - [ ] **Public read-only JSON API** `/api/v1/{signals,board,opportunities,metrics}` — thin handlers over the same lib functions, IP rate-limited; acquisition channel parity with AA's free tier.
-- [ ] **Trust page**: extend `/accuracy` with forecast grades + "how we score ourselves" narrative (the anti-AA-independence-policy asset).
+- [ ] **Trust page**: extend `/accuracy` with forecast grades + "how we score ourselves" narrative, an explicit independence note (no pay-for-placement), and a **freshness metric**: median time from model/story release to appearing on the board/feed (measurable from `stories.createdAt` vs `boardHistory.appliedAt`) — our answer to their "benchmarked within 24h" promise, with our 30-min ingest cadence behind it.
 - [ ] **Onboarding polish on `/connect`**: connection health check button (calls `tools/list`), "first plan in 5 minutes" guided copy.
 
 ## Phase 11 — Persona expansion (only after Phase 7 data says so)
