@@ -8,9 +8,12 @@ import { planToWire, type ExecutionPlan } from '../../src/lib/plans/schema';
 import { renderPlanMarkdown } from '../../src/lib/plans/markdown';
 import { envelopeSchema, iso, respond } from '../lib/payload';
 import { marketVisible, type AuthContext } from '../lib/auth';
+import { canGeneratePlan, quotaFor, type Tier } from '../../src/lib/billing';
 
-// --- per-caller daily generation cap: plans cost 6-7 LLM calls each, and the
-// global MiniMax cap is shared with the curation worker ---
+// --- plan-generation quotas (§8a): anonymous callers keep the flat per-caller
+// daily cap (plans cost 6-7 LLM calls each, and the global MiniMax cap is
+// shared with the curation worker); authed users are gated by their monthly
+// plan entitlement (src/lib/billing.ts), metered from llm_calls rows ---
 const PLAN_DAILY_CAP = Number(process.env.MCP_PLAN_DAILY_CAP ?? 10);
 const planUsage = new Map<string, { date: string; count: number }>();
 // in-flight generations count against the cap at ENTRY — otherwise N parallel
@@ -118,7 +121,35 @@ export function registerPlanTools(server: McpServer, auth: AuthContext): void {
           },
         );
       }
-      if (planCapExceeded(auth.rateKey)) {
+      if (auth.userId != null) {
+        // authed: monthly entitlement quota. Usage comes from llm_calls rows
+        // written by generation itself, so cache hits (no LLM rows) are free.
+        // In-flight generations count at ENTRY, same rule as the daily cap.
+        const gate = canGeneratePlan(auth.userId);
+        const used = gate.used + (planPending.get(auth.rateKey) ?? 0);
+        if (!gate.ok || used >= gate.quota) {
+          const nextTier: Tier | null = gate.tier === 'free' ? 'builder' : gate.tier === 'builder' ? 'factory' : null;
+          const hint = nextTier
+            ? `upgrade to ${nextTier} for ${quotaFor(nextTier)} plans/mo — see /pricing`
+            : 'see /pricing for higher-volume options';
+          return respond(
+            {
+              ok: false,
+              error: `monthly plan quota reached for tier "${gate.tier}" (${used}/${gate.quota} this cycle) — ${hint}`,
+            },
+            {
+              summary: `Monthly plan quota reached (${used}/${gate.quota} this cycle, tier "${gate.tier}") — ${hint}.`,
+              next: [
+                {
+                  tool: 'get_plan',
+                  arguments: { opportunity: opp.slug },
+                  reason: 'the cached plan, if one exists',
+                },
+              ],
+            },
+          );
+        }
+      } else if (planCapExceeded(auth.rateKey)) {
         return respond(
           {
             ok: false,
@@ -172,7 +203,9 @@ export function registerPlanTools(server: McpServer, auth: AuthContext): void {
             { summary: 'The cached plan contains restricted market data and cannot be served to this caller.' },
           );
         }
-        if (!result.cached) recordPlanGeneration(auth.rateKey);
+        // authed usage is already metered in llm_calls by generation itself;
+        // only the anonymous flat cap needs the in-memory tally
+        if (!result.cached && auth.userId == null) recordPlanGeneration(auth.rateKey);
         const p = result.plan;
         return respond(
           {
