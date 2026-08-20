@@ -13,6 +13,8 @@
 > **Status (2026-08-20, Wave 3)**: Idea engine LIVE — multi-role debates (9a; Advocate → Skeptic → Market Realist → Judge, auto-run on top-2 new opportunities daily, transcripts on dossiers), `debate_idea` + `scout_opportunities` tools (9b/9c; 29 tools total, per-caller daily caps), anti-homogeneity ordering (9d; sector quota + per-caller salting + exploration slot), crowdedness signal (9e; `plan_runs` + `exploring_count` + ranking penalty), `/pricing` page (8b). 451 unit tests green. Commits `25c7832`..`b98daad`. **`MCP_AUTH_REQUIRED=true` flipped on the box** — anonymous MCP access is off; OAuth via `/connect` is the only path in; entitlements default to free (3 plans/mo, manual grants until 8c). 9f personalization stays gated on Phase 8 data.
 >
 > **Status (2026-08-20, Wave 4)**: Parity + distribution LIVE — `/metrics` explorer + daily public dataset dump (`/api/dataset`), coding-agent plan tracker (`/agent-plans`), weekly State of the Builder Market report (`/reports` + `get_weekly_report`, 30 tools), public read-only `/api/v1/*` (IP-limited), trust page with freshness metric (`/accuracy`), `/connect` health check + 5-minute first-plan guide. 505 unit tests green. Commits `f141bd3`..`c7c242b`. **Note**: live suite against prod now needs `SMOKE_TOKEN=<bearer>` (mint a short-lived `oauth_tokens` row). Phase 11 personas remain gated on Phase 7 margin data.
+>
+> **Status (2026-08-20, 6c)**: Radar micro-eval LIVE — 12-task deterministic suite (coding/extraction/copy), provider-agnostic `EVAL_TARGETS` (MiniMax-M2 keyed; OpenRouter entries are one env var away), weekly Thu 04:30. First live run: M2 100/100 (12/12, $0.0028, metered as `feature='eval'`). Suite is deliberately modest — expect to harden it when multiple models are keyed and scores need to discriminate. The 6e composite's `radar-eval` blend activates automatically with this series.
 
 ---
 
@@ -94,7 +96,7 @@ AA is the **benchmark authority**: self-run benchmarks (Intelligence Index, prop
 
 ### 6c. Radar micro-eval (stretch; do 6a/6b first)
 - **Create** `src/lib/science/eval.ts`: `runRadarEval()` — a small fixed suite (~12 tasks: 4 coding, 4 extraction, 4 copy) run weekly against the top ~8 models via `chatJSON`-compatible provider calls; deterministic graders (exact-match/regex/rubric-lite); scores → `metric_points` (`source: 'radar-eval'`).
-- [ ] suite defined in-file as data; one retry; failures logged not fatal
+- [x] suite defined in-file as data; one retry; failures logged not fatal ✅ 2026-08-20 (`src/lib/science/eval.ts`; 12 tasks — 4 coding/4 extraction/4 copy — deterministic graders exact/regex/rubric-lite; provider-agnostic `EVAL_TARGETS`, keyless targets skip silently so breadth is one env var away; eval calls metered into `llm_calls` as feature `eval`; weekly Thu 04:30 cron, ahead of Friday's science blend which picks it up via `RADAR_EVAL_METRIC='score'`)
 
 ### 6d. Rewire consumers to first-party series
 - `src/lib/analytics.ts` `aaModels()` (~line 313): add a first-party reader that assembles the `AaModel` shape from `metric_points` (`provider-pricing` + `open-bench` series); use AA snapshot only when first-party coverage for a model is missing AND `AA_API_KEY` set.
