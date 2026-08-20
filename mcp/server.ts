@@ -105,8 +105,15 @@ const httpServer = createServer(async (req: IncomingMessage, res: ServerResponse
     return;
   }
 
-  // a browser that wandered to /mcp gets the connect page; agents POST
-  if (req.method === 'GET' && (req.headers.accept ?? '').includes('text/html')) {
+  // a browser that wandered to /mcp gets the connect page; agents POST.
+  // Never redirect anything that looks like an MCP client (auth header or
+  // protocol version) — in token mode those need the 401 challenge instead.
+  if (
+    req.method === 'GET' &&
+    (req.headers.accept ?? '').includes('text/html') &&
+    !req.headers.authorization &&
+    !req.headers['mcp-protocol-version']
+  ) {
     res.writeHead(302, { location: `${config.siteUrl.replace(/\/+$/, '')}/connect` });
     res.end();
     return;

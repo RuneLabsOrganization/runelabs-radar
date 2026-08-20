@@ -192,7 +192,9 @@ async function generatePlanInner(
         .slice(0, 8)
         .map((m) => `- ${promptLine(m.name, 60)}: intel ${m.intelligence}, in $${m.priceIn}/1M, out $${m.priceOut}/1M`)
         .join('\n')
-    : '(no market data)';
+    : includeMarket
+      ? '(no market data)'
+      : '(market data withheld for this caller)';
   const painsText =
     painRows.length > 0
       ? painRows.map((p) => `- (seen ${p.intensity}x) ${promptLine(p.summary, 160)}`).join('\n')

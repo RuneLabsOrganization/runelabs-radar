@@ -26,6 +26,11 @@ function isValidRedirectUri(u: string): boolean {
 
 // open registration needs a throttle: 20 registrations/hour per IP
 const registrations = new Map<string, { count: number; resetAt: number }>();
+// GC: sweep expired buckets so a flood of spoofed keys can't grow it forever
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, r] of registrations) if (r.resetAt < now) registrations.delete(ip);
+}, 600e3).unref();
 function registrationThrottled(ip: string): boolean {
   const now = Date.now();
   const rec = registrations.get(ip);

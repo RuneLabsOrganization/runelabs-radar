@@ -5,6 +5,7 @@ import { getDb } from '../../src/lib/db';
 import { opportunities } from '../../src/lib/db/schema';
 import { config } from '../../src/lib/config';
 import { envelopeSchema, iso, parseJsonColumn, respond, type NextAction } from '../lib/payload';
+import { marketVisible, type AuthContext } from '../lib/auth';
 
 type OppRow = typeof opportunities.$inferSelect;
 
@@ -40,7 +41,7 @@ function closestSlugs(ref: string): string[] {
     .map((r) => r.slug);
 }
 
-export function registerOpportunityTools(server: McpServer): void {
+export function registerOpportunityTools(server: McpServer, auth: AuthContext): void {
   server.registerTool(
     'get_opportunities',
     {
@@ -176,6 +177,13 @@ export function registerOpportunityTools(server: McpServer): void {
           },
         );
       }
+      const brief = parseJsonColumn<Record<string, unknown> | null>(row.brief, null);
+      if (brief && !marketVisible(auth)) {
+        // AA redistribution terms: strip the model-price citations from unit
+        // economics for restricted callers (same gate as get_market_models)
+        const ue = brief.unitEconomics;
+        if (ue && typeof ue === 'object') delete (ue as Record<string, unknown>).assumptions;
+      }
       return respond(
         {
           found: true,
@@ -197,7 +205,7 @@ export function registerOpportunityTools(server: McpServer): void {
               .filter((e) => e && typeof e.label === 'string')
               .map((e) => ({ type: String(e.type ?? 'note'), label: e.label })),
             review: parseJsonColumn<Record<string, unknown> | null>(row.review, null),
-            brief: parseJsonColumn<Record<string, unknown> | null>(row.brief, null),
+            brief,
             has_plan: row.plan !== null,
             first_seen: row.firstSeenAt.toISOString(),
             last_seen: row.lastSeenAt.toISOString(),

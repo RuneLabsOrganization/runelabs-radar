@@ -5,7 +5,7 @@ import { getDb } from '../../src/lib/db';
 import { briefs, domainDigests, insights } from '../../src/lib/db/schema';
 import { getIdentity } from '../../src/lib/identity';
 import { DOMAINS } from '../../src/lib/domains';
-import { envelopeSchema, respond, text } from '../lib/payload';
+import { envelopeSchema, parseJsonColumn, respond, text } from '../lib/payload';
 
 export function registerBriefTools(server: McpServer): void {
   server.registerTool(
@@ -120,7 +120,7 @@ export function registerBriefTools(server: McpServer): void {
             ],
           },
         );
-      const parsed: unknown = JSON.parse(row.items);
+      const parsed = parseJsonColumn<unknown>(row.items, null);
       const items = Array.isArray(parsed)
         ? parsed
             .filter((i) => i && typeof i.headline === 'string' && typeof i.detail === 'string')

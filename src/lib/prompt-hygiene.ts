@@ -38,12 +38,15 @@ export function stripCjkLeak(s: string): string {
       stripped++;
     } else if (cp >= 0xff01 && cp <= 0xff5e) {
       out += String.fromCodePoint(cp - 0xfee0); // fullwidth → ASCII
+      stripped++;
     } else if (
       (cp >= 0x2e80 && cp <= 0x303f) || // CJK radicals + CJK punctuation
       (cp >= 0x3040 && cp <= 0x30ff) || // hiragana / katakana
       (cp >= 0x3400 && cp <= 0x4dbf) || // ideographs ext A
       (cp >= 0x4e00 && cp <= 0x9fff) || // unified ideographs (the common case)
-      (cp >= 0xf900 && cp <= 0xfaff) // compatibility ideographs
+      (cp >= 0xf900 && cp <= 0xfaff) || // compatibility ideographs
+      (cp >= 0xac00 && cp <= 0xd7af) || // Hangul syllables
+      (cp >= 0x20000 && cp <= 0x2a6df) // ideographs ext B (astral plane)
     ) {
       out += ' ';
       stripped++;
@@ -51,9 +54,11 @@ export function stripCjkLeak(s: string): string {
       out += ch;
     }
   }
-  if (stripped > 0) {
-    console.warn(`[cjk] stripped ${stripped} leaked CJK char(s) from LLM output`);
-  }
+  // only touch whitespace when something was actually stripped — the collapse
+  // chain would otherwise flatten indentation in fenced code blocks of
+  // perfectly clean English output
+  if (stripped === 0) return s;
+  console.warn(`[cjk] stripped ${stripped} leaked CJK char(s) from LLM output`);
   return out
     .replace(/[^\S\n]+/g, ' ')
     .replace(/ +([,.;:!?])/g, '$1')

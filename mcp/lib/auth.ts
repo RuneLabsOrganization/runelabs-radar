@@ -53,15 +53,23 @@ export function authenticate(req: IncomingMessage): AuthContext | null {
       // oauth tables not migrated yet — treat as invalid, not as a server error
       grant = null;
     }
-    if (!grant) return null;
-    return {
-      authed: true,
-      userId: grant.userId,
-      scopes: new Set(grant.scope.split(/\s+/).filter(Boolean)),
-      rateKey: `tok:${grant.id}`,
-    };
+    if (grant) {
+      return {
+        authed: true,
+        userId: grant.userId,
+        scopes: new Set(grant.scope.split(/\s+/).filter(Boolean)),
+        // key on the stable user, not the token row: refresh rotation mints a
+        // new row id, and a token-keyed limiter resets on every rotation
+        rateKey: `user:${grant.userId}`,
+      };
+    }
+    // invalid/expired bearer: hard 401 when auth is required; in anonymous
+    // (self-host) mode fall back to the anonymous context instead of trapping
+    // a client that holds a stale credential
+    if (authRequired()) return null;
+  } else if (authRequired()) {
+    return null;
   }
-  if (authRequired()) return null;
   return {
     authed: false,
     userId: null,

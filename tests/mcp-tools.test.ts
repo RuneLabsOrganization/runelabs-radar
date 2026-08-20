@@ -4,7 +4,7 @@ import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { buildServer } from '../mcp/build';
 import type { AuthContext } from '../mcp/lib/auth';
 import { _setFetch } from '@/lib/llm/minimax';
-import { opportunities, stories } from '@/lib/db/schema';
+import { insights, opportunities, stories } from '@/lib/db/schema';
 import { useTestDb } from './helpers/db';
 
 const AUTH: AuthContext = {
@@ -173,6 +173,13 @@ describe('mcp server', () => {
     const brief = await call(client, 'get_daily_brief', {});
     expect(brief.content?.[0]?.text).toContain('No brief found');
     expect(brief.content?.[0]?.text).toContain('Source:');
+  });
+
+  it('get_daily_insights survives a corrupt insights row', async () => {
+    db.insert(insights).values({ date: '2026-08-19', items: '{not json', createdAt: new Date() }).run();
+    const client = await wire();
+    const res = await call(client, 'get_daily_insights', {});
+    expect(res.structuredContent).toMatchObject({ date: '2026-08-19', items: [] });
   });
 
   it('search_stories finds a freshly seeded story (regression: seconds-vs-ms cutoff)', async () => {

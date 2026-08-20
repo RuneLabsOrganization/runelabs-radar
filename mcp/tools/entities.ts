@@ -57,7 +57,7 @@ export function registerEntityTools(server: McpServer): void {
           found: true,
           entity: {
             name: base.name,
-            kind: base.kind,
+            kind: base.kind ?? 'unknown',
             mentions: base.mentions,
             mentions_14d: series,
             board_placements: placements.map((b) => ({

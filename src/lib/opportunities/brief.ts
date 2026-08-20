@@ -130,7 +130,9 @@ async function generateBriefInner(
         .slice(0, 6)
         .map((m) => `- ${promptLine(m.name, 60)}: intel ${m.intelligence}, in $${m.priceIn}/1M, out $${m.priceOut}/1M`)
         .join('\n')
-    : '(market data withheld for this caller)';
+    : allowMarket
+      ? '(no market data)'
+      : '(market data withheld for this caller)';
 
   const sectorPains = opp.sector
     ? db

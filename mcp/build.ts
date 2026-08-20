@@ -32,7 +32,7 @@ export function buildServer(auth: AuthContext): McpServer {
   registerLaunchTools(server);
   registerBoardTools(server);
   registerStackTools(server);
-  registerOpportunityTools(server);
+  registerOpportunityTools(server, auth);
   registerPlanTools(server, auth);
   registerBriefTools(server);
   registerPainTools(server);

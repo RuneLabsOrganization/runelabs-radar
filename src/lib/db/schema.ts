@@ -386,3 +386,15 @@ export const oauthTokens = sqliteTable('oauth_tokens', {
   expiresAt: integer('expires_at', { mode: 'timestamp' }).notNull(),
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
 });
+
+/**
+ * Per-user artifact quota (Phase 8a). The user's unit is a plan generation;
+ * usage is counted from llm_calls rows (feature='plan', userId=?) within the
+ * current reset cycle. No row = default 'free' tier.
+ */
+export const planEntitlements = sqliteTable('plan_entitlements', {
+  userId: integer('user_id').primaryKey().references(() => users.id),
+  tier: text('tier', { enum: ['free', 'builder', 'factory'] }).notNull().default('free'),
+  plansPerMonth: integer('plans_per_month').notNull().default(3), // free=3, builder=30, factory=100
+  resetDay: integer('reset_day').notNull().default(1), // day of month the quota resets
+});
