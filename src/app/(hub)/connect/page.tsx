@@ -2,6 +2,7 @@ import { config } from '@/lib/config';
 import { requireViewer } from '@/lib/auth/user';
 import PageHeader from '@/components/PageHeader';
 import CopyButton from '@/components/CopyButton';
+import ConnectHealth from '@/components/ConnectHealth';
 
 export const metadata = {
   title: 'Connect your agent — MCP',
@@ -60,6 +61,8 @@ export default async function ConnectPage() {
         </p>
       </div>
 
+      <ConnectHealth />
+
       <div className="space-y-3">
         <Snippet
           title="Claude Code"
@@ -85,6 +88,50 @@ export default async function ConnectPage() {
           note="Lists all 26 tools"
           code={`curl -X POST ${mcpUrl} \\\n  -H 'content-type: application/json' \\\n  -H 'accept: application/json, text/event-stream' \\\n  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'`}
         />
+      </div>
+
+      <div className="card !p-4">
+        <div className="mono text-[10.5px] font-semibold uppercase tracking-[0.12em] text-[var(--ink-2)]">
+          First plan in 5 minutes
+        </div>
+        <ol className="mt-2 space-y-2.5 text-[12.5px] leading-relaxed" style={{ color: 'var(--ink-3)' }}>
+          <li>
+            <span className="mono text-[var(--phosphor)]">1.</span>{' '}
+            <strong className="text-[var(--ink-2)]">Connect your client</strong> — one of the snippets
+            above. First connect opens a login/consent screen (self-host anonymous mode: just the URL,
+            no login).
+          </li>
+          <li>
+            <span className="mono text-[var(--phosphor)]">2.</span>{' '}
+            <strong className="text-[var(--ink-2)]">Pick an opening</strong> — ask your agent for{' '}
+            <span className="mono">get_opportunities</span>. You get ranked opportunities back, each
+            with a <span className="mono">slug</span>; choose one worth building.
+          </li>
+          <li>
+            <span className="mono text-[var(--phosphor)]">3.</span>{' '}
+            <strong className="text-[var(--ink-2)]">Generate the plan</strong> —{' '}
+            <span className="mono">{'generate_plan({ opportunity: "<slug>" })'}</span>. Takes ~30-100s
+            (6-7 LLM calls) and emits progress while it works. Free tier includes 3 plans/mo; cached
+            replays don&apos;t burn quota.
+          </li>
+          <li>
+            <span className="mono text-[var(--phosphor)]">4.</span>{' '}
+            <strong className="text-[var(--ink-2)]">Export the document</strong> —{' '}
+            <span className="mono">{'get_plan({ opportunity: "<slug>", format: "markdown" })'}</span>.
+            Save the markdown as <span className="mono">PLAN.md</span> in your repo.
+          </li>
+          <li>
+            <span className="mono text-[var(--phosphor)]">5.</span>{' '}
+            <strong className="text-[var(--ink-2)]">Execute</strong> — hand{' '}
+            <span className="mono">PLAN.md</span> to your local coding agent and let it work the task
+            graph: validation → build → launch → GTM → revenue, with acceptance criteria and rollback
+            notes per task.
+          </li>
+        </ol>
+        <p className="mt-3 text-[12px]" style={{ color: 'var(--ink-4)' }}>
+          If the agent stalls on any step, have it call <span className="mono">get_server_guide</span>{' '}
+          — the live tour, written for agents.
+        </p>
       </div>
 
       <div className="card !p-4">
