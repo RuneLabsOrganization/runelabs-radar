@@ -428,3 +428,17 @@ export const reports = sqliteTable('reports', {
   markdown: text('markdown').notNull(),
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
 });
+
+/**
+ * Personalization profile (Phase 9f, hosted mode) — one row per OAuth user,
+ * written via the set_profile MCP tool. When present, get_opportunities
+ * reranks by fit and scout_opportunities uses it as default constraints.
+ */
+export const userProfiles = sqliteTable('user_profiles', {
+  userId: integer('user_id').primaryKey().references(() => users.id),
+  skills: text('skills').notNull().default('[]'), // JSON string[]
+  interests: text('interests').notNull().default('[]'), // JSON string[] (sectors/topics)
+  capitalBand: text('capital_band'), // null | 'bootstrap' | 'small' | 'comfortable' | 'funded'
+  avoidedSectors: text('avoided_sectors').notNull().default('[]'), // JSON string[]
+  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
+});
