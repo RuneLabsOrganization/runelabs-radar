@@ -17,6 +17,7 @@ function summary(o: OppRow) {
     window: o.window ?? null,
     flip_score: o.flipScore,
     hold_score: o.holdScore,
+    exploring_count: o.planRuns,
     verdict: o.verdict,
     confidence: o.confidence,
     thesis: o.thesis,
@@ -39,6 +40,50 @@ function closestSlugs(ref: string): string[] {
     .limit(3)
     .all()
     .map((r) => r.slug);
+}
+
+// --- anti-homogeneity (Phase 9d) + crowdedness (Phase 9e) -----------------
+// Ordering pipeline for get_opportunities:
+//   SQL filters (status/verdict/sector/min_flip)
+//   → effectiveScore (crowdedness penalty — ordering only)
+//   → per-caller salt within equal effective scores
+//   → sector-quota walk (limit-1 slots)
+//   → exploration slot fill (last slot, quota-exempt)
+// Payloads always report the true flip_score; only ordering is jittered.
+
+/** Max items per sector in one response; the null sector is its own bucket. */
+const SECTOR_QUOTA = 2;
+
+// An opportunity this many builders are already exploring (successful plan
+// generations) is ordered CROWDED_PENALTY flip-points lower — the payload
+// still reports the true flip_score.
+const CROWDED_THRESHOLD = 3;
+const CROWDED_PENALTY = 10;
+
+function effectiveScore(o: OppRow): number {
+  return o.flipScore - (o.planRuns >= CROWDED_THRESHOLD ? CROWDED_PENALTY : 0);
+}
+
+/**
+ * FNV-1a 32-bit over "<rateKey>:<slug>" — deterministic per (caller, item):
+ * the same caller sees the same order all day; two callers the same morning
+ * see different orders. Used only to break effective-score ties.
+ */
+function saltHash(rateKey: string, slug: string): number {
+  let h = 0x811c9dc5;
+  const s = `${rateKey}:${slug}`;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return h >>> 0;
+}
+
+/** effectiveScore desc, salt-hash asc within equal scores — a total order. */
+function rankRows(rows: OppRow[], rateKey: string): OppRow[] {
+  return rows
+    .slice()
+    .sort((a, b) => effectiveScore(b) - effectiveScore(a) || saltHash(rateKey, a.slug) - saltHash(rateKey, b.slug));
 }
 
 export function registerOpportunityTools(server: McpServer, auth: AuthContext): void {
@@ -64,6 +109,7 @@ export function registerOpportunityTools(server: McpServer, auth: AuthContext): 
             window: z.string().nullable(),
             flip_score: z.number(),
             hold_score: z.number(),
+            exploring_count: z.number(),
             verdict: z.string(),
             confidence: z.number(),
             thesis: z.string(),
@@ -81,26 +127,55 @@ export function registerOpportunityTools(server: McpServer, auth: AuthContext): 
       if (sector) conds.push(eq(opportunities.sector, sector));
       if (verdict) conds.push(eq(opportunities.verdict, verdict));
       if (min_flip !== undefined) conds.push(gte(opportunities.flipScore, min_flip));
+      // no SQL limit — the quota walk and exploration slot below choose from
+      // the full filtered list (opportunities are a small curated table)
       const rows = db
         .select()
         .from(opportunities)
         .where(and(...conds))
         .orderBy(desc(opportunities.flipScore))
-        .limit(limit)
         .all();
-      const top = rows[0];
+      const ranked = rankRows(rows, auth.rateKey);
+
+      // sector-quota walk over the salted ranking: at most SECTOR_QUOTA per
+      // sector, filling limit-1 slots; overflow is dropped, not deferred
+      const picked: OppRow[] = [];
+      const rest: OppRow[] = [];
+      const buckets = new Map<string | null, number>();
+      const normalSlots = Math.max(limit - 1, 0);
+      for (const row of ranked) {
+        const sec = row.sector ?? null;
+        if (picked.length < normalSlots && (buckets.get(sec) ?? 0) < SECTOR_QUOTA) {
+          picked.push(row);
+          buckets.set(sec, (buckets.get(sec) ?? 0) + 1);
+        } else {
+          rest.push(row);
+        }
+      }
+
+      // exploration slot: highest-ranked overflow item from a sector not yet
+      // in the response — the one deliberate exception to the quota. When
+      // every sector is already present (or nothing overflows), the last
+      // slot just follows normal quota ranking.
+      const present = new Set(picked.map((o) => o.sector ?? null));
+      const last =
+        rest.find((o) => !present.has(o.sector ?? null)) ??
+        rest.find((o) => (buckets.get(o.sector ?? null) ?? 0) < SECTOR_QUOTA);
+      if (last && picked.length < limit) picked.push(last);
+
+      const top = picked[0];
       const filters = [sector && `sector=${sector}`, verdict && `verdict=${verdict}`, min_flip && `flip≥${min_flip}`]
         .filter(Boolean)
         .join(', ');
       return respond(
-        { count: rows.length, opportunities: rows.map(summary) },
+        { count: picked.length, opportunities: picked.map(summary) },
         {
           summary:
-            rows.length === 0
+            picked.length === 0
               ? `No active opportunities${filters ? ` matching ${filters}` : ''}.`
-              : `${rows.length} active opportunities${filters ? ` (${filters})` : ''} — top: "${top!.title}" (flip ${top!.flipScore}, ${top!.verdict}).`,
+              : `${picked.length} active opportunities${filters ? ` (${filters})` : ''} — top: "${top!.title}" (flip ${top!.flipScore}, ${top!.verdict}).`,
           next:
-            rows.length === 0
+            picked.length === 0
               ? [{ tool: 'get_pain_points', arguments: { limit: 10 }, reason: 'raw unmet needs behind future openings' }]
               : [
                   {
@@ -142,6 +217,7 @@ export function registerOpportunityTools(server: McpServer, auth: AuthContext): 
             window_months: z.number().nullable(),
             flip_score: z.number(),
             hold_score: z.number(),
+            exploring_count: z.number(),
             verdict: z.string(),
             confidence: z.number(),
             sub_scores: z.record(z.string(), z.number()),
@@ -197,6 +273,7 @@ export function registerOpportunityTools(server: McpServer, auth: AuthContext): 
             window_months: row.windowMonths ?? null,
             flip_score: row.flipScore,
             hold_score: row.holdScore,
+            exploring_count: row.planRuns,
             verdict: row.verdict,
             confidence: row.confidence,
             sub_scores: parseJsonColumn<Record<string, number>>(row.scores, {}),
