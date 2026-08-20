@@ -18,6 +18,9 @@ import { runOpportunities } from '../src/lib/opportunities/engine';
 import { runSecondLook } from '../src/lib/science/second-look';
 import { runPricingSync } from '../src/lib/ingest/pricing';
 import { runOpenBenchSync } from '../src/lib/ingest/openbench';
+import { runDatasetDump } from '../src/lib/dump';
+import { runWeeklyReport } from '../src/lib/brief/weekly';
+import { syncAgentPlans } from '../src/lib/agent-plans';
 
 loadDotEnv();
 
@@ -46,6 +49,12 @@ const tasks = [
   // weekly: first-party provider prices + open benchmarks (Phase 6 data foundations)
   cron.schedule('10 5 * * 2', () => void withJobRun('pricing', runPricingSync)),
   cron.schedule('20 4 * * 3', () => void withJobRun('openbench', runOpenBenchSync)),
+  // daily: the public first-party dataset dump (Phase 10 free databook)
+  cron.schedule('20 5 * * *', () => void withJobRun('dataset-dump', runDatasetDump)),
+  // weekly: coding-agent plan prices (manual seed, idempotent re-sync)
+  cron.schedule('40 4 * * 4', () => void withJobRun('agent-plans', syncAgentPlans)),
+  // weekly: State of the Builder Market report (Sunday 08:00, after the brief)
+  cron.schedule('0 8 * * 0', () => void withJobRun('weekly-report', runWeeklyReport)),
 ];
 
 // Populate immediately on boot instead of waiting for the first tick

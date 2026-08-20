@@ -20,6 +20,9 @@ import { runOppRescore } from '../src/lib/opportunities/rescore';
 import { runSecondLook } from '../src/lib/science/second-look';
 import { runPricingSync } from '../src/lib/ingest/pricing';
 import { runOpenBenchSync } from '../src/lib/ingest/openbench';
+import { runDatasetDump } from '../src/lib/dump';
+import { runWeeklyReport } from '../src/lib/brief/weekly';
+import { syncAgentPlans } from '../src/lib/agent-plans';
 
 const jobs: Record<JobName, () => Promise<Record<string, unknown>>> = {
   ingest: runIngest,
@@ -40,6 +43,9 @@ const jobs: Record<JobName, () => Promise<Record<string, unknown>>> = {
   'second-look': runSecondLook,
   pricing: runPricingSync,
   openbench: runOpenBenchSync,
+  'dataset-dump': runDatasetDump,
+  'weekly-report': runWeeklyReport,
+  'agent-plans': syncAgentPlans,
 };
 
 const name = process.argv[2] as JobName | undefined;
