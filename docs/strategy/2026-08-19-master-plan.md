@@ -9,6 +9,8 @@
 > **Status (2026-08-20)**: Wave 1 data foundations LIVE — `llm_calls` metering on every chatJSON call (7a/7b/7c), provider-pricing (6a) + open-bench/openrouter (6b) weekly ingests registered and deployed. 367 unit tests green. Commits `6adcd47`..`d84487c`. From here prices, benchmarks, and per-call costs accumulate for Waves 2+.
 >
 > **Status (2026-08-20, Wave 2)**: Readers + surfaces LIVE — merged first-party market reader (6d; AA now fallback-only), Radar Score running dark nightly with `aa_divergence` calibration logging (6e; `RADAR_SCORE_CONSUMERS` flips consumers after 2-4 weeks of low divergence), `/admin/usage` margin dashboard + admin-scoped `get_usage` (7d/7e; 27 tools), entitlements + monthly plan-quota enforcement for authed users (8a; anonymous path unchanged). 429 unit tests + live 44/44 + oauth-e2e 31/31 green. Commits `ba6d51a`, `0356eaf`, `17ec315`. **Watch**: first nightly science run after this deploy writes `radar-speed` + `radar-score` series — check `job_runs` stats for the science job tomorrow.
+>
+> **Status (2026-08-20, Wave 3)**: Idea engine LIVE — multi-role debates (9a; Advocate → Skeptic → Market Realist → Judge, auto-run on top-2 new opportunities daily, transcripts on dossiers), `debate_idea` + `scout_opportunities` tools (9b/9c; 29 tools total, per-caller daily caps), anti-homogeneity ordering (9d; sector quota + per-caller salting + exploration slot), crowdedness signal (9e; `plan_runs` + `exploring_count` + ranking penalty), `/pricing` page (8b). 451 unit tests green. Commits `25c7832`..`b98daad`. **Remaining ops step**: `MCP_AUTH_REQUIRED=true` flip on the box — deliberate, done with the user watching (README §Operations). 9f personalization stays gated on Phase 8 data.
 
 ---
 
@@ -185,7 +187,7 @@ export const planEntitlements = sqliteTable('plan_entitlements', {
 ### 8b. `/pricing` page + flip auth
 - **Create** `src/app/(hub)/pricing/page.tsx` (public): three tier cards from `TIER_PRICES`, "what's a plan" explainer, self-host note. Add to `NavLinks.tsx` (`buildLinks`).
 - Ops step (documented in README): set `MCP_AUTH_REQUIRED=true` in box `.env`, `docker compose up -d mcp`. OAuth + `/connect` already handle onboarding.
-- [ ] page + nav + README ops note + build + Playwright render check
+- [x] page + nav + README ops note + build + Playwright render check ✅ 2026-08-20 (`b98daad`; auth flip itself pending — deliberate ops step, done with the user watching)
 
 ### 8c. Later (not this phase)
 - **Team tier (~$99/mo)**: shared verdicts/votes, multiple seats, shared idea history — the seat model is AA's single-seat pain point; ours should be explicitly multi-seat. Needs seat management UX first.
@@ -199,24 +201,24 @@ export const planEntitlements = sqliteTable('plan_entitlements', {
 - `src/lib/opportunities/critic.ts`: add `runDebate(oppId: number | null, ideaText?: string)`. Roles as separate `chatJSON` calls (`feature: 'debate'`): **Advocate** → **Skeptic** → **Market Realist** (grounded in pains/comps/launches/market series via the same query helpers the brief/plan generators use) → **Judge** (verdict, conditions-to-succeed, confidence).
 - New `debates` table (migration): `id, opportunityId nullable FK, ideaText nullable, transcript JSON, verdict, confidence, createdAt`.
 - Auto-run for top-K new opportunities in `runOpportunities()` (`src/lib/opportunities/engine.ts`, cron `10 7 * * *`); render transcript on the dossier page `src/app/(hub)/opportunities/[id]/page.tsx`.
-- [ ] pipeline + table + dossier section + `tests/debate.test.ts` (mocked chatJSON per role)
+- [x] pipeline + table + dossier section + `tests/debate.test.ts` (mocked chatJSON per role) ✅ 2026-08-20 (`25c7832`, `78d2b55`; TOP_K_DEBATES=2 per daily run, judge turn carries kill-risks/variants as JSON superset)
 
 ### 9b. `debate_idea` MCP tool
 - **Create** `mcp/tools/debate.ts`: input `{ idea: string }`; grounding block = sector pains (`painPoints`), comps, launches (`launches`), market (`get_market_models` reader), closest existing opportunities (FTS/embedding similarity on title/thesis). Returns verdict + kill risks + **2-3 strengthened variants**. Register in `mcp/build.ts`. Rewrite the `validate_idea` prompt (`mcp/prompts.ts`) to a thin wrapper that calls the tool.
-- [ ] tool + prompt wrapper + envelope + test in `tests/mcp-tools.test.ts`
+- [x] tool + prompt wrapper + envelope + test ✅ 2026-08-20 (`ebc6878`; gate tests in `tests/debate-scout.test.ts`; MCP_DEBATE_DAILY_CAP=10)
 
 ### 9c. `scout_opportunities` MCP tool
 - **Create** `mcp/tools/scout.ts`: input `{ skills?, capital?, hoursPerWeek?, sector?, b2b?, riskAppetite? }`; runs the proposer half of `runOpportunities()` seeded with the constraints; returns fresh personal openings (never the global top-5). Chain hint in `next`: `debate_idea` / `generate_plan`.
-- [ ] tool + registration + test
+- [x] tool + registration + test ✅ 2026-08-20 (`664207e` proposer extraction + `ebc6878`; MCP_SCOUT_DAILY_CAP=10; active slugs filtered so responses are never the global top-5)
 
 ### 9d. Anti-homogeneity in `get_opportunities`
 - `mcp/tools/opportunities.ts`: (1) sector quota — max 2 per sector in one response; (2) per-caller salting — deterministic order jitter keyed by `auth.rateKey` hash (two builders same morning → different orders); (3) one exploration slot — the last slot is the highest-scored item from a sector not already present. Pass `auth` into `registerOpportunityTools` (signature change in `mcp/build.ts`).
-- [ ] implement + ordering tests
+- [x] implement + ordering tests ✅ 2026-08-20 (`90a75e5`; pipeline: filter → crowdedness penalty → FNV-1a salt on rateKey → sector quota 2 → exploration slot; auth was already threaded by the hardening commit)
 
 ### 9e. Crowdedness signal
 - `src/lib/db/schema.ts`: `opportunities.planRuns integer('plan_runs').notNull().default(0)` (migration); increment in `generatePlan` on successful generation.
 - Surface as `exploring_count` in `get_opportunities`/`get_opportunity` payloads + a ranking penalty for `planRuns` above a threshold; dossier page shows "N builders exploring this".
-- [ ] migration + increment + payload + ranking tweak + tests
+- [x] migration + increment + payload + ranking tweak + tests ✅ 2026-08-20 (`23041f9`, `78d2b55`, `90a75e5`; increment on successful generation only — cache hits don't crowd; penalty −10 ordering-only at planRuns ≥ 3)
 
 ### 9f. Personalization profile (after 8 lands, hosted mode)
 - `user_profiles` table (userId, skills[], interests[], capitalBand, avoidedSectors[]): a `set_profile`/`get_profile` MCP pair; fit-score reranking applied in `get_opportunities`/`scout_opportunities` when a profile exists.
