@@ -10,6 +10,7 @@ import {
   pendingGrades,
   spearman,
 } from '@/lib/science/accuracy';
+import { freshnessStats } from '@/lib/freshness';
 import PageHeader from '@/components/PageHeader';
 
 export const metadata = {
@@ -188,6 +189,7 @@ export default async function AccuracyPage() {
   const since = gradingSince();
   const misses = accuracyMisses();
   const pending = pendingGrades();
+  const freshness = freshnessStats();
   const rho = spearman(
     points.map((p) => p.score),
     points.map((p) => p.hindsight),
@@ -404,6 +406,110 @@ export default async function AccuracyPage() {
             across {graded.length} graded forecasts
           </p>
         )}
+      </section>
+
+      <section className="mt-10">
+        <div className="readout mb-1.5">freshness — how fast the radar reflects what happens</div>
+        <p className="mb-3 text-[12px] leading-relaxed" style={{ color: 'var(--ink-3)' }}>
+          Ingest and curation run every 15 minutes, so the feed trails a release by minutes, not days. The slower
+          hop is the board: a story counts as reflected when a board change names one of its entities. Medians over
+          the last {freshness.windowDays} days.
+        </p>
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="card">
+            <div className="readout" style={{ color: 'var(--ink-3)' }}>
+              story → board
+            </div>
+            {freshness.boardReflection.medianHours === null ? (
+              <p className="mt-3 text-[13px]" style={{ color: 'var(--ink-3)' }}>
+                Nothing to measure yet — this number appears once curated stories with entities meet matching board
+                changes.
+              </p>
+            ) : (
+              <>
+                <div className="mono mt-2 text-[26px] leading-none" style={{ color: 'var(--phosphor)' }}>
+                  {freshness.boardReflection.medianHours}h
+                </div>
+                <p className="mono mt-2 text-[10.5px]" style={{ color: 'var(--ink-4)' }}>
+                  median lag &middot; {freshness.boardReflection.matched} of {freshness.boardReflection.considered}{' '}
+                  stories with entities reflected
+                </p>
+              </>
+            )}
+          </div>
+          <div className="card">
+            <div className="readout" style={{ color: 'var(--ink-3)' }}>
+              story → merge
+            </div>
+            {freshness.mergeLag.medianMinutes === null ? (
+              <p className="mt-3 text-[13px]" style={{ color: 'var(--ink-3)' }}>
+                No merges recorded yet — this number appears once new items start merging into existing stories.
+              </p>
+            ) : (
+              <>
+                <div className="mono mt-2 text-[26px] leading-none" style={{ color: 'var(--phosphor)' }}>
+                  {freshness.mergeLag.medianMinutes}m
+                </div>
+                <p className="mono mt-2 text-[10.5px]" style={{ color: 'var(--ink-4)' }}>
+                  median, story appears → latest item merged &middot; n={freshness.mergeLag.count}
+                </p>
+              </>
+            )}
+          </div>
+        </div>
+        <p className="mono mt-2 text-[10px]" style={{ color: 'var(--ink-4)' }}>
+          methodology: story→board matches a story&rsquo;s entity names against board-change text (case-insensitive;
+          first match at/after the story appeared) — a heuristic, so the matched pairs are kept for spot checks.
+          story→merge uses the latest merge timestamp, so it overstates time-to-first-merge.
+        </p>
+        {freshness.boardReflection.pairs.length > 0 && (
+          <ul className="mt-3">
+            {freshness.boardReflection.pairs.slice(0, 3).map((p) => (
+              <li
+                key={`${p.storyId}-${p.appliedAt.toISOString()}`}
+                className="border-b border-[var(--grat-soft)] py-[7px] text-[13px] last:border-b-0"
+              >
+                <Link href={`/story/${p.storyId}`} className="block leading-snug hover:underline" style={{ color: 'var(--ink-2)' }}>
+                  {p.storyTitle}
+                </Link>
+                <span className="mono text-[10.5px]" style={{ color: 'var(--ink-4)' }}>
+                  → {p.change.length > 90 ? `${p.change.slice(0, 90)}…` : p.change} &middot;{' '}
+                  <span style={{ color: 'var(--ink-3)' }}>{p.lagHours}h</span>
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section className="mt-10">
+        <div className="readout mb-1.5">how we score ourselves</div>
+        <div className="card flex flex-col gap-2.5 text-[12.5px] leading-relaxed" style={{ color: 'var(--ink-3)' }}>
+          <p>
+            Every night the machine grades its own output: each curated story gets a hindsight score from observed
+            signals only — echoes, launches, follow-ups, team votes — with no LLM at grading, and the grade never
+            changes once written. The scatter and bands above are that reckoning, in full.
+          </p>
+          <p>
+            Forecasts get the same treatment: the nightly frontier-price projection is stored, then graded against
+            the realized price 30 days later — the table above, pending shown rather than hidden.
+          </p>
+          <p>
+            When prediction and outcome diverge badly, the miss is published on this page, investigated, and fed
+            back into the scorer as calibration — not silently accepted.
+          </p>
+        </div>
+      </section>
+
+      <section className="mt-10">
+        <div className="readout mb-1.5">independence</div>
+        <div className="card text-[12.5px] leading-relaxed" style={{ color: 'var(--ink-3)' }}>
+          <p>
+            No pay-for-placement: nobody can buy a board slot, a feed rank, or a score. Board picks are
+            model-driven — proposed by the pipeline from the signals on this page — and re-reviewed weekly.
+            Sponsors and affiliates: none.
+          </p>
+        </div>
       </section>
 
       <div className="mt-9 border-t border-[var(--grat-soft)] pt-3">
