@@ -5,6 +5,8 @@
 > **Status (2026-08-19)**: MCP-first product SHIPPED and live at radar.runelabs.org — 26 tools, `radar://` resources, 5 workflow prompts, OAuth 2.1 (hub = authorization server), plan engine, summary+next envelope, `/connect` install page, progress notifications, CJK-leak sanitization. Commits `948d222`, `8070b61`, `f14e9cf`, `574254d` on `main`. Verification: 337 unit tests, live suite 44/44 (public endpoint), Playwright OAuth e2e 31/31.
 >
 > **Forward plan**: Phases 6-11 in Part 2 — first-party data, margin observability, artifact monetization, idea-engine overhaul, data-surface parity, persona expansion.
+>
+> **Status (2026-08-20)**: Wave 1 data foundations LIVE — `llm_calls` metering on every chatJSON call (7a/7b/7c), provider-pricing (6a) + open-bench/openrouter (6b) weekly ingests registered and deployed. 367 unit tests green. Commits `6adcd47`..`d84487c`. From here prices, benchmarks, and per-call costs accumulate for Waves 2+.
 
 ---
 
@@ -75,14 +77,14 @@ AA is the **benchmark authority**: self-run benchmarks (Intelligence Index, prop
   - Write via `recordMetrics()` (`src/lib/metrics.ts`): `{ source: 'provider-pricing', entity: <model>, metric: 'price_in' | 'price_out' | 'price_cache_hit', value }` — lands in `metric_points` (schema: `src/lib/db/schema.ts:163`). Cache-hit/write prices are a first-class series (AA segments them; builders' real bills depend on them).
   - Keep the raw page/snapshot in `benchmarkSnapshots` (`source: 'pricing-<provider>'`) for audit.
 - **Register** in `worker/index.ts`: weekly, e.g. `cron.schedule('10 5 * * 2', () => void withJobRun('pricing', runPricingSync))`, and in `worker/run.ts` job map.
-- [ ] implement pricing.ts + worker registration + `npm run job -- pricing` smoke
-- [ ] `tests/pricing.test.ts`: parsers against fixture HTML in `tests/fixtures/`
+- [x] implement pricing.ts + worker registration + `npm run job -- pricing` smoke ✅ 2026-08-20 (`47d5f4c`, `d84487c`; first live smoke: 29 points, 6/7 providers on fallback map — expected, JS-rendered pages)
+- [x] `tests/pricing.test.ts`: parsers against fixture HTML in `tests/fixtures/` (15 tests)
 
 ### 6b. Open benchmark + media + provider ingest
 - **Create** `src/lib/ingest/openbench.ts`: `runOpenBenchSync()` pulling capability scores from public sources (LMArena exports, official model cards) into `metric_points` (`source: 'open-bench'`, `metric: 'intelligence' | 'elo'`). Weekly cron, same pattern as 6a.
 - Media coverage matters to us (two of six domains are image/video): include open image/video arena exports where published; speech only if a clean public source exists.
 - Optional, cheap: per-provider throughput/price for major open models from OpenRouter's public model endpoints (`source: 'openrouter'`) — the builder-facing slice of AA's provider-level analysis.
-- [ ] implement + register + fixture tests
+- [x] implement + register + fixture tests ✅ 2026-08-20 (`b86cc76`, `d84487c`; first live smoke: 818 openrouter + 45 open-bench points; LiveBench live export wired, seed table is the primary path; extra metric keys `image_elo`/`video_elo`/`livebench` — 6d reader must know)
 
 ### 6c. Radar micro-eval (stretch; do 6a/6b first)
 - **Create** `src/lib/science/eval.ts`: `runRadarEval()` — a small fixed suite (~12 tasks: 4 coding, 4 extraction, 4 copy) run weekly against the top ~8 models via `chatJSON`-compatible provider calls; deterministic graders (exact-match/regex/rubric-lite); scores → `metric_points` (`source: 'radar-eval'`).
@@ -140,16 +142,16 @@ export const llmCalls = sqliteTable('llm_calls', {
 });
 ```
 - `durationMs` is deliberate double-duty: `completionTokens / durationMs` per model = our own measured output-speed series (AA sells speed data; we generate it as a by-product of running). Roll it into `metric_points` (`source: 'radar-speed'`, `metric: 'output_toks_per_s'`) via a nightly rollup in the science job.
-- [ ] schema + `npm run db:generate`
+- [x] schema + `npm run db:generate` ✅ 2026-08-20 (`6adcd47`, migration `0018_minor_speed.sql`)
 
 ### 7b. Instrument chatJSON (single funnel)
 - `src/lib/llm/minimax.ts`: `chatJSON(system, user, opts?: { job?, maxTokens?, feature?, userId? })`. Time the fetch (`Date.now()` around the await), and after a successful response (it already reads `data.usage`) insert one `llm_calls` row incl. `durationMs`. Cost via `src/lib/llm/pricing.ts` (new): static map `{ 'MiniMax-M2': { in: 0.30, out: 1.20 } }` per 1M tokens; fall back to zeros for unknown models. Insert must never break the caller: wrap in try/catch.
 - Feature tags at call sites: curate.ts (`feature: 'curate'`), brief/brief.ts (`'brief'` + `'digest'`), opportunities/brief.ts (`'opportunity-brief'`), plans/generate.ts (`'plan'` — plus `userId` threaded from the MCP tool), stacks/generate.ts (`'stack'`), pain.ts (`'pain'`), engine.ts (`'opportunity'`), critic.ts (`'critic'`).
-- [ ] implement + `tests/llm-calls.test.ts` (mock `_setFetch` w/ usage payload → assert row + cost math)
+- [x] implement + `tests/llm-calls.test.ts` (mock `_setFetch` w/ usage payload → assert row + cost math) ✅ 2026-08-20 (`f8842c1`; all 17 call sites feature-tagged, metering insert is fail-safe)
 
 ### 7c. Thread userId through MCP plan generation
 - `mcp/tools/plans.ts`: `generatePlan(opp.id, { force, includeMarket, onProgress, userId: auth.userId })`; `src/lib/plans/generate.ts` forwards it into every `chatJSON` call (incl. the brief bootstrap via `generateBrief(oppId, { userId })` — extend its signature too).
-- [ ] implement; unit test asserts `userId` lands on all 6-7 rows of one generation
+- [x] implement; unit test asserts `userId` lands on all 6-7 rows of one generation ✅ 2026-08-20 (`f8842c1`; both brief-bootstrap and cached-brief scenarios covered)
 
 ### 7d. Admin dashboard `/admin/usage`
 - **Create** `src/app/(hub)/admin/usage/page.tsx` (server component, `requireAdmin()`): daily cost chart (aggregate `llm_calls` by day), per-feature table (calls, tokens, cost), per-user table, "cost per plan" card (plan rows ÷ count), margin view (reads tier prices from a `const TIER_PRICES` in `src/lib/billing.ts` — placeholder constants until Phase 8). Reuse chart idioms from `src/components/LlmBudget.tsx`/`JobTimeline.tsx`.
