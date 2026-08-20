@@ -6,9 +6,32 @@
  */
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+import { loadDotEnv } from '../../src/lib/env';
+
+loadDotEnv();
 
 const BASE = process.argv[2] ?? 'http://127.0.0.1:3122';
 const TOKEN = process.env.SMOKE_TOKEN;
+
+/** Self-seed a throwaway metric series so get_metric_series has live data; removed on exit. */
+async function seedMetricFixture(): Promise<void> {
+  if (!BASE.includes('127.0.0.1') && !BASE.includes('localhost')) return; // only against a local DB
+  const { upsertMetric, utcDay } = await import('../../src/lib/metrics');
+  for (let i = 9; i >= 0; i--) {
+    upsertMetric({
+      source: 'livetest',
+      entity: 'widget',
+      metric: 'price',
+      value: 10 - i * 0.5,
+      date: utcDay(new Date(Date.now() - i * 864e5)),
+    });
+  }
+}
+async function cleanMetricFixture(): Promise<void> {
+  if (!BASE.includes('127.0.0.1') && !BASE.includes('localhost')) return;
+  const { getDb } = await import('../../src/lib/db');
+  getDb().run("DELETE FROM metric_points WHERE source = 'livetest'");
+}
 
 let passed = 0;
 const failures: string[] = [];
@@ -24,6 +47,7 @@ function check(label: string, cond: boolean, detail = ''): void {
 }
 
 async function main() {
+  await seedMetricFixture();
   const transport = new StreamableHTTPClientTransport(new URL(`${BASE}/mcp`), {
     requestInit: TOKEN ? { headers: { authorization: `Bearer ${TOKEN}` } } : undefined,
   });
@@ -193,6 +217,7 @@ async function main() {
   check('builder_weekly_review', JSON.stringify(wr.messages).includes('get_board_changes'));
 
   console.log(`\n${passed} passed, ${failures.length} failed`);
+  await cleanMetricFixture();
   if (failures.length > 0) {
     console.log('failures:', failures.join(' | '));
     process.exit(1);
@@ -201,7 +226,8 @@ async function main() {
   process.exit(0);
 }
 
-main().catch((e) => {
+main().catch(async (e) => {
   console.error('LIVE FAILED:', e);
+  await cleanMetricFixture().catch(() => {});
   process.exit(1);
 });
