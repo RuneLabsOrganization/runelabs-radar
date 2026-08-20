@@ -1,4 +1,5 @@
 import { desc, eq } from 'drizzle-orm';
+import Link from 'next/link';
 import JobsPanel from '@/components/JobsPanel';
 import JobTimeline from '@/components/JobTimeline';
 import LlmBudget from '@/components/LlmBudget';
@@ -65,6 +66,11 @@ export default async function AdminPage() {
     <div className="mx-auto flex max-w-[860px] flex-col gap-8 px-6 py-7">
       <div>
         <PageHeader kicker="operator console &middot; sources, jobs, proposals" title="Admin" />
+        <p className="mono mt-2 text-[10.5px]" style={{ color: 'var(--ink-4)' }}>
+          <Link href="/admin/usage" className="hover:underline" style={{ color: 'var(--ink-3)' }}>
+            usage &amp; margins &rarr;
+          </Link>
+        </p>
       </div>
 
       <section>

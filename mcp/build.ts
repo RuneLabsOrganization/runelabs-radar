@@ -15,6 +15,7 @@ import { registerForecastTools } from './tools/forecasts';
 import { registerEntityTools } from './tools/entities';
 import { registerCompTools } from './tools/comps';
 import { registerMetaTools } from './tools/meta';
+import { registerUsageTools } from './tools/usage';
 import { registerResources } from './resources';
 import { registerPrompts } from './prompts';
 
@@ -43,6 +44,7 @@ export function buildServer(auth: AuthContext): McpServer {
   registerEntityTools(server);
   registerCompTools(server);
   registerMetaTools(server, auth);
+  registerUsageTools(server, auth);
   registerResources(server, auth);
   registerPrompts(server);
   return server;

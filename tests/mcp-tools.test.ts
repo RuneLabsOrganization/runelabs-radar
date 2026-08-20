@@ -152,6 +152,7 @@ describe('mcp server', () => {
         'get_story',
         'get_top_signals',
         'get_topic_map',
+        'get_usage',
         'list_metrics',
         'list_stacks',
         'search_stories',
