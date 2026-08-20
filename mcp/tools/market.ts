@@ -3,7 +3,7 @@ import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { getDb } from '../../src/lib/db';
 import { metricPoints } from '../../src/lib/db/schema';
-import { aaModels } from '../../src/lib/analytics';
+import { latestRadarScores, marketModels, normalizeModelKey } from '../../src/lib/analytics';
 import { seriesFor } from '../../src/lib/metrics';
 import { config } from '../../src/lib/config';
 import { envelopeSchema, respond } from '../lib/payload';
@@ -14,10 +14,13 @@ export function registerMarketTools(server: McpServer, auth: AuthContext): void 
     'get_market_models',
     {
       description:
-        'The model market right now (Artificial Analysis snapshot): intelligence scores vs token prices per model. Use for "which model gives the most intelligence per dollar" questions and plan cost estimates.',
+        'The model market right now (first-party series merged with the Artificial Analysis snapshot): intelligence scores vs token prices per model. Use for "which model gives the most intelligence per dollar" questions and plan cost estimates.',
       inputSchema: {
         limit: z.number().int().min(1).max(60).default(25),
-        sort: z.enum(['intelligence', 'price', 'value']).default('value').describe('value = intelligence per $'),
+        sort: z
+          .enum(['intelligence', 'price', 'value', 'radar'])
+          .default('value')
+          .describe('value = intelligence per $ · radar = opt-in Radar Score composite (calibrating)'),
       },
       outputSchema: {
         ...envelopeSchema,
@@ -30,6 +33,7 @@ export function registerMarketTools(server: McpServer, auth: AuthContext): void 
             z.object({
               name: z.string(),
               org: z.string().nullable(),
+              source: z.enum(['first_party', 'artificial_analysis']),
               intelligence: z.number(),
               coding: z.number().nullable(),
               price_blended: z.number(),
@@ -37,6 +41,7 @@ export function registerMarketTools(server: McpServer, auth: AuthContext): void 
               price_out: z.number().nullable(),
               speed: z.number().nullable(),
               released: z.string().nullable(),
+              radar_score: z.number().optional(),
             }),
           )
           .optional(),
@@ -63,7 +68,7 @@ export function registerMarketTools(server: McpServer, auth: AuthContext): void 
           },
         );
       }
-      const aa = aaModels(60);
+      const aa = marketModels(60);
       if (!aa)
         return respond(
           { restricted: false, fetched_at: undefined, count: 0, models: [] },
@@ -78,16 +83,25 @@ export function registerMarketTools(server: McpServer, auth: AuthContext): void 
             ],
           },
         );
+      // §6e: Radar Score is exposed opt-in (sort 'radar' + radar_score field);
+      // only under RADAR_SCORE_CONSUMERS does 'value' switch to cost_efficiency
+      const radar = latestRadarScores();
+      const radarOf = (name: string) => radar.get(normalizeModelKey(name));
       const models = [...aa.models]
         .sort((a, b) => {
           if (sort === 'intelligence') return b.intelligence - a.intelligence;
           if (sort === 'price') return a.price - b.price;
+          if (sort === 'radar') return (radarOf(b.name)?.composite ?? -1) - (radarOf(a.name)?.composite ?? -1);
+          if (config.radarScoreConsumers) {
+            return (radarOf(b.name)?.costEfficiency ?? -1) - (radarOf(a.name)?.costEfficiency ?? -1);
+          }
           return b.intelligence / b.price - a.intelligence / a.price;
         })
         .slice(0, limit)
         .map((m) => ({
           name: m.name,
           org: m.org ?? null,
+          source: m.source,
           intelligence: m.intelligence,
           coding: m.coding ?? null,
           price_blended: m.price,
@@ -95,6 +109,7 @@ export function registerMarketTools(server: McpServer, auth: AuthContext): void 
           price_out: m.priceOut ?? null,
           speed: m.speed ?? null,
           released: m.released ?? null,
+          ...(radarOf(m.name) !== undefined ? { radar_score: radarOf(m.name)!.composite } : {}),
         }));
       return respond(
         { restricted: false, fetched_at: aa.fetchedAt, count: models.length, models },

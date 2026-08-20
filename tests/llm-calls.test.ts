@@ -200,7 +200,10 @@ describe('generatePlan userId threading', () => {
       expect(r.estCostUsd).toBeCloseTo(0.00009, 12);
     }
     expect(rows[0]!.feature).toBe('opportunity-brief');
-    expect(rows.slice(1).every((r) => r.feature === 'plan')).toBe(true);
+    // frame is the single 'plan' row per generation (billing counts these);
+    // the five phase calls tag as 'plan-phase'
+    expect(rows[1]!.feature).toBe('plan');
+    expect(rows.slice(2).every((r) => r.feature === 'plan-phase')).toBe(true);
   });
 
   it('meters frame + 5 phases only when the brief is already cached', async () => {
@@ -212,6 +215,8 @@ describe('generatePlan userId threading', () => {
 
     const rows = db.select().from(llmCalls).all();
     expect(rows).toHaveLength(6);
-    expect(rows.every((r) => r.feature === 'plan' && r.userId === 42)).toBe(true);
+    expect(rows[0]!.feature).toBe('plan');
+    expect(rows.slice(1).every((r) => r.feature === 'plan-phase')).toBe(true);
+    expect(rows.every((r) => r.userId === 42)).toBe(true);
   });
 });

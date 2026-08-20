@@ -57,6 +57,16 @@ export const config = {
   get phToken(): string {
     return process.env.PH_TOKEN ?? '';
   },
+  /**
+   * RADAR_SCORE_CONSUMERS=true flips ranking surfaces (board prompt order,
+   * plan market grounding, get_market_models sort:'value') from AA
+   * intelligence to our own Radar Score composite (§6e). Default OFF while
+   * the v1 weights calibrate against AA via the aa_divergence series — the
+   * score pipeline itself (rollup + composite + divergence) always runs.
+   */
+  get radarScoreConsumers(): boolean {
+    return process.env.RADAR_SCORE_CONSUMERS === 'true';
+  },
   /** Where the local embedding model weights are cached (persist on a volume). */
   get transformersCache(): string {
     return process.env.TRANSFORMERS_CACHE ?? '.hfcache';

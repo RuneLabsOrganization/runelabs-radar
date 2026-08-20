@@ -1,4 +1,4 @@
-import { and, count, desc, eq, gte, inArray, isNotNull } from 'drizzle-orm';
+import { and, count, desc, eq, gte, inArray, isNotNull, sql } from 'drizzle-orm';
 import { config } from './config';
 import { getDb } from './db';
 import {
@@ -9,6 +9,7 @@ import {
   jobRuns,
   launches as launchesTable,
   llmUsage,
+  metricPoints,
   opportunities as opportunitiesTable,
   patterns,
   sources as sourcesTable,
@@ -307,10 +308,26 @@ export type { AaModel } from './pareto';
 import type { AaModel } from './pareto';
 
 /**
- * Models from the latest Artificial Analysis snapshot (stored compact by the
- * board sync). Sorted by intelligence, capped to keep the scatter readable.
+ * Join key across market sources (§6d): vendor display names ('GPT-5.5',
+ * 'Claude Sonnet 4.5') and OpenRouter ids ('openai/gpt-5.5') must collide.
+ * Drops the 'vendor/' prefix, then folds case/punctuation via
+ * canonicalEntityKey, so 'anthropic/claude-sonnet-4.5' ≡ 'Claude Sonnet 4.5'.
+ * OpenRouter variant suffixes (':free', ':extended') survive the fold
+ * ('gpt55free') — distinct SKUs deliberately keep distinct keys.
  */
-export function aaModels(limit = 60): { fetchedAt: string; models: AaModel[] } | null {
+export function normalizeModelKey(name: string): string {
+  const tail = name.includes('/') ? name.slice(name.lastIndexOf('/') + 1) : name;
+  return canonicalEntityKey(tail);
+}
+
+export type MarketSource = 'first_party' | 'artificial_analysis';
+
+export interface MarketModel extends AaModel {
+  source: MarketSource;
+}
+
+/** Latest compact AA snapshot parsed into AaModel rows (genuine AA data only — never first-party). */
+function latestAaSnapshotModels(limit = 60): { fetchedAt: string; models: AaModel[] } | null {
   const db = getDb();
   const snap = db
     .select()
@@ -349,6 +366,190 @@ export function aaModels(limit = 60): { fetchedAt: string; models: AaModel[] } |
   } catch {
     return null;
   }
+}
+
+/** Genuine AA rows from the latest stored snapshot — the §6e divergence logger compares against these. */
+export function aaSnapshotModels(): AaModel[] {
+  return latestAaSnapshotModels()?.models ?? [];
+}
+
+interface FpModel {
+  /** Best display name seen (open-bench wins over pricing/openrouter rows). */
+  name: string | null;
+  intelligence: number | null;
+  elo: number | null;
+  ppIn: number | null;
+  ppOut: number | null;
+  orIn: number | null;
+  orOut: number | null;
+  speed: number | null;
+}
+
+/**
+ * First-party market rows assembled from our own metric_points series
+ * (§6a/§6b): capability from 'open-bench' (metric 'intelligence'; 'elo'
+ * min-max-mapped onto the 0-100 index when a model has no composite), prices
+ * from 'provider-pricing' with 'openrouter' filling the gaps, speed from the
+ * 'radar-speed' rollup (§6e). The media/livebench metric keys ('image_elo' /
+ * 'video_elo' / 'livebench') are deliberately NOT capability evidence here —
+ * different arenas must not qualify a model as covered (§6b note to 6d).
+ * A model is first-party-covered when it has a capability signal AND at least
+ * one price signal; everything else stays on the AA backstop.
+ */
+function firstPartyModels(): { latestDate: string | null; models: MarketModel[] } {
+  const db = getDb();
+  // latest value per series; SQLite resolves bare columns from the max(date) row
+  const rows = db
+    .select({
+      source: metricPoints.source,
+      entity: metricPoints.entity,
+      metric: metricPoints.metric,
+      value: metricPoints.value,
+      latest: sql<string>`max(${metricPoints.date})`,
+    })
+    .from(metricPoints)
+    .where(inArray(metricPoints.source, ['provider-pricing', 'open-bench', 'openrouter', 'radar-speed']))
+    .groupBy(metricPoints.source, metricPoints.entity, metricPoints.metric)
+    .all();
+
+  const acc = new Map<string, FpModel>();
+  let latestDate: string | null = null;
+  for (const r of rows) {
+    if (latestDate === null || r.latest > latestDate) latestDate = r.latest;
+    const key = normalizeModelKey(r.entity);
+    if (key === '') continue;
+    const cur =
+      acc.get(key) ??
+      ({ name: null, intelligence: null, elo: null, ppIn: null, ppOut: null, orIn: null, orOut: null, speed: null } as FpModel);
+    if (r.source === 'open-bench') {
+      if (r.metric === 'intelligence') {
+        cur.intelligence = r.value;
+        cur.name = r.entity;
+      } else if (r.metric === 'elo') {
+        cur.elo = r.value;
+        cur.name ??= r.entity;
+      }
+    } else if (r.source === 'provider-pricing') {
+      if (r.metric === 'price_in') cur.ppIn = r.value;
+      else if (r.metric === 'price_out') cur.ppOut = r.value;
+      cur.name ??= r.entity;
+    } else if (r.source === 'openrouter') {
+      if (r.metric === 'price_in') cur.orIn = r.value;
+      else if (r.metric === 'price_out') cur.orOut = r.value;
+      cur.name ??= r.entity.slice(r.entity.lastIndexOf('/') + 1);
+    } else if (r.source === 'radar-speed' && r.metric === 'output_toks_per_s') {
+      cur.speed = r.value;
+    }
+    acc.set(key, cur);
+  }
+
+  // ELO-only models land on the 0-100 index via min-max over the ELO cohort.
+  const elos = [...acc.values()].filter((m) => m.elo !== null).map((m) => m.elo!);
+  const eloLo = elos.length > 0 ? Math.min(...elos) : 0;
+  const eloHi = elos.length > 0 ? Math.max(...elos) : 0;
+
+  const models: MarketModel[] = [];
+  for (const m of acc.values()) {
+    const priceIn = m.ppIn ?? m.orIn;
+    const priceOut = m.ppOut ?? m.orOut;
+    const covered = (m.intelligence !== null || m.elo !== null) && (priceIn !== null || priceOut !== null);
+    if (!covered) continue;
+    const intelligence =
+      m.intelligence ?? (eloHi === eloLo ? 50 : Math.round(((m.elo! - eloLo) / (eloHi - eloLo)) * 1000) / 10);
+    const price =
+      priceIn !== null && priceOut !== null
+        ? (3 * priceIn + priceOut) / 4 // AA-convention 3:1 blend, keeps value math comparable
+        : (priceIn ?? priceOut)!;
+    models.push({
+      name: m.name ?? '?',
+      org: null, // no first-party org signal yet
+      intelligence: Math.round(intelligence * 10) / 10,
+      coding: null,
+      price,
+      priceIn,
+      priceOut,
+      speed: m.speed,
+      released: null,
+      source: 'first_party',
+    });
+  }
+  models.sort((a, b) => b.intelligence - a.intelligence);
+  return { latestDate, models };
+}
+
+/**
+ * Merged model-market reader (§6d): first-party series first, the AA snapshot
+ * as backstop for models with no first-party coverage.
+ *
+ * AA fallback gate: a stored snapshot means AA was configured when it was
+ * fetched, so uncovered models keep their AA rows even when AA_API_KEY is
+ * later unset — matching runBoardSync's stale-snapshot backstop policy during
+ * the transition. (The spec's strict key-only gate was softened because
+ * existing consumers rely on snapshot-only operation with no key set.)
+ *
+ * SUNSET RULE: when first-party covers ≥90% of board-referenced models for 2
+ * consecutive weekly syncs, AA defaults to disabled — ops unsets AA_API_KEY
+ * and the remaining snapshot ages out of the backstop role.
+ */
+export function marketModels(limit = 60): { fetchedAt: string; models: MarketModel[] } | null {
+  const fp = firstPartyModels();
+  const covered = new Set(fp.models.map((m) => normalizeModelKey(m.name)));
+  const aa = latestAaSnapshotModels(limit);
+  const models: MarketModel[] = [...fp.models];
+  if (aa) {
+    for (const m of aa.models) {
+      if (covered.has(normalizeModelKey(m.name))) continue;
+      models.push({ ...m, source: 'artificial_analysis' });
+    }
+  }
+  if (models.length === 0) return null;
+  models.sort((a, b) => b.intelligence - a.intelligence);
+  const dates = [fp.latestDate, aa?.fetchedAt ?? null].filter((d): d is string => d !== null);
+  return { fetchedAt: dates.sort().pop()!, models: models.slice(0, limit) };
+}
+
+/**
+ * Models from the merged market reader (first-party series + AA snapshot
+ * backstop). Sorted by intelligence, capped to keep the scatter readable.
+ * Shape unchanged from the pre-§6d AA-only reader.
+ */
+export function aaModels(limit = 60): { fetchedAt: string; models: AaModel[] } | null {
+  return marketModels(limit);
+}
+
+export interface RadarScore {
+  composite: number;
+  costEfficiency: number | null;
+}
+
+/**
+ * Latest Radar Score sub-scores per model (§6e), keyed by normalizeModelKey.
+ * 'composite' and 'cost_efficiency' may come from different days (a model
+ * without price data writes no cost_efficiency row) — each takes its own latest.
+ */
+export function latestRadarScores(): Map<string, RadarScore> {
+  const db = getDb();
+  const rows = db
+    .select({
+      entity: metricPoints.entity,
+      metric: metricPoints.metric,
+      value: metricPoints.value,
+      latest: sql<string>`max(${metricPoints.date})`,
+    })
+    .from(metricPoints)
+    .where(and(eq(metricPoints.source, 'radar-score'), inArray(metricPoints.metric, ['composite', 'cost_efficiency'])))
+    .groupBy(metricPoints.entity, metricPoints.metric)
+    .all();
+  const out = new Map<string, RadarScore>();
+  for (const r of rows) {
+    const key = normalizeModelKey(r.entity);
+    if (key === '') continue;
+    const cur = out.get(key) ?? { composite: 0, costEfficiency: null };
+    if (r.metric === 'composite') cur.composite = r.value;
+    else cur.costEfficiency = r.value;
+    out.set(key, cur);
+  }
+  return out;
 }
 
 export interface MediaModel {

@@ -6,6 +6,7 @@ import { DOMAINS, DOMAIN_LABELS, type Domain } from '../domains';
 import { SEED_BOARD_TASKS } from '../db/seed-data';
 import { chatJSON, drainLlmUsageStats } from '../llm/minimax';
 import { promptLine } from '../prompt-hygiene';
+import { latestRadarScores, marketModels, normalizeModelKey, type MarketModel } from '../analytics';
 
 export const AA_URL = 'https://artificialanalysis.ai/api/v2/data/llms/models';
 export const AA_MEDIA_ENDPOINTS = [
@@ -171,6 +172,42 @@ export function aaPromptLines(compactRaw: string, limit = 40): string | null {
   }
 }
 
+/**
+ * Prompt lines from the merged model-market reader (§6d) — first-party series
+ * backstopped by the AA snapshot, in exactly the aaPromptLines format so the
+ * proposal prompt is unchanged. Under RADAR_SCORE_CONSUMERS (§6e, dark
+ * launch) candidates rank by our Radar composite instead of intelligence;
+ * the line keeps the intelligence number (AA comparison value for the
+ * proposal rationale) and appends the composite.
+ */
+function marketPromptLines(limit = 40): string | null {
+  const res = marketModels(60);
+  if (!res || res.models.length === 0) return null;
+  let models: MarketModel[] = res.models;
+  let radar: Map<string, { composite: number }> | null = null;
+  if (config.radarScoreConsumers) {
+    const scores = latestRadarScores();
+    radar = scores;
+    models = [...models].sort(
+      (a, b) =>
+        (scores.get(normalizeModelKey(b.name))?.composite ?? -1) -
+        (scores.get(normalizeModelKey(a.name))?.composite ?? -1),
+    );
+  }
+  return models
+    .slice(0, limit)
+    .map((m) => {
+      const r = radar?.get(normalizeModelKey(m.name));
+      return (
+        `- ${m.name} (${m.org ?? '?'}): intelligence ${m.intelligence}, ` +
+        `coding ${m.coding ?? 'n/a'}, $${m.price}/1M blended, ${m.speed ?? '?'} tok/s` +
+        (r ? `, radar ${r.composite}` : '') +
+        (m.released ? `, released ${m.released}` : '')
+      );
+    })
+    .join('\n');
+}
+
 function asOptString(v: unknown): string | null {
   return typeof v === 'string' && v.trim() !== '' ? v.trim() : null;
 }
@@ -311,7 +348,7 @@ export async function runBoardSync(): Promise<{ snapshots: number; proposals: nu
     .map(([source, raw]) => {
       const pretty =
         source === 'artificial-analysis'
-          ? aaPromptLines(raw)
+          ? (marketPromptLines() ?? aaPromptLines(raw))
           : source.startsWith('aa-media')
             ? aaMediaPromptLines(raw)
             : null;

@@ -1,7 +1,8 @@
 import { desc, eq, gte } from 'drizzle-orm';
 import { getDb } from '../db';
 import { boardEntries, comps, opportunities, painPoints, stacks } from '../db/schema';
-import { aaModels } from '../analytics';
+import { aaModels, latestRadarScores, normalizeModelKey } from '../analytics';
+import { config } from '../config';
 import { chatJSON } from '../llm/minimax';
 import { promptLine } from '../prompt-hygiene';
 import { generateBrief } from '../opportunities/brief';
@@ -185,10 +186,18 @@ async function generatePlanInner(
           )
           .join('\n')
       : '(no board data)';
+  // §6e (dark): under RADAR_SCORE_CONSUMERS the grounding orders by our Radar
+  // composite instead of the intelligence/price value ratio
+  const radar = aa && config.radarScoreConsumers ? latestRadarScores() : null;
   const marketText = aa
     ? aa.models
         .filter((m) => m.priceIn !== null && m.priceOut !== null)
-        .sort((a, b) => b.intelligence / b.price - a.intelligence / a.price)
+        .sort((a, b) =>
+          radar
+            ? (radar.get(normalizeModelKey(b.name))?.composite ?? -1) -
+              (radar.get(normalizeModelKey(a.name))?.composite ?? -1)
+            : b.intelligence / b.price - a.intelligence / a.price,
+        )
         .slice(0, 8)
         .map((m) => `- ${promptLine(m.name, 60)}: intel ${m.intelligence}, in $${m.priceIn}/1M, out $${m.priceOut}/1M`)
         .join('\n')
@@ -297,7 +306,10 @@ async function generatePhase(
         `"dependsOn":["${phase}-M"],"filesToTouch":["path/from/repo/root"],"tools":["library/service"],` +
         `"acceptance":["observable criterion"],"verify":"command or manual check","estimateHours":2,` +
         `"rollback":"how to undo safely"}.\nPhase guidance: ${PHASE_BRIEFS[phase]}`,
-      { maxTokens: 8000, feature: 'plan', userId },
+      // phases tag as 'plan-phase', NOT 'plan': billing.usageThisCycle counts
+      // feature='plan' rows and the frame call above is the only one per
+      // generation — that keeps tier quotas in plan units, not LLM-call units
+      { maxTokens: 8000, feature: 'plan-phase', userId },
     );
     if (typeof draft.goal === 'string' && Array.isArray(draft.tasks) && draft.tasks.length >= 2) {
       return { goal: draft.goal, tasks: draft.tasks };
