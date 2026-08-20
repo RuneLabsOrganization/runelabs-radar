@@ -1,95 +1,228 @@
-# Radar MCP-First: Make MCP the Product
+# Runelabs Radar — Master Plan
 
-> **Status**: Phases 1-5 + ergonomics pack SHIPPED (commits `948d222`, `8070b61`, `f14e9cf` on `main`, live at radar.runelabs.org — 26 tools, resources, prompts, OAuth 2.1, plan engine, envelope, /connect page, progress notifications; 329 tests, live 44/44, e2e 31/31).
-> Phases 6-9 are the forward plan, adapted 2026-08-19 after the strategy review: **first-party data independence, margin observability before monetization, artifact-based pricing (no BYOK, no token resale), solopreneur vertical first.**
-
-## Context
-
-The MCP server is now the product surface: an agent can do everything through it — browse launches, signals, board, stacks, pains, patterns, market data, forecasts, entities, comps — and run the flagship flow **opportunity → briefing → granular execution plan** that a local coding agent executes end-to-end. Next: own the data pipelines, control the margins, monetize artifacts, then expand personas.
-
-## Decisions locked in
-
-1. **MCP is the product itself.** Agents are the primary audience; the web hub is the back office/showcase.
-2. **Auth: OAuth 2.1 per MCP spec** (PKCE + DCR). — shipped
-3. **Agent-agnostic payloads** with the `summary` + `next` envelope on every structured response. — shipped
-4. **Plan format: dual JSON + markdown; full lifecycle; full task graph; hybrid cache.** — shipped
-5. **All data surfaces exposed; all MCP primitives (tools + resources + prompts).** — shipped
-6. **Plans are stateless artifacts; MCP is read-only from the agent's perspective.** — shipped
-7. **First-party data, not copied datasets.** We do NOT scrape-and-republish third-party datasets (AA's terms treat republication as redistribution; Mobbin's library is copyrighted content). We replace external dependencies with our own collection pipelines — most already exist (`metric_points`, launches, pains).
-8. **No BYOK, no raw-token resale.** Pricing unit is the *artifact* (plans generated, briefs, alerts), with LLM cost as COGS. Free tier + paid tiers by volume. Usage limits enforced server-side per user.
-9. **Margin observability precedes monetization.** No pricing launch until per-call consumption tracking + the admin dashboard tell us exactly what an artifact costs.
-10. **Persona expansion is sequenced last.** Solopreneur is the live vertical; designers/devs come after the dashboard proves per-vertical margins. Each persona = source pack + curation prompt set + pain mining, not a config flag.
-
-## Distribution (updated)
-
-Remote-only, streamable HTTP at **`https://radar.runelabs.org/mcp`** (path-proxied by nginx; the `mcp.` subdomain was never DNS-wired — registry manifest matches reality). OAuth flow live but not enforced: `MCP_AUTH_REQUIRED` stays unset until Phase 8 needs entitlements. `/connect` on the hub is the install page; `GET /` on the MCP port redirects there.
+> **This is the single canonical plan.** It fuses and supersedes `2026-08-19-competitive-strategy-vs-artificial-analysis.md` (deleted; its reference content lives in §2) and the session-side MCP plan. Strategy in Part 1, executable specs in Part 2.
+>
+> **Status (2026-08-19)**: MCP-first product SHIPPED and live at radar.runelabs.org — 26 tools, `radar://` resources, 5 workflow prompts, OAuth 2.1 (hub = authorization server), plan engine, summary+next envelope, `/connect` install page, progress notifications, CJK-leak sanitization. Commits `948d222`, `8070b61`, `f14e9cf`, `574254d` on `main`. Verification: 337 unit tests, live suite 44/44 (public endpoint), Playwright OAuth e2e 31/31.
+>
+> **Forward plan**: Phases 6-11 in Part 2 — first-party data, margin observability, artifact monetization, idea-engine overhaul, data-surface parity, persona expansion.
 
 ---
 
-## SHIPPED — Phases 1-5 (kept as the record)
+# Part 1 — Strategy
 
-- **Phase 1 — tools**: 26 tools across 14 modules in `mcp/tools/`, zod input+output schemas, snake_case payloads, attribution footer.
-- **Phase 2 — primitives**: `radar://` resources (brief/board/stacks/opportunity/plan/map) + 5 workflow prompts (`find_and_plan` flagship).
-- **Phase 3 — plan engine** (`src/lib/plans/`): opportunity → full-lifecycle task graph (validation → build → launch → GTM → revenue), 6-7 LLM calls, cached on the opportunity row (`plan`, `plan_generated_at`), dual JSON+markdown, strict sanitizer, migration `0017`.
-- **Phase 4 — OAuth 2.1**: Next.js authorization server (consent page, DCR, PKCE S256, refresh rotation w/ absolute cap), MCP resource server (bearer validation, RFC 9728 metadata, per-token rate limits).
-- **Phase 5 — packaging**: smoke + live + Playwright e2e suites, registry `server.json` 0.2.0, compose rw mount, README, `.env.example`.
-- **Ergonomics pack** (second plan, same codebase): `summary`+`next` envelope on every tool, `generate_plan` progress notifications, `/connect` page, nav + redirect, CLI dogfooding.
+## 1.1 What we are
+
+Agent-native AI intelligence for builders. The MCP server is the product: an agent can browse signals, launches, board picks, stacks, pains, patterns, market prices, forecasts, entities, comps — and run the flagship **opportunity → dossier → execution plan** flow that a local coding agent executes end-to-end. The web hub is the back office, showcase, and (soon) billing surface.
+
+## 1.2 Competitive frame (vs Artificial Analysis — reference inventory)
+
+AA is the **benchmark authority**: self-run benchmarks (Intelligence Index, proprietary evals, arenas, provider analysis), data playground/API/reports, at **$417/mo per seat** (yearly) with no free trial. ~4.4M visits/mo (July 2026, +54% MoM), ~$1-5M ARR est., tiny team, ~$250K raised. Revenue-funded proof that enterprises pay for AI decision data.
+
+**What AA does NOT have**: no official MCP/agent surface, no opportunity layer, no pain mining, no execution plans, no personalization, no accuracy self-tracking, no debate/validation workflow. Pure data → human eyeballs.
+
+**Positioning**: *AA is the Bloomberg terminal for model performance; Radar is the copilot for people building businesses with those models.* Target: indie founders, solopreneurs, small product teams. *"AA tells you which model wins. Radar tells you what to build — and hands your agent the plan."* We undercut 10-20× on price and own the discover → debate → decide → plan → build loop.
+
+**Deliberately not chasing**: proprietary benchmark suites, arenas, hardware/inference benchmarking, compute-market forecasting (years + millions + trust moat). Our own micro-eval (Phase 6c) is deliberately modest.
+
+## 1.3 Hard rules (user-locked decisions)
+
+1. **MCP is the product.** Agents are the primary audience.
+2. **No dataset copying/republication.** AA's terms treat republication as redistribution; Mobbin's library is copyrighted. We build first-party pipelines instead — most already exist.
+3. **No BYOK. No raw-token resale.** We offer limits and take our margin on top of LLM usage — packaged as **artifact pricing** (plans/credits), not metered tokens. The user's unit is a plan or a debate; our unit economics are enforced by Phase 7 observability.
+4. **Margin observability precedes monetization.** No pricing launch until per-call cost tracking + the admin dashboard prove what an artifact costs.
+5. **Solopreneur vertical first.** Persona expansion (designers, devs, …) only after the dashboard proves per-vertical margins.
+6. **Self-host stays source-available** (BSL 1.1) and fully capable; we monetize the hosted convenience, budget, and network effects (crowdedness, personalization).
+
+## 1.4 Unit economics (measured + researched, 2026-08-19)
+
+**Measured production baseline** (last 14 days): 122–258 LLM calls/day (avg ~196), ~5,900/mo; ~2.1k in / ~1.5k out tokens per call. At MiniMax-M2 list ($0.30/M in, $1.20/M out — [MiniMax token-plan docs](https://platform.minimax.io/docs/guides/pricing-token-plan), [china-llm](https://china-llm.com/blog/minimax-m2-pricing)) the **entire always-on pipeline ≈ $0.47/day ≈ $14/mo — flat, independent of users**.
+
+**Per-artifact cost**: execution plan ≈ **$0.03–0.05** (6-7 calls); opportunity brief ≈ $0.005; daily brief ≈ $0.005-0.01. MCP reads hit SQLite: **$0**.
+
+**Subscription capacity**: current $10 legacy Coding Plan (Token Plan tiers: Plus $20 / Max $50 / Ultra $120; 5-hour rolling + weekly windows, quota deducts at list price). Empirically we use a fraction of it. Conservative model (~$60/mo list-value quota): ~$45/mo headroom ≈ **~1,100 plan generations/mo ≈ 35 Builder or ~22 Factory users on $10**. Binding constraint is the 5-hour window under bursts — mitigate: queue generate_plan, nightly pre-generation of top opportunities (cache hits = $0), then tier up.
+
+**Scenarios** (LLM+sub COGS; Hetzner infra ~$10-20/mo separate):
+- 25 users (20 Builder $19 / 5 Factory $49): **$625 MRR / $7.5k ARR**, ~97% margin — fits the $10 plan.
+- 100 users (70/30): **$2,800 MRR / $33.6k ARR** — ~5,100 plans ≈ $204 PAYG-equiv → Ultra $120 → ~95% margin.
+- 500 users (350/150): **$14k MRR / $168k ARR** — PAYG ~$1,020 → ~93% margin.
+
+**Subscription → PAYG migration triggers**: weekly-window 429s in `job_runs`; 5h-window queue latency on `generate_plan`; PAYG-equivalent ≈ next tier price (~5k plans/mo → Ultra; ~10-15k → PAYG wins). MiniMax Credits (1,000=$1) bridge spikes. **ToS flag**: subscription keys are marketed for agent/coding tools — multi-tenant SaaS backend use is a gray zone; verify acceptable use before charging on subscription quota. Clean scale path = PAYG or Team plan.
 
 ---
 
-## Phase 6 — First-party data independence (kill the AA dependency)
+# Part 2 — Execution specs
 
-Goal: board, market tools, and plan grounding run on **our own** numbers; AA becomes optional enrichment, never a single point of failure.
+*Each phase is self-contained for a contextless agent: goal, exact files, schema, snippets, checklist, verification. Conventions in §3.1 apply everywhere.*
 
-- **Price pipeline**: worker job that snapshots per-model token prices from provider pricing pages/APIs (OpenAI, Anthropic, Google, DeepSeek, Moonshot/MiniMax, Qwen) into `metric_points` (`source: 'provider-pricing'`). Deterministic parsers per provider, manual-fallback table for hard-to-parse pages.
-- **Capability pipeline**: ingest open benchmark results (LMArena leaderboard exports, official eval cards, open leaderboards) into `metric_points` (`source: 'open-bench'`) — cite sources in a `metric_provenance` note where the table allows.
-- **Own micro-benchmark (stretch)**: a small fixed task suite (code gen, copy, extraction) run weekly against the top N models via our LLM plumbing; scores land in `metric_points` (`source: 'radar-eval'`). Deliberately modest — signal, not science.
-- **Rewire consumers**: `src/lib/board/sync.ts` (`aaPromptLines`), `src/lib/analytics.ts` (`aaModels`), `src/lib/plans/generate.ts` (market grounding), `mcp/tools/market.ts` read from first-party series with AA as fallback when `AA_API_KEY` is set. `get_market_models` gains a `source` field per row (`first_party | artificial_analysis`).
-- **Sunset rule**: when first-party coverage ≥ 90% of the board's referenced models for 2 consecutive weekly syncs, AA moves to "disabled unless explicitly enabled".
+## 3.1 Standing conventions (read first)
 
-## Phase 7 — Consumption tracking + margin dashboard (prerequisite for pricing)
+- **Stack**: Next.js 15 (App Router, `src/app`), SQLite WAL via drizzle-orm + better-sqlite3, worker = node-cron (`worker/index.ts`), MCP server (`mcp/`, streamable HTTP, stateless). TS strict-ish; ESM-style imports with `@/` = `src/`.
+- **Migrations**: edit `src/lib/db/schema.ts`, then `npm run db:generate` (drizzle-kit → `drizzle/00XX_*.sql`). All processes auto-migrate at boot (`openDb` in `src/lib/db/index.ts`).
+- **Tests**: `npx vitest run` (currently 337). Test DB helper: `useTestDb()` in `tests/helpers/db.ts` (in-memory, migrated). New lib logic gets a test file in `tests/`.
+- **LLM calls**: always via `chatJSON(system, user, opts?)` in `src/lib/llm/minimax.ts` (daily cap + token accounting live there). All untrusted text into prompts via `promptLine()`; all LLM output for English artifacts through `stripCjkDeep()` — both in `src/lib/prompt-hygiene.ts`.
+- **MCP tool pattern**: see `mcp/tools/signals.ts` (exemplar). Every structured response uses `respond(data, { summary, next })` from `mcp/lib/payload.ts` and spreads `...envelopeSchema` into the zod `outputSchema`. Tools register in `mcp/build.ts`.
+- **Worker job pattern**: export `runX()` from `src/lib/<area>/x.ts`, register in `worker/index.ts` as `cron.schedule('<cron>', () => void withJobRun('<name>', runX))`, ad-hoc run via `worker/run.ts` (`npm run job -- <name>`).
+- **Verification before any commit**: `npx vitest run`, `npx tsc --noEmit` (4 known pre-existing errors in `tests/adapters.test.ts` + `tests/feed.test.ts` — not yours), `npm run build`.
+- **Deploy** (until box↔GitHub auth is fixed): commit → push → `git bundle create /tmp/r.bundle main` → `scp` to box → on box `cd /opt/runelabs-radar && git fetch /tmp/r.bundle main && git merge --ff-only FETCH_HEAD && docker compose build && docker compose up -d`.
 
-- **Schema**: `llm_calls` table — per-call record: `ts`, `feature` (curate/brief/plan/board/pain/opportunity/…), `user_id`/`token_id` nullable, `model`, `prompt_tokens`, `completion_tokens`, `est_cost_usd` (from the price pipeline), `job` (worker jobs) — one drizzle migration.
-- **Instrumentation**: central in `chatJSON` (already the single funnel, already accumulates tokens via `drainLlmUsageStats`); feature tagged via a new `opts.feature`; MCP calls attributed via the OAuth token's `userId` (anonymous mode: `null`).
-- **Dashboard**: `/admin/usage` — calls/tokens/cost per day, per feature, per user; plan-generation unit economics (avg cost per plan); margin view once a price per artifact exists; soft alerts (daily cost > threshold).
-- **Exports**: usage rows queryable via MCP (`get_usage` tool, admin scope) — agents monitoring our own margins is on-brand.
+## Phase 6 — First-party data independence
 
-## Phase 8 — Artifact-based monetization (real-data model, 2026-08-19)
+**Goal**: board sync, market tools, and plan grounding run on our own series; AA becomes optional fallback. No AA-sourced series is ever publicly exposed.
 
-**Measured baseline (production, last 14 days)**: 122–258 LLM calls/day (avg ~196), ~5,900/month. Token stats (curate job): ~2.1k in / ~1.5k out per call. At MiniMax-M2 list prices ($0.30/M in, $1.20/M out; [pricing](https://platform.minimax.io/docs/guides/pricing-token-plan), [china-llm](https://china-llm.com/blog/minimax-m2-pricing)) the whole always-on pipeline costs **≈ $0.47/day ≈ $14/month at list** — a fixed cost that does not grow with users.
+### 6a. Provider price pipeline
+- **Create** `src/lib/ingest/pricing.ts`: `export async function runPricingSync(): Promise<{ recorded: number }>`.
+  - Static provider table (in-file const): OpenAI, Anthropic, Google, DeepSeek, Moonshot, MiniMax, Qwen — each with a pricing-page URL + a deterministic parser (regex/HTML-table scrape via `fetchJson`/`fetchText` patterns in `src/lib/ingest/adapters/shared.ts`). Manual-fallback map for unparseable pages.
+  - Write via `recordMetrics()` (`src/lib/metrics.ts`): `{ source: 'provider-pricing', entity: <model>, metric: 'price_in' | 'price_out', value }` — lands in `metric_points` (schema: `src/lib/db/schema.ts:163`).
+  - Keep the raw page/snapshot in `benchmarkSnapshots` (`source: 'pricing-<provider>'`) for audit.
+- **Register** in `worker/index.ts`: weekly, e.g. `cron.schedule('10 5 * * 2', () => void withJobRun('pricing', runPricingSync))`, and in `worker/run.ts` job map.
+- [ ] implement pricing.ts + worker registration + `npm run job -- pricing` smoke
+- [ ] `tests/pricing.test.ts`: parsers against fixture HTML in `tests/fixtures/`
 
-**Unit economics (list prices)**: execution plan ≈ $0.03–0.05 (6–7 calls, thinking tokens included); opportunity brief ≈ $0.005; daily brief ≈ $0.005–0.01. Read tools (the bulk of MCP traffic) hit SQLite: $0. So user-driven COGS is essentially *plans only*: Builder (30 plans/mo) ≈ $1.20, Factory (100 plans/mo) ≈ $4.00.
+### 6b. Open benchmark ingest
+- **Create** `src/lib/ingest/openbench.ts`: `runOpenBenchSync()` pulling capability scores from public sources (LMArena exports, official model cards) into `metric_points` (`source: 'open-bench'`, `metric: 'intelligence' | 'elo'`). Weekly cron, same pattern as 6a.
+- [ ] implement + register + fixture test
 
-**Pricing (artifact tiers)**: Free = unlimited reads + 3 plans/mo · Builder $19/mo = 30 plans · Factory $49/mo = 100 plans + alerts. Gross margin on LLM: 92–94% per user before the $14/mo pipeline + $10 subscription.
+### 6c. Radar micro-eval (stretch; do 6a/6b first)
+- **Create** `src/lib/science/eval.ts`: `runRadarEval()` — a small fixed suite (~12 tasks: 4 coding, 4 extraction, 4 copy) run weekly against the top ~8 models via `chatJSON`-compatible provider calls; deterministic graders (exact-match/regex/rubric-lite); scores → `metric_points` (`source: 'radar-eval'`).
+- [ ] suite defined in-file as data; one retry; failures logged not fatal
 
-**Subscription capacity (the $10 legacy Coding Plan)**: quota isn't published in tokens — it's 5-hour rolling + weekly windows deducting at list prices. Empirically we use a fraction of it (multiple projects, never throttled). Modeling quota value conservatively at ~$60/mo of list usage: ~$45/mo headroom after the pipeline ≈ **~1,100 plan generations/month ≈ 35 Builder or ~22 Factory users on the current $10 plan**. The binding constraint is the 5-hour window under burst load, not the monthly value — mitigate in order: (1) server-side queue/throttle on generate_plan, (2) worker pre-generates plans for top opportunities nightly (cache hits cost $0), (3) tier up.
+### 6d. Rewire consumers to first-party series
+- `src/lib/analytics.ts` `aaModels()` (~line 313): add a first-party reader that assembles the `AaModel` shape from `metric_points` (`provider-pricing` + `open-bench` series); use AA snapshot only when first-party coverage for a model is missing AND `AA_API_KEY` set.
+- `src/lib/board/sync.ts` (`aaPromptLines`) and `src/lib/plans/generate.ts` (market grounding block): consume the merged reader — no call-site shape changes.
+- `mcp/tools/market.ts` `get_market_models`: payload rows gain `source: 'first_party' | 'artificial_analysis'`.
+- **Sunset rule** (documented in code comment on the reader): when first-party covers ≥90% of board-referenced models for 2 consecutive weekly syncs, AA defaults to disabled.
+- [ ] merged reader + tests (`tests/market-firstparty.test.ts`: seed metric_points, assert shape + fallback)
+- [ ] live check: `npx tsx mcp/test/live.ts` still 44/44
 
-**Revenue scenarios** (LLM+subscription COGS only; Hetzner infra ~$10-20/mo separate):
-- **25 users** (20 Builder / 5 Factory): **$625 MRR / $7.5k ARR**, COGS ~$10–20 → ~97% margin. Fits current plan.
-- **100 users** (70/30): **$2,800 MRR / $33.6k ARR**, ~5,100 plans ≈ $204 PAYG-equivalent → Ultra sub ($120) covers it → ~95% margin.
-- **500 users** (350/150): **$14k MRR / $168k ARR**, ~25,500 plans ≈ $1,020 → PAYG beats stacking subs at this point → ~93% margin.
+## Phase 7 — Consumption tracking + margin dashboard
 
-**Subscription → PAYG migration triggers**: (1) weekly-window throttling visible as LlmErrors/429s in job_runs, (2) 5h-window queue latency on generate_plan, (3) PAYG-equivalent spend approaches the next tier's price (~5k plans/mo ≈ $200 vs Ultra $120 → Ultra; ~10-15k plans/mo → PAYG wins). MiniMax Credits (1,000 = $1) bridge spikes without tier jumps. **ToS flag**: a subscription key is marketed for agent/coding tools — serving a multi-tenant SaaS backend from it is a gray zone; the clean long-term scale path is PAYG or a Team plan. Verify acceptable use before charging users on subscription quota.
+**Goal**: every LLM call attributed (feature, user/token, tokens, est. cost); admin visibility into per-artifact margins. This is the monetization prerequisite (rule 1.3.4).
 
-**Implementation (unchanged scope)**: entitlements table (tier, monthly plan quota), `generate_plan` enforces per-user quota (replaces flat cap for authed users), flip `MCP_AUTH_REQUIRED=true`, `/pricing` stub. Stripe is a later phase. **Not doing**: per-token billing, BYOK, raw-token resale.
+### 7a. Schema (one migration)
+```ts
+// src/lib/db/schema.ts — new table
+export const llmCalls = sqliteTable('llm_calls', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  ts: integer('ts', { mode: 'timestamp' }).notNull(),
+  feature: text('feature').notNull(),        // 'curate'|'brief'|'plan'|'stack'|'pain'|'opportunity'|'debate'|'scout'|'digest'|'second-look'|...
+  job: text('job'),                          // worker job name when applicable
+  userId: integer('user_id'),                // oauth user when MCP-triggered; null = pipeline/anonymous
+  model: text('model').notNull(),
+  promptTokens: integer('prompt_tokens').notNull().default(0),
+  completionTokens: integer('completion_tokens').notNull().default(0),
+  estCostUsd: real('est_cost_usd').notNull().default(0),
+});
+```
+- [ ] schema + `npm run db:generate`
 
-**CJK leakage remediation (SHIPPED with this phase)**: MiniMax-M2 splices hanzi/kana/CJK punctuation into non-Chinese output (confirmed common: MiniMax-M2 issues [#55](https://github.com/MiniMax-AI/MiniMax-M2/issues/55), [#100](https://github.com/MiniMax-AI/MiniMax-M2/issues/100), [#110](https://github.com/MiniMax-AI/MiniMax-M2/issues/110) — semantic-level, ~1-in-5-10 responses in bad cases). Fix: `stripCjkLeak`/`stripCjkDeep` in `src/lib/prompt-hygiene.ts`, applied to every generated artifact (daily brief, domain digests, opportunity briefs, execution plans, stack playbooks) — ideographs/kana stripped, 。/、→ ASCII punctuation, fullwidth→ASCII, with a `[cjk]` warn-log for observability. Input side (`promptLine`) deliberately untouched: CJK in scraped stories is legitimate. Tests: `tests/cjk.test.ts` (8 cases).
+### 7b. Instrument chatJSON (single funnel)
+- `src/lib/llm/minimax.ts`: `chatJSON(system, user, opts?: { job?, maxTokens?, feature?, userId? })`. After a successful response (it already reads `data.usage`), insert one `llm_calls` row. Cost via `src/lib/llm/pricing.ts` (new): static map `{ 'MiniMax-M2': { in: 0.30, out: 1.20 } }` per 1M tokens; fall back to zeros for unknown models. Insert must never break the caller: wrap in try/catch.
+- Feature tags at call sites: curate.ts (`feature: 'curate'`), brief/brief.ts (`'brief'` + `'digest'`), opportunities/brief.ts (`'opportunity-brief'`), plans/generate.ts (`'plan'` — plus `userId` threaded from the MCP tool), stacks/generate.ts (`'stack'`), pain.ts (`'pain'`), engine.ts (`'opportunity'`), critic.ts (`'critic'`).
+- [ ] implement + `tests/llm-calls.test.ts` (mock `_setFetch` w/ usage payload → assert row + cost math)
 
-## Phase 9 — Persona expansion (only after 7 proves margins)
+### 7c. Thread userId through MCP plan generation
+- `mcp/tools/plans.ts`: `generatePlan(opp.id, { force, includeMarket, onProgress, userId: auth.userId })`; `src/lib/plans/generate.ts` forwards it into every `chatJSON` call (incl. the brief bootstrap via `generateBrief(oppId, { userId })` — extend its signature too).
+- [ ] implement; unit test asserts `userId` lands on all 6-7 rows of one generation
 
-- Solopreneur = current vertical (sources, prompts, pains all tuned).
-- New persona (designers / devs / …) = a `radar.config` identity + source pack + curation-prompt set + venture playbooks; the domain system and MCP surface are already persona-agnostic.
-- The dashboard decides: a persona whose artifact margins don't clear the bar gets paused, not propped up.
+### 7d. Admin dashboard `/admin/usage`
+- **Create** `src/app/(hub)/admin/usage/page.tsx` (server component, `requireAdmin()`): daily cost chart (aggregate `llm_calls` by day), per-feature table (calls, tokens, cost), per-user table, "cost per plan" card (plan rows ÷ count), margin view (reads tier prices from a `const TIER_PRICES` in `src/lib/billing.ts` — placeholder constants until Phase 8). Reuse chart idioms from `src/components/LlmBudget.tsx`/`JobTimeline.tsx`.
+- Add the query helpers to `src/lib/analytics.ts` (follow `llmUsageHistory` style). Link from `src/app/(hub)/admin/page.tsx`.
+- [ ] page + helpers + link; build green; screenshot check with Playwright
 
-## Verification (standing)
+### 7e. `get_usage` MCP tool (admin-scoped)
+- **Create** `mcp/tools/usage.ts`: returns the same aggregates. Gate: `auth.userId` must map to `users.role === 'admin'` (query `users` table); else a polite restricted payload. Register in `mcp/build.ts`.
+- [ ] tool + registration + admin-gate test in `tests/mcp-tools.test.ts`
 
-- `npx vitest run` green incl. new suites per phase; `npx tsc --noEmit` no new errors; `npm run build` green (Docker build included — clean `npm ci` caught a stray import once already).
-- Live: `npx tsx mcp/test/live.ts https://radar.runelabs.org` 44/44; `mcp/test/oauth-e2e.ts` 31/31; per-phase additions extend these suites.
-- Deploy path until box↔GitHub auth is fixed: commit → push → `git bundle` → box `git fetch` + `merge --ff-only` → `docker compose build && up -d`.
+## Phase 8 — Artifact monetization
+
+**Goal**: entitlements + quota enforcement + pricing page; flip production auth. The financial model lives in §1.4 — these tiers implement it.
+
+### 8a. Entitlements (one migration)
+```ts
+// src/lib/db/schema.ts — new table
+export const planEntitlements = sqliteTable('plan_entitlements', {
+  userId: integer('user_id').primaryKey().references(() => users.id),
+  tier: text('tier', { enum: ['free', 'builder', 'factory'] }).notNull().default('free'),
+  plansPerMonth: integer('plans_per_month').notNull().default(3), // free=3, builder=30, factory=100
+  resetDay: integer('reset_day').notNull().default(1),            // day of month the quota resets
+});
+```
+- `src/lib/billing.ts` (new): `TIER_PRICES = { free: 0, builder: 19, factory: 49 }`, `quotaFor(tier)`, `usageThisCycle(userId)` (count `llm_calls` where `feature='plan'` and `userId=?` within the current reset cycle), `canGeneratePlan(userId)`.
+- `mcp/tools/plans.ts`: for authed users replace `planCapExceeded` with `canGeneratePlan`; anonymous mode keeps the flat `MCP_PLAN_DAILY_CAP`. Error payload includes the tier + upgrade hint.
+- [ ] migration + billing.ts + enforcement + tests (quota window edges, anonymous path unchanged)
+
+### 8b. `/pricing` page + flip auth
+- **Create** `src/app/(hub)/pricing/page.tsx` (public): three tier cards from `TIER_PRICES`, "what's a plan" explainer, self-host note. Add to `NavLinks.tsx` (`buildLinks`).
+- Ops step (documented in README): set `MCP_AUTH_REQUIRED=true` in box `.env`, `docker compose up -d mcp`. OAuth + `/connect` already handle onboarding.
+- [ ] page + nav + README ops note + build + Playwright render check
+
+### 8c. Later (not this phase): Stripe checkout/webhooks, seat management, invoices.
+
+## Phase 9 — Idea-engine overhaul
+
+**Goal**: fix the two stated pains — "everyone gets the same top-5" and "we're weak at debating/generating ideas on demand."
+
+### 9a. Multi-role debate pipeline
+- `src/lib/opportunities/critic.ts`: add `runDebate(oppId: number | null, ideaText?: string)`. Roles as separate `chatJSON` calls (`feature: 'debate'`): **Advocate** → **Skeptic** → **Market Realist** (grounded in pains/comps/launches/market series via the same query helpers the brief/plan generators use) → **Judge** (verdict, conditions-to-succeed, confidence).
+- New `debates` table (migration): `id, opportunityId nullable FK, ideaText nullable, transcript JSON, verdict, confidence, createdAt`.
+- Auto-run for top-K new opportunities in `runOpportunities()` (`src/lib/opportunities/engine.ts`, cron `10 7 * * *`); render transcript on the dossier page `src/app/(hub)/opportunities/[id]/page.tsx`.
+- [ ] pipeline + table + dossier section + `tests/debate.test.ts` (mocked chatJSON per role)
+
+### 9b. `debate_idea` MCP tool
+- **Create** `mcp/tools/debate.ts`: input `{ idea: string }`; grounding block = sector pains (`painPoints`), comps, launches (`launches`), market (`get_market_models` reader), closest existing opportunities (FTS/embedding similarity on title/thesis). Returns verdict + kill risks + **2-3 strengthened variants**. Register in `mcp/build.ts`. Rewrite the `validate_idea` prompt (`mcp/prompts.ts`) to a thin wrapper that calls the tool.
+- [ ] tool + prompt wrapper + envelope + test in `tests/mcp-tools.test.ts`
+
+### 9c. `scout_opportunities` MCP tool
+- **Create** `mcp/tools/scout.ts`: input `{ skills?, capital?, hoursPerWeek?, sector?, b2b?, riskAppetite? }`; runs the proposer half of `runOpportunities()` seeded with the constraints; returns fresh personal openings (never the global top-5). Chain hint in `next`: `debate_idea` / `generate_plan`.
+- [ ] tool + registration + test
+
+### 9d. Anti-homogeneity in `get_opportunities`
+- `mcp/tools/opportunities.ts`: (1) sector quota — max 2 per sector in one response; (2) per-caller salting — deterministic order jitter keyed by `auth.rateKey` hash (two builders same morning → different orders); (3) one exploration slot — the last slot is the highest-scored item from a sector not already present. Pass `auth` into `registerOpportunityTools` (signature change in `mcp/build.ts`).
+- [ ] implement + ordering tests
+
+### 9e. Crowdedness signal
+- `src/lib/db/schema.ts`: `opportunities.planRuns integer('plan_runs').notNull().default(0)` (migration); increment in `generatePlan` on successful generation.
+- Surface as `exploring_count` in `get_opportunities`/`get_opportunity` payloads + a ranking penalty for `planRuns` above a threshold; dossier page shows "N builders exploring this".
+- [ ] migration + increment + payload + ranking tweak + tests
+
+### 9f. Personalization profile (after 8 lands, hosted mode)
+- `user_profiles` table (userId, skills[], interests[], capitalBand, avoidedSectors[]): a `set_profile`/`get_profile` MCP pair; fit-score reranking applied in `get_opportunities`/`scout_opportunities` when a profile exists.
+- [ ] gated on Phase 8 — do not start earlier
+
+## Phase 10 — Data-surface parity + distribution
+
+Cheap wins on data we already store; each is independent.
+
+- [ ] **Metrics explorer** `/metrics` (`src/app/(hub)/metrics/page.tsx`): chart/compare any `metric_points` series, CSV export. First-party series only in public mode (`source != 'aa*'` unless `AA_PUBLIC`).
+- [ ] **Weekly "State of the Builder Market" report**: `src/lib/brief/weekly.ts` `runWeeklyReport()` (Sunday 08:00 cron) → new `reports` table (date, markdown) → public `/reports` archive (SEO) + MCP `get_weekly_report` tool.
+- [ ] **Public read-only JSON API** `/api/v1/{signals,board,opportunities,metrics}` — thin handlers over the same lib functions, IP rate-limited; acquisition channel parity with AA's free tier.
+- [ ] **Trust page**: extend `/accuracy` with forecast grades + "how we score ourselves" narrative (the anti-AA-independence-policy asset).
+- [ ] **Onboarding polish on `/connect`**: connection health check button (calls `tools/list`), "first plan in 5 minutes" guided copy.
+
+## Phase 11 — Persona expansion (only after Phase 7 data says so)
+
+- One persona = one config pack: `radar.config.json` identity fields (`src/lib/identity.ts`), source pack appended to `SEED_SOURCES` (`src/lib/db/seed-data.ts`), curation/pain/opportunity prompt context (sources: `src/lib/curate/curate.ts`, `src/lib/pain.ts`, `src/lib/opportunities/engine.ts`), venture playbooks (`VENTURES` in `src/lib/stacks/generate.ts`).
+- Designers pack first (image/video/design-tool sources), devs second. Each persona is an editorial product: expect prompt iteration, not just config.
+- The dashboard (7d) decides whether a persona's artifact margins justify its pipeline cost.
+
+---
+
+## Standing verification & ops
+
+- Per phase: `npx vitest run` green (new suites per spec), `npx tsc --noEmit` no new errors, `npm run build` green (catches Docker-only issues like undeclared deps).
+- MCP regressions: `npx tsx mcp/test/live.ts` (44 checks) and, when auth/flow changes touch OAuth, `npx tsx mcp/test/oauth-e2e.ts` (31 checks; needs `:3125` auth instance + seeded `mcptest` admin — see file header).
+- Deploy: §3.1 bundle protocol; verify `https://radar.runelabs.org/connect` + a `tools/list` on `https://radar.runelabs.org/mcp` after each deploy.
+- Open ops item: box↔GitHub auth (deploy key rejected, org disables deploy keys) — fix with a fine-grained read-only PAT in the box's git credential store, or re-enable org deploy keys.
 
 ## Out of scope (explicit)
 
-- Scraping/copying third-party datasets (AA, Mobbin) for republication — legal/ToS exposure, and unnecessary given our pipelines.
-- Raw-token resale, BYOK, per-token billing.
-- stdio/npm bridge, server-side plan execution tracking, write/feedback tools.
-- Stripe/billing UI in Phase 8 (scaffolding + entitlements only).
+- Scraping/copying third-party datasets for republication (AA, Mobbin). Proprietary benchmark suites/arenas at AA scale.
+- BYOK, per-token billing, raw-token resale. Stripe/billing UI in Phase 8 (scaffolding only).
+- stdio/npm MCP bridge, server-side plan execution tracking, write/feedback tools.
+
+## Sources
+
+- [artificialanalysis.ai](https://artificialanalysis.ai/) + [pricing](https://artificialanalysis.ai/pricing) · [Semrush traffic (Jul 2026)](https://www.semrush.com/website/artificialanalysis.ai/overview/) · [PitchBook](https://pitchbook.com/profiles/company/680302-90) · [latent.space AA interview](https://www.latent.space/p/artificialanalysis)
+- [MiniMax Token Plan docs](https://platform.minimax.io/docs/token-plan/intro) + [pricing](https://platform.minimax.io/docs/guides/pricing-token-plan) · [MiniMax-M2 API pricing (china-llm)](https://china-llm.com/blog/minimax-m2-pricing) · [pricepertoken M2](https://pricepertoken.com/pricing-page/model/minimax-minimax-m2)
+- MiniMax-M2 CJK leakage: issues [#55](https://github.com/MiniMax-AI/MiniMax-M2/issues/55), [#100](https://github.com/MiniMax-AI/MiniMax-M2/issues/100), [#110](https://github.com/MiniMax-AI/MiniMax-M2/issues/110) — remediated in `src/lib/prompt-hygiene.ts` (`stripCjkLeak`/`stripCjkDeep`)
+- Production usage: `llm_usage` + `job_runs` tables on the box, queried 2026-08-19.
