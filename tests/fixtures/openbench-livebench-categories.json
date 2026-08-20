@@ -1,0 +1,5 @@
+{
+  "Coding": ["code_generation", "code_completion"],
+  "Mathematics": ["AMPS_Hard"],
+  "Language": ["typos"]
+}

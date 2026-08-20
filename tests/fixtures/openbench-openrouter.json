@@ -1,0 +1,157 @@
+{
+  "data": [
+    {
+      "id": "openai/gpt-5.5",
+      "canonical_slug": "openai/gpt-5.5",
+      "hugging_face_id": "",
+      "name": "OpenAI: GPT-5.5",
+      "created": 1784880000,
+      "description": "GPT-5.5 is OpenAI's frontier general-purpose model, with stronger agentic coding and a 400k context window.",
+      "context_length": 400000,
+      "architecture": {
+        "modality": "text+image->text",
+        "input_modalities": ["text", "image"],
+        "output_modalities": ["text"],
+        "tokenizer": "GPT",
+        "instruct_type": null
+      },
+      "pricing": {
+        "prompt": "0.000005",
+        "completion": "0.00003",
+        "request": "0",
+        "image": "0",
+        "web_search": "0",
+        "internal_reasoning": "0"
+      },
+      "top_provider": { "context_length": 400000, "max_completion_tokens": 128000, "is_moderated": false },
+      "per_request_limits": null,
+      "supported_parameters": ["max_tokens", "reasoning", "temperature"]
+    },
+    {
+      "id": "anthropic/claude-sonnet-4.5",
+      "canonical_slug": "anthropic/claude-sonnet-4.5",
+      "hugging_face_id": "",
+      "name": "Anthropic: Claude Sonnet 4.5",
+      "created": 1759100000,
+      "description": "Claude Sonnet 4.5 is Anthropic's best coding model, balancing speed and capability.",
+      "context_length": 1000000,
+      "architecture": {
+        "modality": "text+image->text",
+        "input_modalities": ["text", "image"],
+        "output_modalities": ["text"],
+        "tokenizer": "Claude",
+        "instruct_type": null
+      },
+      "pricing": {
+        "prompt": "0.000003",
+        "completion": "0.000015",
+        "request": "0",
+        "image": "0",
+        "web_search": "0",
+        "internal_reasoning": "0",
+        "input_cache_read": "0.0000003",
+        "input_cache_write": "0.00000375"
+      },
+      "top_provider": { "context_length": 1000000, "max_completion_tokens": 64000, "is_moderated": true },
+      "per_request_limits": null,
+      "supported_parameters": ["max_tokens", "temperature", "tools"]
+    },
+    {
+      "id": "google/gemini-2.5-pro",
+      "canonical_slug": "google/gemini-2.5-pro",
+      "hugging_face_id": "",
+      "name": "Google: Gemini 2.5 Pro",
+      "created": 1750000000,
+      "description": "Gemini 2.5 Pro is Google's thinking model with strong reasoning and multimodal support.",
+      "context_length": 1048576,
+      "architecture": {
+        "modality": "text+image+video->text",
+        "input_modalities": ["text", "image", "video"],
+        "output_modalities": ["text"],
+        "tokenizer": "Gemini",
+        "instruct_type": null
+      },
+      "pricing": {
+        "prompt": "0.00000125",
+        "completion": "0.00001",
+        "request": "0",
+        "image": "0",
+        "web_search": "0",
+        "internal_reasoning": "0"
+      },
+      "top_provider": { "context_length": 1048576, "max_completion_tokens": 65536, "is_moderated": false },
+      "per_request_limits": null,
+      "supported_parameters": ["max_tokens", "structured_outputs", "tools"]
+    },
+    {
+      "id": "meta-llama/llama-4-maverick:free",
+      "canonical_slug": "meta-llama/llama-4-maverick",
+      "hugging_face_id": "meta-llama/Llama-4-Maverick-17B-128E-Instruct",
+      "name": "Meta: Llama 4 Maverick (free)",
+      "created": 1744000000,
+      "description": "Free tier of Llama 4 Maverick, rate-limited.",
+      "context_length": 131072,
+      "architecture": {
+        "modality": "text+image->text",
+        "input_modalities": ["text", "image"],
+        "output_modalities": ["text"],
+        "tokenizer": "Llama4",
+        "instruct_type": "llama4"
+      },
+      "pricing": {
+        "prompt": "0",
+        "completion": "0",
+        "request": "0",
+        "image": "0",
+        "web_search": "0",
+        "internal_reasoning": "0"
+      },
+      "top_provider": { "context_length": 131072, "max_completion_tokens": 8192, "is_moderated": false },
+      "per_request_limits": { "prompt_tokens": 1000000, "completion_tokens": 100000 },
+      "supported_parameters": ["max_tokens", "temperature"]
+    },
+    {
+      "id": "deepseek/deepseek-v3.2",
+      "canonical_slug": "deepseek/deepseek-v3.2",
+      "hugging_face_id": "deepseek-ai/DeepSeek-V3.2",
+      "name": "DeepSeek: DeepSeek V3.2",
+      "created": 1760000000,
+      "description": "Model with no served pricing on this fixture (pricing object null).",
+      "context_length": 131072,
+      "architecture": {
+        "modality": "text->text",
+        "input_modalities": ["text"],
+        "output_modalities": ["text"],
+        "tokenizer": "DeepSeek",
+        "instruct_type": null
+      },
+      "pricing": null,
+      "top_provider": { "context_length": null, "max_completion_tokens": null, "is_moderated": false },
+      "per_request_limits": null,
+      "supported_parameters": ["max_tokens", "temperature"]
+    },
+    {
+      "id": "broken/model",
+      "canonical_slug": "broken/model",
+      "hugging_face_id": "",
+      "name": "Broken: Malformed Pricing",
+      "created": 1700000000,
+      "description": "Fixture row with a non-numeric prompt price; completion is still valid.",
+      "context_length": 8192,
+      "architecture": {
+        "modality": "text->text",
+        "input_modalities": ["text"],
+        "output_modalities": ["text"],
+        "tokenizer": "GPT",
+        "instruct_type": null
+      },
+      "pricing": {
+        "prompt": "n/a",
+        "completion": "0.000001"
+      },
+      "top_provider": { "context_length": 8192, "max_completion_tokens": 4096, "is_moderated": false },
+      "per_request_limits": null,
+      "supported_parameters": ["max_tokens"]
+    }
+  ]
+}

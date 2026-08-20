@@ -1,0 +1,6 @@
+model,code_generation,code_completion,AMPS_Hard,typos
+gpt-5-5-20260801-high,91.2,88.0,80.0,90.0
+gpt-5-5-20260801,89.0,86.5,78.0,88.0
+claude-opus-4-7-xhigh-effort,85.9,80.3,98.0,92.0
+qwen3-235b-a22b-2507,70.1,66.0,85.0,80.0
+unmapped-fictional-9,10.0,10.0,10.0,10.0
