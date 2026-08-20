@@ -7,7 +7,7 @@ import { getIdentity } from '../identity';
 import { chatJSON, drainLlmUsageStats } from '../llm/minimax';
 import { promptLine } from '../prompt-hygiene';
 import { applyGate, blendScore, parseWindowMonths, unverifiedCritic } from './gate';
-import { runCritique } from './critic';
+import { runCritique, runDebate } from './critic';
 
 // Axes + score math live in the client-safe module; re-exported for server code.
 export { compositeScore, FLIP_WEIGHTS, HOLD_WEIGHTS, SUB_KEYS } from './axes';
@@ -72,6 +72,11 @@ export interface OppDraft {
 }
 
 const MAX_PROPOSALS = 6;
+
+// Phase 9a: debates auto-run for the best NEW openings each sweep. Each debate
+// is 4 sequential LLM calls (advocate → skeptic → realist → judge) against the
+// shared daily cap, so K stays small.
+const TOP_K_DEBATES = 2;
 
 /** Validates the LLM's opportunity proposals. Exported for tests. */
 export function sanitizeOpportunities(v: unknown, validRefs: Set<string>): OppDraft[] {
@@ -382,12 +387,13 @@ export async function runOpportunities(): Promise<{
   created: number;
   refreshed: number;
   archived: number;
+  debated: number;
 }> {
   const db = getDb();
   const { drafts, ctx } = await proposeOpportunities();
   if (ctx.signalCount < 5) {
     console.warn('[opportunities] skipped — not enough signal on the scope yet');
-    return { proposed: 0, critiqued: 0, created: 0, refreshed: 0, archived: 0 };
+    return { proposed: 0, critiqued: 0, created: 0, refreshed: 0, archived: 0, debated: 0 };
   }
 
   // layers 2+3: the red team attacks every proposal, then the deterministic
@@ -397,6 +403,8 @@ export async function runOpportunities(): Promise<{
   let created = 0;
   let refreshed = 0;
   const now = new Date();
+  // newly-created rows this run — the debate auto-run's candidate pool (9a)
+  const createdRows: { id: number; verdict: string; flipScore: number }[] = [];
   // keyed by re-normalized slug — heals any legacy rows stored pre-idempotency-fix
   const bySlug = new Map(
     db.select().from(opportunities).all().map((o) => [normalizeSlug(o.slug), o]),
@@ -450,10 +458,15 @@ export async function runOpportunities(): Promise<{
         .run();
       refreshed++;
     } else {
-      db.insert(opportunities)
+      const inserted = db
+        .insert(opportunities)
         .values({ slug: d.slug, ...values, firstSeenAt: now })
-        .run();
+        .returning({ id: opportunities.id })
+        .get();
       created++;
+      if (inserted) {
+        createdRows.push({ id: inserted.id, verdict: values.verdict, flipScore: values.flipScore });
+      }
     }
   }
 
@@ -469,12 +482,29 @@ export async function runOpportunities(): Promise<{
     .returning()
     .all().length;
 
+  // 9a: debate the best NEW non-reject openings. A debate failure must never
+  // fail the job — each is caught individually and only successes are counted.
+  let debated = 0;
+  const debateTargets = createdRows
+    .filter((r) => r.verdict !== 'reject')
+    .sort((a, b) => b.flipScore - a.flipScore)
+    .slice(0, TOP_K_DEBATES);
+  for (const t of debateTargets) {
+    try {
+      await runDebate(t.id);
+      debated++;
+    } catch (e) {
+      console.error(`[opportunities] debate failed for opportunity ${t.id}:`, e);
+    }
+  }
+
   return {
     proposed: drafts.length,
     critiqued: critiques ? critiques.size : 0,
     created,
     refreshed,
     archived,
+    debated,
     ...drainLlmUsageStats(),
   };
 }

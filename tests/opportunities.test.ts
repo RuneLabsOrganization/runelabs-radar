@@ -287,7 +287,7 @@ describe('runOpportunities lifecycle', () => {
   it('skips when there is not enough signal', async () => {
     useTestDb();
     const res = await runOpportunities();
-    expect(res).toEqual({ proposed: 0, critiqued: 0, created: 0, refreshed: 0, archived: 0 });
+    expect(res).toEqual({ proposed: 0, critiqued: 0, created: 0, refreshed: 0, archived: 0, debated: 0 });
     expect(vi.mocked(chatJSON)).not.toHaveBeenCalled();
   });
 

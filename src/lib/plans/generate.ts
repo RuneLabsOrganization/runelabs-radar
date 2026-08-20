@@ -1,4 +1,4 @@
-import { desc, eq, gte } from 'drizzle-orm';
+import { desc, eq, gte, sql } from 'drizzle-orm';
 import { getDb } from '../db';
 import { boardEntries, comps, opportunities, painPoints, stacks } from '../db/schema';
 import { aaModels, latestRadarScores, normalizeModelKey } from '../analytics';
@@ -279,7 +279,13 @@ async function generatePlanInner(
     }
 
     db.update(opportunities)
-      .set({ plan: JSON.stringify(planToWire(plan)), planGeneratedAt: new Date() })
+      .set({
+        plan: JSON.stringify(planToWire(plan)),
+        planGeneratedAt: new Date(),
+        // crowdedness signal (§9e): only fresh generations reach this line —
+        // cache hits return earlier and never increment
+        planRuns: sql`plan_runs + 1`,
+      })
       .where(eq(opportunities.id, oppId))
       .run();
     return { ok: true, plan, cached: false };
