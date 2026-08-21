@@ -430,6 +430,19 @@ export const reports = sqliteTable('reports', {
 });
 
 /**
+ * Latest daily agent-stack overlay (IDE + harness + model playbooks).
+ * Seed lives in lib/agent-stacks.ts; this row is the Brave+LLM refresh.
+ * Singleton: id is always 1.
+ */
+export const agentStackState = sqliteTable('agent_stack_state', {
+  id: integer('id').primaryKey(),
+  payload: text('payload').notNull(),
+  rationale: text('rationale'),
+  braveHits: integer('brave_hits').notNull().default(0),
+  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
+});
+
+/**
  * Personalization profile (Phase 9f, hosted mode) — one row per OAuth user,
  * written via the set_profile MCP tool. When present, get_opportunities
  * reranks by fit and scout_opportunities uses it as default constraints.

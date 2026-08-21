@@ -1,20 +1,11 @@
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { envelopeSchema, respond } from '../lib/payload';
-import {
-  AGENT_PERSONAS,
-  AGENT_STACKS_REVIEWED_AT,
-  DEFAULT_APP_STACK,
-  HARNESS_LANDSCAPE,
-  MODEL_PAIRINGS,
-  PERSONA_SLUGS,
-  costBand,
-  landscapeWithMentions,
-  resolvePersona,
-} from '../../src/lib/agent-stacks';
+import { AGENT_STACKS_REVIEWED_AT, PERSONA_SLUGS, costBand, type AgentPersona } from '../../src/lib/agent-stacks';
+import { publishedAgentStacks, publishedPersona } from '../../src/lib/agent-stacks-sync';
 import { config } from '../../src/lib/config';
 
-function personaPayload(p: (typeof AGENT_PERSONAS)[number]) {
+function personaPayload(p: AgentPersona) {
   return {
     slug: p.slug,
     label: p.label,
@@ -56,7 +47,8 @@ export function registerAgentStackTools(server: McpServer): void {
           z.object({
             name: z.string(),
             kind: z.string(),
-            loved_pct: z.number().nullable(),
+            loved_pct: z.number(),
+            loved_source: z.enum(['pe-survey', 'remainder']),
             mentions_7d: z.number(),
             role: z.string(),
             loses: z.string(),
@@ -77,14 +69,14 @@ export function registerAgentStackTools(server: McpServer): void {
       },
     },
     async () => {
-      const landscape = landscapeWithMentions(HARNESS_LANDSCAPE);
-      const top = landscape[0];
+      const pub = publishedAgentStacks();
+      const top = pub.landscape[0];
       return respond(
         {
           reviewed_at: AGENT_STACKS_REVIEWED_AT,
           hub_url: `${config.siteUrl}/agent-stacks`,
-          persona_count: AGENT_PERSONAS.length,
-          personas: AGENT_PERSONAS.map((p) => ({
+          persona_count: pub.personas.length,
+          personas: pub.personas.map((p) => ({
             slug: p.slug,
             label: p.label,
             stack: p.stack,
@@ -92,20 +84,21 @@ export function registerAgentStackTools(server: McpServer): void {
             cost_low_usd: p.costLowUsd,
             cost_high_usd: p.costHighUsd,
           })),
-          landscape: landscape.map((h) => ({
+          landscape: pub.landscape.map((h) => ({
             name: h.name,
             kind: h.kind,
             loved_pct: h.lovedPct,
+            loved_source: h.lovedSource,
             mentions_7d: h.mentions7d,
             role: h.role,
             loses: h.loses,
             sticker: h.sticker,
           })),
-          pairings: MODEL_PAIRINGS,
-          default_app_stack: DEFAULT_APP_STACK,
+          pairings: pub.pairings,
+          default_app_stack: pub.defaultAppStack,
         },
         {
-          summary: `${AGENT_PERSONAS.length} agent-stack personas; most-loved harness is ${top?.name ?? 'unranked'} (${top?.lovedPct ?? '—'}%).`,
+          summary: `${pub.personas.length} agent-stack personas; most-loved harness is ${top?.name ?? 'unranked'} (${top?.lovedPct ?? '—'}%).`,
           next: [
             {
               tool: 'get_agent_stack_for',
@@ -148,7 +141,7 @@ export function registerAgentStackTools(server: McpServer): void {
       },
     },
     async ({ persona }) => {
-      const row = resolvePersona(persona);
+      const row = publishedPersona(persona);
       if (!row) {
         return respond(
           { found: false, available: [...PERSONA_SLUGS] },

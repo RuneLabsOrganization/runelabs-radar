@@ -1,16 +1,21 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import { eq } from 'drizzle-orm';
 import {
   AGENT_PERSONAS,
   AGENT_STACKS_SOURCE,
   HARNESS_LANDSCAPE,
+  PE_LOVED_PUBLISHED,
   PERSONA_SLUGS,
+  REST_OF_FIELD,
   agentStackPoints,
+  closeLovedPie,
   costBand,
   harnessMentions7d,
+  landscapeWithMentions,
+  lovedPctSum,
   resolvePersona,
-  syncAgentStacks,
 } from '@/lib/agent-stacks';
+import { syncAgentStacks } from '@/lib/agent-stacks-sync';
 import { metricPoints, stories } from '@/lib/db/schema';
 import { useTestDb } from './helpers/db';
 
@@ -53,18 +58,40 @@ describe('resolvePersona', () => {
 });
 
 describe('HARNESS_LANDSCAPE', () => {
-  it('covers the big five and keeps loved_pct unique where set', () => {
-    for (const name of ['Claude Code', 'Cursor', 'Codex', 'GitHub Copilot', 'Windsurf']) {
+  it('covers the big five plus OpenCode and the remainder bucket', () => {
+    for (const name of ['Claude Code', 'Cursor', 'Codex', 'GitHub Copilot', 'Windsurf', 'OpenCode', REST_OF_FIELD]) {
       expect(
         HARNESS_LANDSCAPE.some((h) => h.name === name),
         name,
       ).toBe(true);
     }
-    const loved = HARNESS_LANDSCAPE.filter((h) => h.lovedPct !== null).map((h) => h.lovedPct);
-    expect(loved).toContain(46);
-    expect(loved).toContain(19);
-    expect(loved).toContain(9);
     expect(HARNESS_LANDSCAPE.every((h) => h.aliases.length > 0)).toBe(true);
+  });
+
+  it('keeps PE headline numbers and closes the loved pie to 100', () => {
+    const pie = closeLovedPie();
+    expect(pie.find((h) => h.name === 'Claude Code')?.lovedPct).toBe(PE_LOVED_PUBLISHED['Claude Code']);
+    expect(pie.find((h) => h.name === 'Cursor')?.lovedPct).toBe(PE_LOVED_PUBLISHED.Cursor);
+    expect(pie.find((h) => h.name === 'GitHub Copilot')?.lovedPct).toBe(PE_LOVED_PUBLISHED['GitHub Copilot']);
+    expect(lovedPctSum()).toBe(100);
+    expect(pie.every((h) => h.lovedPct > 0)).toBe(true);
+    expect(pie.filter((h) => h.lovedSource === 'pe-survey').reduce((s, h) => s + h.lovedPct, 0)).toBe(74);
+  });
+
+  it('scales remainder so the pie cannot exceed 100', () => {
+    const bloated = HARNESS_LANDSCAPE.map((h) =>
+      h.lovedSource === 'remainder' && h.name !== REST_OF_FIELD ? { ...h, lovedPct: 20 } : h,
+    );
+    const pie = closeLovedPie(bloated);
+    expect(lovedPctSum(pie)).toBe(100);
+    expect(pie.find((h) => h.name === 'Claude Code')?.lovedPct).toBe(46);
+  });
+
+  it('sorts the public landscape by loved %', () => {
+    const rows = landscapeWithMentions();
+    const pcts = rows.map((h) => h.lovedPct);
+    expect(pcts).toEqual([...pcts].sort((a, b) => b - a));
+    expect(rows[0]?.name).toBe('Claude Code');
   });
 });
 
@@ -93,6 +120,14 @@ describe('harnessMentions7d', () => {
 });
 
 describe('syncAgentStacks', () => {
+  beforeEach(() => {
+    vi.stubEnv('BRAVE_API_KEY', '');
+    vi.stubEnv('MINIMAX_API_KEY', '');
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it('writes loved_pct, mentions_7d, and typical_cost_usd rows', async () => {
     db.insert(stories)
       .values({
@@ -110,6 +145,10 @@ describe('syncAgentStacks', () => {
     const rows = stackRows();
     const claudeLoved = rows.find((r) => r.entity === 'Claude Code' && r.metric === 'loved_pct');
     expect(claudeLoved?.value).toBe(46);
+    const codexLoved = rows.find((r) => r.entity === 'Codex' && r.metric === 'loved_pct');
+    expect(codexLoved?.value).toBe(10);
+    const restLoved = rows.find((r) => r.entity === REST_OF_FIELD && r.metric === 'loved_pct');
+    expect(restLoved?.value).toBe(6);
     const cursorMentions = rows.find((r) => r.entity === 'Cursor' && r.metric === 'mentions_7d');
     expect(cursorMentions?.value).toBe(1);
     const indieCost = rows.find((r) => r.entity === 'indie' && r.metric === 'typical_cost_usd');

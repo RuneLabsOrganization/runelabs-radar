@@ -1,13 +1,7 @@
 import Link from 'next/link';
-import {
-  AGENT_PERSONAS,
-  AGENT_STACKS_REVIEWED_AT,
-  DEFAULT_APP_STACK,
-  HARNESS_LANDSCAPE,
-  MODEL_PAIRINGS,
-  costBand,
-  landscapeWithMentions,
-} from '@/lib/agent-stacks';
+import { AGENT_STACKS_REVIEWED_AT, costBand } from '@/lib/agent-stacks';
+import { publishedAgentStacks } from '@/lib/agent-stacks-sync';
+import { timeAgo } from '@/lib/feed';
 import PageHeader from '@/components/PageHeader';
 import SectionHeader from '@/components/SectionHeader';
 
@@ -19,24 +13,36 @@ export const metadata = {
 
 /**
  * Sibling of /agent-plans (seat prices) and /stacks (venture playbooks).
- * Editorial table is the const; 7-day mention heat is live from the story graph.
+ * Seed is editorial; daily job may overlay copy from Brave + radar.
+ * 7-day mention heat is always live from the story graph.
  */
 export default function AgentStacksPage() {
-  const landscape = landscapeWithMentions(HARNESS_LANDSCAPE);
+  const pub = publishedAgentStacks();
+  const { personas, landscape, pairings, defaultAppStack } = pub;
+  const lovedTotal = landscape.reduce((s, h) => s + h.lovedPct, 0);
 
   return (
     <main className="mx-auto max-w-[860px] px-6 py-7">
       <PageHeader
         kicker="ide · harness · model — not the product stack"
         title="Agent stacks"
-        description="Which editor, agent harness, and model builders actually run — ranked from survey love-rates and user-report cost, with this week’s mention heat from our own feed. Distinct from venture playbooks on Stacks and from seat prices on Agent Plans."
+        description="Which editor, agent harness, and model builders actually run — ranked from survey love-rates and user-report cost, with live mention heat from our own feed. Distinct from venture playbooks on Stacks and from seat prices on Agent Plans."
       />
       <p className="mono mt-2 text-[10.5px] uppercase tracking-[0.06em]" style={{ color: 'var(--ink-4)' }}>
-        {AGENT_PERSONAS.length} personas &middot; {HARNESS_LANDSCAPE.length} harnesses &middot; last review{' '}
-        {AGENT_STACKS_REVIEWED_AT} &middot; mentions are live 7-day
+        {personas.length} personas &middot; {landscape.length} harnesses &middot; loved % sums to {lovedTotal}{' '}
+        &middot; last review {AGENT_STACKS_REVIEWED_AT}
+        {pub.refreshedAt ? (
+          <>
+            {' '}
+            &middot; refresh {timeAgo(pub.refreshedAt)}
+            {pub.braveHits > 0 ? ` · ${pub.braveHits} brave hits` : ''}
+          </>
+        ) : (
+          <> &middot; mentions live 7-day</>
+        )}
       </p>
 
-      <SectionHeader label="who should use what" count={AGENT_PERSONAS.length} />
+      <SectionHeader label="who should use what" count={personas.length} />
       <div className="overflow-x-auto">
         <table className="table">
           <thead>
@@ -48,7 +54,7 @@ export default function AgentStacksPage() {
             </tr>
           </thead>
           <tbody>
-            {AGENT_PERSONAS.map((p) => (
+            {personas.map((p) => (
               <tr key={p.slug} id={p.slug}>
                 <td className="whitespace-nowrap">
                   <span style={{ color: 'var(--ink)' }}>{p.label}</span>
@@ -74,7 +80,7 @@ export default function AgentStacksPage() {
 
       <SectionHeader label="why — the short version" />
       <div className="flex flex-col gap-3">
-        {AGENT_PERSONAS.map((p) => (
+        {personas.map((p) => (
           <div key={p.slug} className="card !p-4">
             <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
               <span className="readout" style={{ color: 'var(--phosphor)' }}>
@@ -109,13 +115,16 @@ export default function AgentStacksPage() {
               <tr key={h.name}>
                 <td className="whitespace-nowrap" style={{ color: 'var(--ink)' }}>
                   {h.name}
+                  {h.lovedSource === 'remainder' && (
+                    <span className="ml-1" style={{ color: 'var(--ink-4)' }}>
+                      *
+                    </span>
+                  )}
                 </td>
                 <td className="mono text-[10.5px] uppercase" style={{ color: 'var(--ink-4)' }}>
                   {h.kind}
                 </td>
-                <td className="mono text-right text-[11.5px]">
-                  {h.lovedPct !== null ? `${h.lovedPct}%` : <span style={{ color: 'var(--ink-4)' }}>—</span>}
-                </td>
+                <td className="mono text-right text-[11.5px]">{h.lovedPct}%</td>
                 <td className="mono text-right text-[11.5px]">
                   {h.mentions7d > 0 ? h.mentions7d : <span style={{ color: 'var(--ink-4)' }}>—</span>}
                 </td>
@@ -127,15 +136,30 @@ export default function AgentStacksPage() {
                 </td>
               </tr>
             ))}
+            <tr>
+              <td className="mono text-[10.5px] uppercase" style={{ color: 'var(--ink-4)' }}>
+                total
+              </td>
+              <td />
+              <td className="mono text-right text-[11.5px]" style={{ color: 'var(--phosphor)' }}>
+                {lovedTotal}%
+              </td>
+              <td />
+              <td colSpan={2} className="mono text-[10px]" style={{ color: 'var(--ink-4)' }}>
+                single-choice favorite · closes to 100
+              </td>
+            </tr>
           </tbody>
         </table>
       </div>
       <p className="mono mt-2 text-[10px]" style={{ color: 'var(--ink-4)' }}>
-        loved % = Pragmatic Engineer Feb 2026, n=906, single-choice favorite — not install base
-        &middot; 7d mentions = curated stories in this radar that name the harness
+        loved % = Pragmatic Engineer Feb 2026, n=906, single-choice favorite — not install base. 46 / 19 / 9
+        are the published top three; * rows split the unpublished 26% remainder from PE usage rank (Codex) and
+        named other-loved tools (OpenCode, Windsurf, long tail). Rest of field absorbs rounding.
+        &middot; 7d mentions = curated stories in this radar that name the harness — live, not the quarterly review
       </p>
 
-      <SectionHeader label="model + harness pairing" count={MODEL_PAIRINGS.length} />
+      <SectionHeader label="model + harness pairing" count={pairings.length} />
       <div className="overflow-x-auto">
         <table className="table">
           <thead>
@@ -146,7 +170,7 @@ export default function AgentStacksPage() {
             </tr>
           </thead>
           <tbody>
-            {MODEL_PAIRINGS.map((row) => (
+            {pairings.map((row) => (
               <tr key={row.job}>
                 <td className="text-[11.5px] leading-snug">{row.job}</td>
                 <td className="text-[11.5px] leading-snug" style={{ color: 'var(--ink-2)' }}>
@@ -166,9 +190,9 @@ export default function AgentStacksPage() {
 
       <SectionHeader label="the app stack models already know" />
       <div className="card !p-4">
-        <p className="text-[13px] font-medium">{DEFAULT_APP_STACK.title}</p>
+        <p className="text-[13px] font-medium">{defaultAppStack.title}</p>
         <p className="mt-2 text-[12.5px] leading-relaxed" style={{ color: 'var(--ink-3)' }}>
-          {DEFAULT_APP_STACK.note} Per-venture layers (auth, payments, hosting) live on{' '}
+          {defaultAppStack.note} Per-venture layers (auth, payments, hosting) live on{' '}
           <Link href="/stacks" className="underline-offset-2 hover:underline" style={{ color: 'var(--ink-2)' }}>
             /stacks
           </Link>
@@ -179,15 +203,24 @@ export default function AgentStacksPage() {
       <SectionHeader label="how we track it" />
       <div className="card !p-4">
         <p className="text-[12.5px] leading-relaxed" style={{ color: 'var(--ink-3)' }}>
-          Rankings are seeded by hand from survey and user-report synthesis and re-reviewed every quarter —
-          love-rate percentages are not safe to regenerate with an LLM. A weekly job writes each harness&rsquo;s
-          loved % and 7-day mention count, plus each persona&rsquo;s typical cost, into our metric store (
+          Two clocks. Mention heat is live from the story graph (same ingest as Today). A daily job (04:45 UTC)
+          searches Brave (news + web, past day) for the coding-agent landscape, then one MiniMax call — tagged{' '}
+          <span className="mono text-[11.5px]" style={{ color: 'var(--ink-2)' }}>
+            job &lsquo;agent-stacks&rsquo; · feature &lsquo;agent-stacks&rsquo;
+          </span>{' '}
+          so the cost lands in admin — may refresh copy and cost bands. Loved % is not free to hallucinate: PE
+          published Claude Code 46 / Cursor 19 / Copilot 9 stay locked; the unpublished 26% remainder still
+          closes to 100. Snapshots go to{' '}
           <span className="mono text-[11.5px]" style={{ color: 'var(--ink-2)' }}>
             metric_points · source &lsquo;agent-stacks&rsquo;
           </span>
-          ). Mention heat on this page is live from the story graph, so a quiet week shows em-dashes instead of
-          last quarter&rsquo;s numbers.
+          .
         </p>
+        {pub.rationale && (
+          <p className="mt-3 text-[12.5px] leading-relaxed" style={{ color: 'var(--ink-3)' }}>
+            Latest refresh: {pub.rationale}
+          </p>
+        )}
         <p className="mt-3 border-t border-[var(--grat-soft)] pt-2.5 text-[12px] leading-relaxed" style={{ color: 'var(--ink-4)' }}>
           Agents: <span className="mono">list_agent_stacks</span> then{' '}
           <span className="mono">get_agent_stack_for</span>. Seat prices:{' '}

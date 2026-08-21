@@ -1,0 +1,17 @@
+{
+  "type": "search",
+  "query": { "original": "Claude Code Cursor" },
+  "web": {
+    "results": [
+      {
+        "title": "Claude Code vs Cursor: 2026 survey recap",
+        "url": "https://newsletter.pragmaticengineer.com/p/ai-tooling-2026",
+        "description": "Claude Code is the most loved tool at 46%.",
+        "extra_snippets": ["Cursor follows at 19%."]
+      },
+      {
+        "url": "https://example.com/no-title-web"
+      }
+    ]
+  }
+}

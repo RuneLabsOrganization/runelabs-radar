@@ -6,15 +6,11 @@ import { topicHierarchy, topicHierarchyAsOf } from '../src/lib/analytics';
 import { iso, parseJsonColumn } from './lib/payload';
 import { marketVisible, type AuthContext } from './lib/auth';
 import {
-  AGENT_PERSONAS,
   AGENT_STACKS_REVIEWED_AT,
-  DEFAULT_APP_STACK,
-  HARNESS_LANDSCAPE,
-  MODEL_PAIRINGS,
+  PERSONA_SLUGS,
   costBand,
-  landscapeWithMentions,
-  resolvePersona,
 } from '../src/lib/agent-stacks';
+import { publishedAgentStacks, publishedPersona } from '../src/lib/agent-stacks-sync';
 
 /**
  * radar:// resources — the browsable, addressable twin of the tool surface.
@@ -128,27 +124,32 @@ export function registerResources(server: McpServer, auth: AuthContext): void {
       description: 'Coding-agent stacks: IDE + harness + model by persona, survey love-rates, live 7-day mention heat',
       mimeType: 'application/json',
     },
-    (uri) =>
-      jsonContents(uri, {
+    (uri) => {
+      const pub = publishedAgentStacks();
+      return jsonContents(uri, {
         reviewed_at: AGENT_STACKS_REVIEWED_AT,
-        personas: AGENT_PERSONAS.map((p) => ({
+        refreshed_at: pub.refreshedAt?.toISOString() ?? null,
+        brave_hits: pub.braveHits,
+        personas: pub.personas.map((p) => ({
           slug: p.slug,
           label: p.label,
           stack: p.stack,
           cost: costBand(p),
         })),
-        landscape: landscapeWithMentions(HARNESS_LANDSCAPE).map((h) => ({
+        landscape: pub.landscape.map((h) => ({
           name: h.name,
           kind: h.kind,
           loved_pct: h.lovedPct,
+          loved_source: h.lovedSource,
           mentions_7d: h.mentions7d,
           role: h.role,
           loses: h.loses,
           sticker: h.sticker,
         })),
-        pairings: MODEL_PAIRINGS,
-        default_app_stack: DEFAULT_APP_STACK,
-      }),
+        pairings: pub.pairings,
+        default_app_stack: pub.defaultAppStack,
+      });
+    },
   );
 
   server.registerResource(
@@ -156,8 +157,8 @@ export function registerResources(server: McpServer, auth: AuthContext): void {
     new ResourceTemplate('radar://agent-stacks/{persona}', { list: undefined }),
     { description: 'One coding-agent stack playbook by persona slug (indie, daily, budget, power, nocoder, enterprise)', mimeType: 'application/json' },
     (uri, { persona }) => {
-      const row = resolvePersona(String(persona));
-      if (!row) return jsonContents(uri, { found: false, persona: String(persona) });
+      const row = publishedPersona(String(persona));
+      if (!row) return jsonContents(uri, { found: false, persona: String(persona), available: [...PERSONA_SLUGS] });
       return jsonContents(uri, {
         found: true,
         reviewed_at: AGENT_STACKS_REVIEWED_AT,

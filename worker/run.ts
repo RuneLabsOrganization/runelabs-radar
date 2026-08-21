@@ -23,7 +23,7 @@ import { runOpenBenchSync } from '../src/lib/ingest/openbench';
 import { runDatasetDump } from '../src/lib/dump';
 import { runWeeklyReport } from '../src/lib/brief/weekly';
 import { syncAgentPlans } from '../src/lib/agent-plans';
-import { syncAgentStacks } from '../src/lib/agent-stacks';
+import { syncAgentStacks } from '../src/lib/agent-stacks-sync';
 import { runRadarEval } from '../src/lib/science/eval';
 
 const jobs: Record<JobName, () => Promise<Record<string, unknown>>> = {

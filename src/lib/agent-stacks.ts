@@ -6,23 +6,22 @@
  * agent harness, and model do builders actually run" — the gap between
  * list-price seats (/agent-plans) and the product stack (Next/Supabase).
  *
- * Hand-seeded from survey + user-report synthesis (not LLM-regenerated:
- * love-rate percentages must not be hallucinated weekly). A weekly job
- * logs those numbers plus first-party 7-day mention heat from the story
- * graph into metric_points:
+ * Hand-seeded from survey + user-report synthesis. PE loved % (46/19/9) is
+ * locked and never LLM-regenerated. A daily job (agent-stacks-sync) pulls
+ * Brave Search + radar mention heat, may refresh copy/cost bands via chatJSON
+ * (job+feature tagged for admin cost tracking), and logs metric_points:
  *   source 'agent-stacks' · entity '<Harness|persona>' · metric
  *     'loved_pct' | 'mentions_7d' | 'typical_cost_usd'
  *
- * The public /agent-stacks page renders the const directly; mention heat
- * is read live from the entity graph so the radar half stays current
- * between editorial reviews.
+ * The public page reads the overlay when present, else this const; mention
+ * heat is always live from the story graph.
  *
  * last manual review: 2026-08-21 — review quarterly
  */
 
 import { entityDailySeries } from './analytics';
 import { canonicalEntityKey } from './entity';
-import { recordMetrics, type MetricInput } from './metrics';
+import type { MetricInput } from './metrics';
 
 export const AGENT_STACKS_REVIEWED_AT = '2026-08-21';
 export const AGENT_STACKS_SOURCE = 'agent-stacks';
@@ -53,13 +52,28 @@ export interface AgentPersona {
   skip: string;
 }
 
-export type HarnessKind = 'ide' | 'cli' | 'builder' | 'addon';
+export type HarnessKind = 'ide' | 'cli' | 'builder' | 'addon' | 'other';
+export type LovedSource = 'pe-survey' | 'remainder';
+
+export const REST_OF_FIELD = 'Rest of field';
+
+/** Pragmatic Engineer Feb 2026 single-choice favorite, n=906. */
+export const PE_LOVED_PUBLISHED = {
+  'Claude Code': 46,
+  Cursor: 19,
+  'GitHub Copilot': 9,
+} as const;
 
 export interface HarnessRow {
   name: string;
   kind: HarnessKind;
-  /** Pragmatic Engineer Feb 2026 "most loved" share, or null if not in that survey. */
-  lovedPct: number | null;
+  /**
+   * Share of "most loved" (single-choice). PE-survey rows are the published
+   * headline numbers. Remainder rows split the unpublished 26% so the column
+   * always closes to 100 — Rest of field absorbs rounding.
+   */
+  lovedPct: number;
+  lovedSource: LovedSource;
   role: string;
   loses: string;
   sticker: string;
@@ -155,13 +169,17 @@ export const AGENT_PERSONAS: AgentPersona[] = [
 /**
  * Harness landscape. lovedPct is the Pragmatic Engineer Jan–Feb 2026
  * single-choice favorite (n=906), not market share. Copilot's install base
- * is much larger than 9%.
+ * is much larger than 9%. PE only published the top three; the rest of the
+ * 26% remainder is allocated from PE usage rank (Codex already at 60% of
+ * Cursor's usage) and named other-loved tools (OpenCode rivals Copilot
+ * love among Staff+). Not LLM-guessed.
  */
 export const HARNESS_LANDSCAPE: HarnessRow[] = [
   {
     name: 'Claude Code',
     kind: 'cli',
-    lovedPct: 46,
+    lovedPct: PE_LOVED_PUBLISHED['Claude Code'],
+    lovedSource: 'pe-survey',
     role: 'Repo-wide agents, CLAUDE.md, tests/CI, multi-file refactors',
     loses: 'No Tab. Slow/careful. Max plan if you are on it all day',
     sticker: '$20 / $100 / $200',
@@ -170,7 +188,8 @@ export const HARNESS_LANDSCAPE: HarnessRow[] = [
   {
     name: 'Cursor',
     kind: 'ide',
-    lovedPct: 19,
+    lovedPct: PE_LOVED_PUBLISHED.Cursor,
+    lovedSource: 'pe-survey',
     role: 'Best GUI + Tab + Composer. Multi-model. Review diffs in-editor',
     loses: 'Frontier models drain the $20 credit pool. Surprise overage bills',
     sticker: '$20 / $60 / ~$200',
@@ -179,7 +198,8 @@ export const HARNESS_LANDSCAPE: HarnessRow[] = [
   {
     name: 'Codex',
     kind: 'cli',
-    lovedPct: null,
+    lovedPct: 10,
+    lovedSource: 'remainder',
     role: 'Fast daily agent, cheap tokens, unattended parallel runs',
     loses: 'Weaker on fuzzy design vs Claude. Lives outside the IDE',
     sticker: '$20 Plus / $200 Pro',
@@ -188,16 +208,28 @@ export const HARNESS_LANDSCAPE: HarnessRow[] = [
   {
     name: 'GitHub Copilot',
     kind: 'addon',
-    lovedPct: 9,
+    lovedPct: PE_LOVED_PUBLISHED['GitHub Copilot'],
+    lovedSource: 'pe-survey',
     role: 'Cheapest Tab, JetBrains/VS/Xcode, IT already approved it',
     loses: '9% most-loved. Weak multi-file. Credits since Jun 2026',
     sticker: '$10 / $39',
     aliases: ['GitHub Copilot', 'Copilot'],
   },
   {
+    name: 'OpenCode',
+    kind: 'cli',
+    lovedPct: 5,
+    lovedSource: 'remainder',
+    role: 'Open-source agent, swap the model, no vendor lock-in',
+    loses: '~1/4 Copilot usage. You bring the model bill. Not an IDE',
+    sticker: 'free + model API',
+    aliases: ['OpenCode'],
+  },
+  {
     name: 'Windsurf',
     kind: 'ide',
-    lovedPct: null,
+    lovedPct: 3,
+    lovedSource: 'remainder',
     role: 'Cascade flow, predictable quotas, Devin cloud story',
     loses: 'Original team left. Smaller community. Third pick',
     sticker: '~$15–$20',
@@ -206,11 +238,32 @@ export const HARNESS_LANDSCAPE: HarnessRow[] = [
   {
     name: 'Lovable',
     kind: 'builder',
-    lovedPct: null,
+    lovedPct: 2,
+    lovedSource: 'remainder',
     role: 'Non-coder MVPs, UI polish, prompt-to-URL in an hour',
     loses: 'Breaks on real backends. Credits. Rebuild before scale',
     sticker: '$20–$50 real',
     aliases: ['Lovable'],
+  },
+  {
+    name: REST_OF_FIELD,
+    kind: 'other',
+    lovedPct: 0,
+    lovedSource: 'remainder',
+    role: 'Warp, Zed, Amp, Cline, Roo, Continue, Gemini CLI, Antigravity, Grok Build',
+    loses: 'Real for some teams, not the default answer. Long tail',
+    sticker: 'varies',
+    aliases: [
+      'Warp',
+      'Zed',
+      'Amp',
+      'Cline',
+      'Roo Code',
+      'Continue',
+      'Gemini CLI',
+      'Antigravity',
+      'Grok Build',
+    ],
   },
 ];
 
@@ -270,6 +323,36 @@ export function costBand(p: AgentPersona): string {
   return `$${p.costLowUsd}–$${p.costHighUsd}/mo`;
 }
 
+/** Close the loved pie: PE rows stay put; remainder is scaled to fit; Rest of field absorbs. */
+export function closeLovedPie(rows: HarnessRow[] = HARNESS_LANDSCAPE): HarnessRow[] {
+  const pe = rows.filter((h) => h.lovedSource === 'pe-survey');
+  const rem = rows.filter((h) => h.lovedSource === 'remainder' && h.name !== REST_OF_FIELD);
+  const peSum = pe.reduce((s, h) => s + h.lovedPct, 0);
+  const room = Math.max(0, 100 - peSum);
+  let remOut = rem;
+  const remSum = rem.reduce((s, h) => s + h.lovedPct, 0);
+  if (remSum > room && remSum > 0) {
+    remOut = rem.map((h) => ({ ...h, lovedPct: Math.max(0, Math.round((h.lovedPct / remSum) * room)) }));
+    let used = remOut.reduce((s, h) => s + h.lovedPct, 0);
+    if (used > room) {
+      const biggest = [...remOut].sort((a, b) => b.lovedPct - a.lovedPct)[0];
+      remOut = remOut.map((h) =>
+        h.name === biggest?.name ? { ...h, lovedPct: Math.max(0, h.lovedPct - (used - room)) } : h,
+      );
+    }
+  }
+  const byName = new Map<string, HarnessRow>([...pe, ...remOut].map((h) => [h.name, h]));
+  const namedSum = [...byName.values()].reduce((s, h) => s + h.lovedPct, 0);
+  return rows.map((h) => {
+    if (h.name === REST_OF_FIELD) return { ...h, lovedPct: Math.max(0, 100 - namedSum) };
+    return byName.get(h.name) ?? h;
+  });
+}
+
+export function lovedPctSum(rows: HarnessRow[] = HARNESS_LANDSCAPE): number {
+  return closeLovedPie(rows).reduce((s, h) => s + h.lovedPct, 0);
+}
+
 /** 7-day mention count across alias keys in the curated story graph. */
 export function harnessMentions7d(aliases: string[]): number {
   if (aliases.length === 0) return 0;
@@ -288,7 +371,9 @@ export function harnessMentions7d(aliases: string[]): number {
 }
 
 export function landscapeWithMentions(rows: HarnessRow[] = HARNESS_LANDSCAPE): Array<HarnessRow & { mentions7d: number }> {
-  return rows.map((h) => ({ ...h, mentions7d: harnessMentions7d(h.aliases) }));
+  return closeLovedPie(rows)
+    .map((h) => ({ ...h, mentions7d: harnessMentions7d(h.aliases) }))
+    .sort((a, b) => b.lovedPct - a.lovedPct || b.mentions7d - a.mentions7d || a.name.localeCompare(b.name));
 }
 
 /** Flattens editorial numbers + live mention heat into metric points. */
@@ -297,15 +382,13 @@ export function agentStackPoints(
   landscape: HarnessRow[] = HARNESS_LANDSCAPE,
 ): MetricInput[] {
   const points: MetricInput[] = [];
-  for (const h of landscape) {
-    if (h.lovedPct !== null) {
-      points.push({
-        source: AGENT_STACKS_SOURCE,
-        entity: h.name,
-        metric: 'loved_pct',
-        value: h.lovedPct,
-      });
-    }
+  for (const h of closeLovedPie(landscape)) {
+    points.push({
+      source: AGENT_STACKS_SOURCE,
+      entity: h.name,
+      metric: 'loved_pct',
+      value: h.lovedPct,
+    });
     points.push({
       source: AGENT_STACKS_SOURCE,
       entity: h.name,
@@ -322,12 +405,4 @@ export function agentStackPoints(
     });
   }
   return points;
-}
-
-/**
- * Weekly sync. Idempotent per day — recordMetrics upserts on
- * (source, entity, metric, date).
- */
-export async function syncAgentStacks(): Promise<{ recorded: number }> {
-  return { recorded: recordMetrics(agentStackPoints()) };
 }

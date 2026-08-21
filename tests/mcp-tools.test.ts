@@ -187,6 +187,9 @@ describe('mcp server', () => {
     expect(list.structuredContent).toMatchObject({ persona_count: 6 });
     const personas = list.structuredContent!.personas as { slug: string }[];
     expect(personas.map((p) => p.slug)).toContain('indie');
+    const landscape = list.structuredContent!.landscape as { loved_pct: number }[];
+    expect(landscape.every((h) => typeof h.loved_pct === 'number' && h.loved_pct > 0)).toBe(true);
+    expect(landscape.reduce((s, h) => s + h.loved_pct, 0)).toBe(100);
 
     const hit = await call(client, 'get_agent_stack_for', { persona: 'budget' });
     expect(hit.structuredContent).toMatchObject({ found: true, slug: 'budget' });

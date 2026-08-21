@@ -169,6 +169,13 @@
       "when": 1787248184750,
       "tag": "0023_spicy_tiger_shark",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "6",
+      "when": 1787340000000,
+      "tag": "0024_agent_stack_state",
+      "breakpoints": true
     }
   ]
 }
