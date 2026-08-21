@@ -10,13 +10,22 @@ export const dynamic = 'force-dynamic';
 
 export default function sitemap(): MetadataRoute.Sitemap {
   const base = config.siteUrl;
-  const staticRoutes = ['', '/board', '/stacks', '/opportunities', '/map', '/brief', '/changelog', '/accuracy'].map(
-    (p) => ({
-      url: `${base}${p}`,
-      changeFrequency: 'hourly' as const,
-      priority: p === '' ? 1 : 0.8,
-    }),
-  );
+  const staticRoutes = [
+    '',
+    '/board',
+    '/stacks',
+    '/agent-stacks',
+    '/agent-plans',
+    '/opportunities',
+    '/map',
+    '/brief',
+    '/changelog',
+    '/accuracy',
+  ].map((p) => ({
+    url: `${base}${p}`,
+    changeFrequency: 'hourly' as const,
+    priority: p === '' ? 1 : 0.8,
+  }));
   const domainRoutes = DOMAINS.map((d) => ({
     url: `${base}/domain/${d}`,
     changeFrequency: 'hourly' as const,

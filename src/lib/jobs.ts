@@ -25,6 +25,7 @@ export type JobName =
   | 'dataset-dump'
   | 'weekly-report'
   | 'agent-plans'
+  | 'agent-stacks'
   | 'radar-eval';
 
 // In-process overlap guard: a slow run (e.g. curate during a MiniMax incident)

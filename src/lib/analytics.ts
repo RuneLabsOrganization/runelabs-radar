@@ -680,6 +680,8 @@ const KNOWN_JOBS: readonly JobName[] = [
   'board',
   'brief',
   'stacks',
+  'agent-plans',
+  'agent-stacks',
 ];
 
 /** Recent runs per job for the health timeline (oldest → newest), for every job present in job_runs. */

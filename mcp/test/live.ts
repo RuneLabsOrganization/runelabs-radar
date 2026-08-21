@@ -113,6 +113,14 @@ async function main() {
   const noStack = sc(await client.callTool({ name: 'get_stack_for', arguments: { venture: '__nope__' } }));
   check('get_stack_for (miss)', noStack.found === false && Array.isArray(noStack.available));
 
+  // agent stacks (IDE + harness + model — distinct from venture playbooks)
+  const agentList = sc(await client.callTool({ name: 'list_agent_stacks', arguments: {} }));
+  check('list_agent_stacks', Array.isArray(agentList.personas) && (agentList.persona_count as number) > 0, `count=${agentList.persona_count}`);
+  const agentHit = sc(await client.callTool({ name: 'get_agent_stack_for', arguments: { persona: 'indie' } }));
+  check('get_agent_stack_for', agentHit.found === true, `slug=${agentHit.slug}`);
+  const agentMiss = sc(await client.callTool({ name: 'get_agent_stack_for', arguments: { persona: '__nope__' } }));
+  check('get_agent_stack_for (miss)', agentMiss.found === false && Array.isArray(agentMiss.available));
+
   // opportunities
   const opps = sc(await client.callTool({ name: 'get_opportunities', arguments: { limit: 3 } }));
   check('get_opportunities', Array.isArray(opps.opportunities), `count=${opps.count}`);
@@ -196,6 +204,7 @@ async function main() {
   if (slug) check('radar://opportunity/{slug}', (await readJson(`radar://opportunity/${slug}`)).found === true);
   check('radar://board/coding', Array.isArray((await readJson('radar://board/coding')).board));
   if (venture) check('radar://stacks/{venture}', (await readJson(`radar://stacks/${venture}`)).found === true);
+  check('radar://agent-stacks', Array.isArray((await readJson('radar://agent-stacks')).personas));
   check('radar://map/latest', Array.isArray((await readJson('radar://map/latest')).topics));
   if (slug) {
     const planRes = await readJson(`radar://plan/${slug}`);
@@ -204,13 +213,15 @@ async function main() {
 
   console.log('\n== prompts ==');
   const { prompts } = await client.listPrompts();
-  check('prompts/list', prompts.length === 5, prompts.map((p) => p.name).join(', '));
+  check('prompts/list', prompts.length === 6, prompts.map((p) => p.name).join(', '));
   const fp = await client.getPrompt({ name: 'find_and_plan', arguments: { sector: 'devtools' } });
   check('find_and_plan', JSON.stringify(fp.messages).includes('generate_plan'));
   const wn = await client.getPrompt({ name: 'whats_new_today', arguments: {} });
   check('whats_new_today', JSON.stringify(wn.messages).includes('get_daily_brief'));
   const wu = await client.getPrompt({ name: 'what_should_i_use', arguments: { task: 'summarize tickets' } });
   check('what_should_i_use', JSON.stringify(wu.messages).includes('summarize tickets'));
+  const was = await client.getPrompt({ name: 'which_agent_stack', arguments: { who: 'indie' } });
+  check('which_agent_stack', JSON.stringify(was.messages).includes('list_agent_stacks'));
   const vi = await client.getPrompt({ name: 'validate_idea', arguments: { idea: 'test idea' } });
   check('validate_idea', JSON.stringify(vi.messages).includes('test idea'));
   const wr = await client.getPrompt({ name: 'builder_weekly_review', arguments: {} });

@@ -145,7 +145,7 @@ export default async function ConnectPage() {
           </li>
           <li>
             <strong className="text-[var(--ink-2)]">Decisions:</strong> get_best_right_now, get_board_changes,
-            get_market_models, list_stacks, get_stack_for
+            get_market_models, list_stacks, get_stack_for, list_agent_stacks, get_agent_stack_for
           </li>
           <li>
             <strong className="text-[var(--ink-2)]">Ideas:</strong> get_opportunities, get_opportunity,
@@ -161,7 +161,7 @@ export default async function ConnectPage() {
           </li>
           <li>
             <strong className="text-[var(--ink-2)]">Prompts:</strong> find_and_plan, whats_new_today,
-            what_should_i_use, validate_idea, builder_weekly_review
+            what_should_i_use, which_agent_stack, validate_idea, builder_weekly_review
           </li>
         </ul>
         <p className="mt-3 text-[12px]" style={{ color: 'var(--ink-4)' }}>

@@ -73,7 +73,7 @@ export default async function StacksPage() {
       <PageHeader
         kicker="playbooks &middot; weekly sync, news-grounded"
         title="Stacks"
-        description="Ready-to-ship tech stacks for common AI product types — optimized for speed to MVP with AI-assisted dev, low run cost, and easy handover. Regenerated weekly from the news and the model market."
+        description="Ready-to-ship tech stacks for common AI product types — optimized for speed to MVP with AI-assisted dev, low run cost, and easy handover. Regenerated weekly from the news and the model market. Which coding IDE + harness + model to run lives on Agent Stacks."
       />
 
       {have.length === 0 ? (

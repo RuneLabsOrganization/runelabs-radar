@@ -95,6 +95,8 @@ async function main() {
     'get_plan',
     'get_server_guide',
     'get_stack_for',
+    'get_agent_stack_for',
+    'list_agent_stacks',
     'get_story',
     'get_top_signals',
     'get_topic_map',
@@ -143,7 +145,7 @@ async function main() {
 
   const prompts = (await rpc('prompts/list')) as { prompts: { name: string }[] };
   const promptNames = prompts.prompts.map((p) => p.name);
-  for (const p of ['find_and_plan', 'whats_new_today', 'what_should_i_use', 'validate_idea', 'builder_weekly_review']) {
+  for (const p of ['find_and_plan', 'whats_new_today', 'what_should_i_use', 'which_agent_stack', 'validate_idea', 'builder_weekly_review']) {
     if (!promptNames.includes(p)) throw new Error(`missing prompt: ${p}`);
   }
   console.log('prompts/list:', promptNames.join(', '));

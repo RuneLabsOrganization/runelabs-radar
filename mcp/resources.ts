@@ -5,6 +5,16 @@ import { boardEntries, briefs, opportunities, stacks } from '../src/lib/db/schem
 import { topicHierarchy, topicHierarchyAsOf } from '../src/lib/analytics';
 import { iso, parseJsonColumn } from './lib/payload';
 import { marketVisible, type AuthContext } from './lib/auth';
+import {
+  AGENT_PERSONAS,
+  AGENT_STACKS_REVIEWED_AT,
+  DEFAULT_APP_STACK,
+  HARNESS_LANDSCAPE,
+  MODEL_PAIRINGS,
+  costBand,
+  landscapeWithMentions,
+  resolvePersona,
+} from '../src/lib/agent-stacks';
 
 /**
  * radar:// resources — the browsable, addressable twin of the tool surface.
@@ -107,6 +117,59 @@ export function registerResources(server: McpServer, auth: AuthContext): void {
         layers: parseJsonColumn(row.layers, []),
         rationale: row.rationale ?? null,
         updated_at: iso(row.updatedAt),
+      });
+    },
+  );
+
+  server.registerResource(
+    'agent-stacks',
+    'radar://agent-stacks',
+    {
+      description: 'Coding-agent stacks: IDE + harness + model by persona, survey love-rates, live 7-day mention heat',
+      mimeType: 'application/json',
+    },
+    (uri) =>
+      jsonContents(uri, {
+        reviewed_at: AGENT_STACKS_REVIEWED_AT,
+        personas: AGENT_PERSONAS.map((p) => ({
+          slug: p.slug,
+          label: p.label,
+          stack: p.stack,
+          cost: costBand(p),
+        })),
+        landscape: landscapeWithMentions(HARNESS_LANDSCAPE).map((h) => ({
+          name: h.name,
+          kind: h.kind,
+          loved_pct: h.lovedPct,
+          mentions_7d: h.mentions7d,
+          role: h.role,
+          loses: h.loses,
+          sticker: h.sticker,
+        })),
+        pairings: MODEL_PAIRINGS,
+        default_app_stack: DEFAULT_APP_STACK,
+      }),
+  );
+
+  server.registerResource(
+    'agent-stack-persona',
+    new ResourceTemplate('radar://agent-stacks/{persona}', { list: undefined }),
+    { description: 'One coding-agent stack playbook by persona slug (indie, daily, budget, power, nocoder, enterprise)', mimeType: 'application/json' },
+    (uri, { persona }) => {
+      const row = resolvePersona(String(persona));
+      if (!row) return jsonContents(uri, { found: false, persona: String(persona) });
+      return jsonContents(uri, {
+        found: true,
+        reviewed_at: AGENT_STACKS_REVIEWED_AT,
+        slug: row.slug,
+        label: row.label,
+        stack: row.stack,
+        ide: row.ide,
+        harness: row.harness,
+        model: row.model,
+        cost: costBand(row),
+        why: row.why,
+        skip: row.skip,
       });
     },
   );

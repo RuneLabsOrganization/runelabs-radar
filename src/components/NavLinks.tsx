@@ -21,6 +21,7 @@ export function buildLinks(pathname: string, isAdmin: boolean): NavLinkItem[] {
     { href: '/metrics', label: 'Metrics', active: pathname.startsWith('/metrics') },
     { href: '/reports', label: 'Reports', active: pathname.startsWith('/reports') },
     { href: '/agent-plans', label: 'Agent Plans', active: pathname.startsWith('/agent-plans') },
+    { href: '/agent-stacks', label: 'Agent Stacks', active: pathname.startsWith('/agent-stacks') },
     { href: '/connect', label: 'Connect', active: pathname.startsWith('/connect') },
     { href: '/pricing', label: 'Pricing', active: pathname.startsWith('/pricing') },
     { href: '/changelog', label: 'Changelog', active: pathname.startsWith('/changelog') },

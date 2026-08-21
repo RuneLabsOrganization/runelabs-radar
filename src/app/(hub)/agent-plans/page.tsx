@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { AGENT_PLANS } from '@/lib/agent-plans';
 import PageHeader from '@/components/PageHeader';
 import SectionHeader from '@/components/SectionHeader';
@@ -27,7 +28,7 @@ export default function AgentPlansPage() {
       <PageHeader
         kicker="which agent plan is worth it"
         title="Coding-agent plans"
-        description="List prices and headline limits for the coding-agent subscriptions builders actually ask us about — IDE agents, CLI agents, and the platform add-ons. Hand-maintained and reviewed quarterly (last review: 2026-08); a weekly job logs every price into our metric store, so the history accumulates."
+        description="List prices and headline limits for the coding-agent subscriptions builders actually ask us about — IDE agents, CLI agents, and the platform add-ons. Hand-maintained and reviewed quarterly (last review: 2026-08); a weekly job logs every price into our metric store, so the history accumulates. Which IDE + harness + model to actually run lives on Agent Stacks."
       />
       <p className="mono mt-2 text-[10.5px] uppercase tracking-[0.06em]" style={{ color: 'var(--ink-4)' }}>
         {PLANS.length} plans tracked &middot; {free} free &middot; cheapest paid seat $
@@ -105,6 +106,10 @@ export default function AgentPlansPage() {
       <div className="mt-9 border-t border-[var(--grat-soft)] pt-3">
         <p className="mono text-[10px]" style={{ color: 'var(--ink-4)' }}>
           last manual review 2026-08 &middot; reviewed quarterly &middot; no pay-for-placement
+          &middot;{' '}
+          <Link href="/agent-stacks" className="underline-offset-2 hover:underline">
+            which stack to run →
+          </Link>
         </p>
       </div>
     </main>

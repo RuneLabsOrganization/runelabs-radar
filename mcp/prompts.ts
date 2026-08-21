@@ -58,10 +58,33 @@ Synthesize into one briefing: 3-5 things that actually matter (with why), 1-2 an
     },
     ({ task, domain }) =>
       userMessage(`I need to pick a model/tool for this task: "${task}".
+If this is about which coding IDE, agent harness, or vibe-coding stack to run (Cursor vs Claude Code vs Codex vs Copilot), call list_agent_stacks then get_agent_stack_for for the persona that matches me, and stop there.
+Otherwise:
 1. Call get_best_right_now${domain ? ` with domain="${domain}"` : ''} and find the row(s) matching my task — read best_overall, best_value, cheapest_viable, the cost note and the verdict.
 2. Call get_market_models (sort "value") to sanity-check those picks against current prices and intelligence scores.
 3. If the board row looks stale versus the market data (a clearly better value exists), say so explicitly.
 4. Give me a recommendation in three tiers (best overall / best value / cheapest viable), each with the current price and one line of reasoning, plus the cost note verbatim.`),
+  );
+
+  server.registerPrompt(
+    'which_agent_stack',
+    {
+      description:
+        'Which coding IDE + harness + model to run (Cursor vs Claude Code vs Codex vs Copilot), by persona and real monthly spend.',
+      argsSchema: {
+        who: z
+          .string()
+          .optional()
+          .describe('who you are, e.g. indie founder, daily IDE user, budget, power user, non-coder, enterprise'),
+      },
+    },
+    ({ who }) =>
+      userMessage(`Help me pick a coding-agent stack (IDE + harness + model), not a product tech stack.
+1. Call list_agent_stacks. Read personas, landscape (loved % vs this week's mention heat), and model pairings.
+2. ${who ? `Call get_agent_stack_for with persona matching "${who}".` : 'Ask me which persona I am (indie, daily, budget, power, nocoder, enterprise), then call get_agent_stack_for for that slug.'}
+3. Recommend one stack with typical monthly cost, what to skip, and which model to run in which harness. Cite loved % when it exists.
+4. If I only asked about seat prices, send me to the hub /agent-plans page rather than inventing list prices.
+Do not confuse this with list_stacks / get_stack_for — those are venture product playbooks (Next.js, Supabase, etc.).`),
   );
 
   server.registerPrompt(

@@ -44,11 +44,11 @@ ${id.brandContext}
 - ${stats.active_opportunities} active monetizable opportunities, adversarially reviewed
 - ${stats.stack_playbooks} venture stack playbooks
 - ${stats.launches_7d} product launches in the last 7 days
-- plus: pain points, anomaly patterns, topic map, model-market prices, metric series, forecasts, accuracy track record, entity profiles, money comps
+- plus: coding-agent stacks (IDE + harness + model by persona), pain points, anomaly patterns, topic map, model-market prices, metric series, forecasts, accuracy track record, entity profiles, money comps
 
 ## Tool groups
 - **News**: get_daily_brief, get_domain_digest, get_daily_insights, get_top_signals, search_stories, get_story
-- **Decisions**: get_best_right_now, get_board_changes, get_market_models, list_stacks, get_stack_for
+- **Decisions**: get_best_right_now, get_board_changes, get_market_models, list_stacks, get_stack_for, list_agent_stacks, get_agent_stack_for
 - **Ideas**: get_opportunities, get_opportunity, get_pain_points, get_comps, get_launches, get_patterns, get_topic_map
 - **Execution**: generate_plan, get_plan — the flagship (see below)
 - **Data**: list_metrics, get_metric_series, get_forecasts, get_accuracy, get_entity
@@ -60,7 +60,7 @@ ${id.brandContext}
 3. generate_plan → a full-lifecycle execution plan (validation → build → launch → GTM → revenue) as a task graph: dependencies, files to touch, acceptance criteria, verification steps, time estimates
 4. Save the plan locally and execute it task by task, checking each acceptance criterion
 
-There is also a guided prompt for this: **find_and_plan**. Other prompts: whats_new_today, what_should_i_use, validate_idea, builder_weekly_review.
+There is also a guided prompt for this: **find_and_plan**. Other prompts: whats_new_today, what_should_i_use, which_agent_stack, validate_idea, builder_weekly_review.
 
 ## Conventions
 - Every structured response carries an envelope: "summary" (one sentence you can relay as-is) and "next" (suggested follow-up calls with prefilled arguments — follow them instead of guessing tool names).

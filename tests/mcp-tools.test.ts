@@ -132,6 +132,7 @@ describe('mcp server', () => {
         'debate_idea',
         'generate_plan',
         'get_accuracy',
+        'get_agent_stack_for',
         'get_best_right_now',
         'get_board_changes',
         'get_comps',
@@ -155,6 +156,7 @@ describe('mcp server', () => {
         'get_topic_map',
         'get_usage',
         'get_weekly_report',
+        'list_agent_stacks',
         'list_metrics',
         'list_stacks',
         'scout_opportunities',
@@ -177,6 +179,21 @@ describe('mcp server', () => {
     const brief = await call(client, 'get_daily_brief', {});
     expect(brief.content?.[0]?.text).toContain('No brief found');
     expect(brief.content?.[0]?.text).toContain('Source:');
+  });
+
+  it('serves agent-stack personas without a DB seed', async () => {
+    const client = await wire();
+    const list = await call(client, 'list_agent_stacks', {});
+    expect(list.structuredContent).toMatchObject({ persona_count: 6 });
+    const personas = list.structuredContent!.personas as { slug: string }[];
+    expect(personas.map((p) => p.slug)).toContain('indie');
+
+    const hit = await call(client, 'get_agent_stack_for', { persona: 'budget' });
+    expect(hit.structuredContent).toMatchObject({ found: true, slug: 'budget' });
+
+    const miss = await call(client, 'get_agent_stack_for', { persona: '__nope__' });
+    expect(miss.structuredContent).toMatchObject({ found: false });
+    expect(miss.structuredContent!.available).toEqual(expect.arrayContaining(['indie', 'nocoder']));
   });
 
   it('get_daily_insights survives a corrupt insights row', async () => {
@@ -215,6 +232,7 @@ describe('mcp server', () => {
     const { resources } = await client.listResources();
     expect(resources.map((r) => r.uri)).toContain('radar://brief/latest');
     expect(resources.map((r) => r.uri)).toContain('radar://opportunities');
+    expect(resources.map((r) => r.uri)).toContain('radar://agent-stacks');
 
     const read = await client.readResource({ uri: 'radar://opportunities' });
     const parsed = JSON.parse((read.contents[0] as { text: string }).text);
@@ -227,6 +245,7 @@ describe('mcp server', () => {
       'validate_idea',
       'what_should_i_use',
       'whats_new_today',
+      'which_agent_stack',
     ]);
 
     const prompt = await client.getPrompt({ name: 'find_and_plan', arguments: {} });
