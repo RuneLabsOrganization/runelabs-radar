@@ -8,11 +8,43 @@ import { cn } from '@/lib/utils';
 
 /* ── reveal timing ─────────────────────────────────────────────────────── */
 
-interface Pace {
-  /** units revealed per tick */
-  inc: number;
-  /** ms between ticks */
-  delay: number;
+/**
+ * Splits prose into pseudo-BPE tokens. Whitespace binds to the token that
+ * follows it and long words break into pieces, so the stream lands mid-word the
+ * way a real model's does instead of snapping to whole words. Chunk sizes are
+ * derived from the offset rather than randomised — tokenising has to return the
+ * same array on every render.
+ *
+ * Words carrying markdown stay whole so a chunk boundary can never split `**`
+ * into a stray marker that renders as a literal asterisk.
+ */
+function tokenize(text: string): string[] {
+  const out: string[] = [];
+  for (const word of text.match(/\s*\S+/g) ?? []) {
+    if (word.trim().length <= 6 || /[*`]/.test(word)) {
+      out.push(word);
+      continue;
+    }
+    let i = 0;
+    while (i < word.length) {
+      const size = i === 0 ? 5 : 3 + ((word.length + i) % 3);
+      out.push(word.slice(i, i + size));
+      i += size;
+    }
+  }
+  return out;
+}
+
+/** Steps are module constants, so their token arrays are cached by identity. */
+const tokenCache = new WeakMap<DemoStep, string[]>();
+
+function tokensOf(step: DemoStep & { kind: 'assistant' }): string[] {
+  let cached = tokenCache.get(step);
+  if (!cached) {
+    cached = tokenize(step.text);
+    tokenCache.set(step, cached);
+  }
+  return cached;
 }
 
 function unitsIn(step: DemoStep): number {
@@ -20,7 +52,7 @@ function unitsIn(step: DemoStep): number {
     case 'user':
       return step.text.length;
     case 'assistant':
-      return step.text.split(' ').length;
+      return tokensOf(step).length;
     case 'result':
     case 'file':
       return step.lines.length;
@@ -29,24 +61,42 @@ function unitsIn(step: DemoStep): number {
   }
 }
 
-function paceOf(step: DemoStep): Pace {
+/**
+ * Units revealed per second. `call` and `chain` are single-unit beats, so their
+ * rate is just the inverse of the dwell they want.
+ */
+function rateOf(step: DemoStep): number {
   switch (step.kind) {
     case 'user':
-      return { inc: 2, delay: 32 };
+      return 55; // characters — a human typing at a good clip
     case 'assistant':
-      return { inc: 1, delay: 30 };
+      return 42; // pseudo-tokens ≈ 190 chars/s, a flagship model's pace
     case 'result':
-      return { inc: 1, delay: 42 };
+      return 26; // lines
     case 'file':
-      return { inc: 1, delay: 60 };
+      return 18; // lines
     case 'call':
-      return { inc: 1, delay: step.runMs };
+      return 1000 / step.runMs;
     case 'chain':
-      return { inc: 1, delay: 420 };
+      return 1000 / 420;
   }
 }
 
-const STEP_GAP = 420;
+/** Dead air before a step emits anything — the model's time to first token. */
+function leadInOf(step: DemoStep): number {
+  switch (step.kind) {
+    case 'assistant':
+      return 300;
+    case 'user':
+      return 140;
+    case 'result':
+      return 90;
+    default:
+      return 0;
+  }
+}
+
+const STEP_GAP = 380;
 
 /**
  * Walks the transcript one step at a time. `sub` counts revealed units inside
@@ -57,36 +107,85 @@ const STEP_GAP = 420;
  * finished transcript (the old behaviour) read as a broken component to anyone
  * who had OS animations switched off.
  */
+interface Cursor {
+  step: number;
+  sub: number;
+}
+
 function useTranscript(steps: DemoStep[], playing: boolean, calm: boolean) {
-  const [cursor, setCursor] = React.useState({ step: 0, sub: 0 });
+  const [cursor, setCursor] = React.useState<Cursor>({ step: 0, sub: 0 });
+  const [runId, setRunId] = React.useState(0);
+  /** Mutable position, so a frame never waits on a state round trip. */
+  const live = React.useRef<Cursor>({ step: 0, sub: 0 });
   const done = cursor.step >= steps.length;
 
+  const replay = React.useCallback(() => {
+    live.current = { step: 0, sub: 0 };
+    setCursor(live.current);
+    setRunId((n) => n + 1); // restarts the loop if it already ran to the end
+  }, []);
+
   React.useEffect(() => {
-    if (!playing || done) return;
-    const step = steps[cursor.step];
-    const total = unitsIn(step);
+    if (!playing || live.current.step >= steps.length) return;
 
-    if (cursor.sub < total) {
-      // the tool-call spinner still needs its dwell, or the round trip reads
-      // as instant rather than as work being done
-      const { inc, delay } = calm
-        ? { inc: total, delay: step.kind === 'call' ? step.runMs : 240 }
-        : paceOf(step);
-      const id = setTimeout(
-        () => setCursor((c) => ({ step: c.step, sub: Math.min(total, c.sub + inc) })),
-        delay,
-      );
-      return () => clearTimeout(id);
-    }
+    let raf = 0;
+    let last = performance.now();
+    /** fractional units carried between frames, so the rate is frame-rate independent */
+    let credit = 0;
+    let hold = leadInOf(steps[live.current.step]);
 
-    const id = setTimeout(
-      () => setCursor((c) => ({ step: c.step + 1, sub: 0 })),
-      calm ? 650 : STEP_GAP,
-    );
-    return () => clearTimeout(id);
-  }, [cursor, playing, calm, done, steps]);
+    const frame = (now: number) => {
+      // A long frame must cost time, not dump a burst of tokens at once.
+      const dt = Math.min(50, now - last);
+      last = now;
 
-  const replay = React.useCallback(() => setCursor({ step: 0, sub: 0 }), []);
+      const cur = live.current;
+      if (cur.step >= steps.length) return; // finished: stop rescheduling
+      raf = requestAnimationFrame(frame);
+
+      if (hold > 0) {
+        hold -= dt;
+        return;
+      }
+
+      const step = steps[cur.step];
+      const total = unitsIn(step);
+
+      if (cur.sub >= total) {
+        const next = { step: cur.step + 1, sub: 0 };
+        live.current = next;
+        setCursor(next);
+        credit = 0;
+        hold =
+          (calm ? 560 : STEP_GAP) +
+          (next.step < steps.length ? leadInOf(steps[next.step]) : 0);
+        return;
+      }
+
+      if (calm) {
+        live.current = { step: cur.step, sub: total };
+        setCursor(live.current);
+        return;
+      }
+
+      // Real streams arrive in uneven bursts and occasionally hitch, so the
+      // rate wobbles rather than ticking like a metronome.
+      credit += (dt / 1000) * rateOf(step) * (0.7 + Math.random() * 0.6);
+      if (step.kind === 'assistant' && Math.random() < 0.004) {
+        hold = 45 + Math.random() * 90;
+      }
+
+      const gained = Math.floor(credit);
+      if (gained < 1) return;
+      credit -= gained;
+      live.current = { step: cur.step, sub: Math.min(total, cur.sub + gained) };
+      setCursor(live.current);
+    };
+
+    raf = requestAnimationFrame(frame);
+    return () => cancelAnimationFrame(raf);
+  }, [playing, calm, steps, runId]);
+
   const started = cursor.step > 0 || cursor.sub > 0;
   return { cursor, done, started, replay };
 }
@@ -163,7 +262,11 @@ function CodeBlock({ lines, className }: { lines: string[]; className?: string }
   );
 }
 
-function StepView({
+/**
+ * Memoised: a streaming step re-renders every frame, and without this the
+ * finished steps above it re-reconcile their whole payload alongside it.
+ */
+const StepView = React.memo(function StepView({
   step,
   sub,
   complete,
@@ -254,8 +357,8 @@ function StepView({
     }
 
     case 'assistant': {
-      const words = step.text.split(' ');
-      const shown = (complete ? words : words.slice(0, sub)).join(' ');
+      // tokens carry their own leading whitespace, so they join bare
+      const shown = complete ? step.text : tokensOf(step).slice(0, sub).join('');
       return (
         <div className="flex gap-3">
           <span className="mono mt-0.5 shrink-0 text-[10px] uppercase tracking-[0.1em] text-phosphor">
@@ -278,7 +381,7 @@ function StepView({
       );
     }
   }
-}
+});
 
 /* ── the console ───────────────────────────────────────────────────────── */
 
@@ -298,7 +401,11 @@ function Session({
 
   React.useEffect(() => {
     const node = scroller.current;
-    if (node) node.scrollTop = node.scrollHeight;
+    if (!node) return;
+    // Follow the stream, but let go once the reader scrolls back up to reread
+    // something rather than yanking them down every frame.
+    const slack = node.scrollHeight - node.scrollTop - node.clientHeight;
+    if (slack < 140) node.scrollTop = node.scrollHeight;
   }, [cursor]);
 
   const visible = done ? tab.steps.length : cursor.step + 1;
@@ -333,7 +440,9 @@ function Session({
             <StepView
               key={i}
               step={step}
-              sub={cursor.sub}
+              // only the streaming step gets a moving `sub`; the finished ones
+              // keep stable props so the memo above holds them steady
+              sub={i === cursor.step ? cursor.sub : 0}
               complete={done || i < cursor.step}
               caret={!calm}
             />
