@@ -1,16 +1,10 @@
 'use client';
 
-// Namespace import keeps JSX working under vitest's classic transform (jsx: preserve).
 import * as React from 'react';
+import { Moon, Sun } from 'lucide-react';
 
 const STORAGE_KEY = 'radar.theme';
 
-/**
- * Dark/light switch for the scope console. Dark is the brand default — the
- * toggle flips <html data-theme>, persists the choice, and broadcasts
- * 'radar:theme' so canvas surfaces (scope, WebGL backdrop) re-read their
- * CSS tokens. Glyph renders only after mount to stay hydration-stable.
- */
 export default function ThemeToggle() {
   const [theme, setTheme] = React.useState<'dark' | 'light'>('dark');
   const [mounted, setMounted] = React.useState(false);
@@ -28,7 +22,7 @@ export default function ThemeToggle() {
     try {
       window.localStorage.setItem(STORAGE_KEY, next);
     } catch {
-      // storage blocked — theme still flips for this session
+      /* storage blocked */
     }
     window.dispatchEvent(new Event('radar:theme'));
   };
@@ -39,10 +33,17 @@ export default function ThemeToggle() {
       onClick={toggle}
       aria-label={mounted ? `theme: ${theme} — switch to ${theme === 'dark' ? 'light' : 'dark'}` : 'toggle theme'}
       title="toggle theme"
-      className="flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-[4px] border border-[var(--grat)] text-[12px] transition-colors hover:border-[var(--grat-strong)] hover:text-[var(--ink-2)]"
-      style={{ color: 'var(--ink-3)' }}
+      className="flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-md border border-grat text-ink-3 transition-colors hover:border-grat-strong hover:text-ink-2"
     >
-      <span aria-hidden>{mounted ? (theme === 'light' ? '☀' : '☾') : '·'}</span>
+      {mounted ? (
+        theme === 'light' ? (
+          <Sun className="h-3.5 w-3.5" />
+        ) : (
+          <Moon className="h-3.5 w-3.5" />
+        )
+      ) : (
+        <span className="text-[10px]">·</span>
+      )}
     </button>
   );
 }

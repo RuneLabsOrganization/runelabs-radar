@@ -1,28 +1,31 @@
-// Namespace import keeps JSX working under vitest's classic transform (jsx: preserve).
-import * as React from 'react';
+/**
+ * Legacy default export — wraps the shared ui/section-header so older
+ * imports (`import SectionHeader from '@/components/SectionHeader'`) keep
+ * working, including the phosphor tone used on hub feeds.
+ */
+import type { ReactNode } from 'react';
+import { SectionHeader as UiSectionHeader } from '@/components/ui/section-header';
+import { cn } from '@/lib/utils';
 
-/** Scope-readout section rule: label ── hairline ── count. */
 export default function SectionHeader({
   label,
   count,
   tone,
+  action,
+  className,
 }: {
   label: string;
-  count?: number;
+  count?: number | string;
   tone?: 'phosphor';
+  action?: ReactNode;
+  className?: string;
 }) {
   return (
-    <div className="mt-9 mb-2 flex items-center gap-3">
-      <span className="readout" style={tone === 'phosphor' ? { color: 'var(--phosphor)' } : undefined}>
-        {tone === 'phosphor' && <span aria-hidden>&#9646; </span>}
-        {label}
-      </span>
-      <span aria-hidden className="hairline-grow h-px flex-1" style={{ background: 'var(--grat-soft)' }} />
-      {count !== undefined && (
-        <span className="mono text-[10.5px]" style={{ color: 'var(--ink-4)' }}>
-          {count}
-        </span>
-      )}
-    </div>
+    <UiSectionHeader
+      label={tone === 'phosphor' ? `\u25A6 ${label}` : label}
+      count={count}
+      action={action}
+      className={cn(tone === 'phosphor' && '[&_.readout]:text-phosphor', className)}
+    />
   );
 }

@@ -3,7 +3,7 @@ import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { getDb } from '../../src/lib/db';
 import { opportunities } from '../../src/lib/db/schema';
-import { config } from '../../src/lib/config';
+import { urls } from '../../src/lib/urls';
 import { envelopeSchema, iso, parseJsonColumn, respond, type NextAction } from '../lib/payload';
 import { marketVisible, type AuthContext } from '../lib/auth';
 
@@ -24,7 +24,7 @@ function summary(o: OppRow) {
     has_brief: o.brief !== null,
     has_plan: o.plan !== null,
     first_seen: o.firstSeenAt.toISOString(),
-    url: `${config.siteUrl}/opportunities`,
+    url: urls.opportunity(o.slug),
   };
 }
 
@@ -287,7 +287,7 @@ export function registerOpportunityTools(server: McpServer, auth: AuthContext): 
             first_seen: row.firstSeenAt.toISOString(),
             last_seen: row.lastSeenAt.toISOString(),
             reviewed_at: iso(row.reviewedAt),
-            url: `${config.siteUrl}/opportunities`,
+            url: urls.opportunity(row.slug),
           },
         },
         {

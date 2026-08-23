@@ -2,8 +2,8 @@ import { desc, eq } from 'drizzle-orm';
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { opportunities } from '@/lib/db/schema';
-import { config } from '@/lib/config';
 import { rateLimited } from '@/lib/api-limit';
+import { urls } from '@/lib/urls';
 
 /**
  * Public read-only API v1 (Phase 10): active opportunities — the same query
@@ -51,7 +51,7 @@ export async function GET(req: Request) {
         has_brief: o.brief !== null,
         has_plan: o.plan !== null,
         first_seen: o.firstSeenAt.toISOString(),
-        url: `${config.siteUrl}/opportunities`,
+        url: urls.opportunity(o.slug),
       })),
     },
     { headers: { 'cache-control': CACHE } },

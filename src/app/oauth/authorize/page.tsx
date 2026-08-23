@@ -110,7 +110,9 @@ export default async function AuthorizePage({
                   ? 'Read briefs, signals, board, stacks, opportunities, and all other intelligence.'
                   : s === 'plans'
                     ? 'Generate execution plans for opportunities (uses server LLM budget).'
-                    : s}
+                    : s === 'batches'
+                      ? 'Create and run workspace batches — bulk debate and plan runs.'
+                      : s}
               </span>
             </li>
           ))}

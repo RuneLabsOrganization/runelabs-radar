@@ -3,7 +3,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { envelopeSchema, respond } from '../lib/payload';
 import { AGENT_STACKS_REVIEWED_AT, PERSONA_SLUGS, costBand, type AgentPersona } from '../../src/lib/agent-stacks';
 import { publishedAgentStacks, publishedPersona } from '../../src/lib/agent-stacks-sync';
-import { config } from '../../src/lib/config';
+import { urls } from '../../src/lib/urls';
 
 function personaPayload(p: AgentPersona) {
   return {
@@ -74,7 +74,7 @@ export function registerAgentStackTools(server: McpServer): void {
       return respond(
         {
           reviewed_at: AGENT_STACKS_REVIEWED_AT,
-          hub_url: `${config.siteUrl}/agent-stacks`,
+          hub_url: urls.agents(),
           persona_count: pub.personas.length,
           personas: pub.personas.map((p) => ({
             slug: p.slug,
@@ -161,7 +161,7 @@ export function registerAgentStackTools(server: McpServer): void {
         {
           found: true,
           reviewed_at: AGENT_STACKS_REVIEWED_AT,
-          hub_url: `${config.siteUrl}/agent-stacks#${row.slug}`,
+          hub_url: `${urls.agents()}#${row.slug}`,
           ...personaPayload(row),
         },
         {

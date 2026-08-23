@@ -10,6 +10,43 @@ export type Db = BetterSQLite3Database<typeof schema>;
 
 let _db: Db | null = null;
 
+/**
+ * Serialize migrate() across Next.js build workers that open the same file.
+ * Without this, parallel `getDb()` during `next build` races CREATE TABLE.
+ */
+function withMigrateLock(dbPath: string, fn: () => void): void {
+  if (dbPath === ':memory:') {
+    fn();
+    return;
+  }
+  const lockPath = `${path.resolve(dbPath)}.migrate.lock`;
+  const start = Date.now();
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    try {
+      const fd = fs.openSync(lockPath, 'wx');
+      try {
+        fn();
+      } finally {
+        fs.closeSync(fd);
+        try {
+          fs.unlinkSync(lockPath);
+        } catch {
+          /* ignore */
+        }
+      }
+      return;
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err;
+      if (Date.now() - start > 60_000) {
+        throw new Error(`Timed out waiting for migrate lock at ${lockPath}`);
+      }
+      // busy-wait briefly — migrate is usually sub-second on SQLite
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 50);
+    }
+  }
+}
+
 /** Open a database at the given location (':memory:' supported) and run migrations. */
 export function openDb(location: string): Db {
   if (location !== ':memory:') {
@@ -20,7 +57,9 @@ export function openDb(location: string): Db {
   sqlite.pragma('busy_timeout = 5000');
   sqlite.pragma('foreign_keys = ON');
   const db = drizzle(sqlite, { schema });
-  migrate(db, { migrationsFolder: path.resolve(process.cwd(), 'drizzle') });
+  withMigrateLock(location, () => {
+    migrate(db, { migrationsFolder: path.resolve(process.cwd(), 'drizzle') });
+  });
   bootstrapFts(sqlite);
   return db;
 }

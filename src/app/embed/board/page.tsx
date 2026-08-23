@@ -1,11 +1,11 @@
 import type { Metadata } from 'next';
 import { asc } from 'drizzle-orm';
 import { requireViewer } from '@/lib/auth/user';
-import { config } from '@/lib/config';
 import { getDb } from '@/lib/db';
 import { boardEntries } from '@/lib/db/schema';
 import { DOMAIN_COLORS, DOMAIN_LABELS, DOMAINS, isDomain } from '@/lib/domains';
 import { getIdentity } from '@/lib/identity';
+import { urls } from '@/lib/urls';
 
 export const dynamic = 'force-dynamic';
 
@@ -92,7 +92,7 @@ export default async function EmbedBoardPage({
       )}
       <div className="mt-2 border-t border-[var(--grat-soft)] pt-1.5 text-right">
         <a
-          href={`${config.siteUrl}/board`}
+          href={urls.tools()}
           target="_blank"
           rel="noreferrer"
           className="mono text-[10px] uppercase tracking-[0.08em]"

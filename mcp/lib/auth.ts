@@ -73,7 +73,7 @@ export function authenticate(req: IncomingMessage): AuthContext | null {
   return {
     authed: false,
     userId: null,
-    scopes: new Set(['read', 'plans']),
+    scopes: new Set(['read', 'plans', 'batches']),
     rateKey: `ip:${ip}`,
   };
 }

@@ -17,11 +17,9 @@ export default function PageHeader({
   return (
     <div>
       {kicker && <div className="readout">{kicker}</div>}
-      <h1 className="mt-1 text-[19px] font-semibold tracking-[-0.01em]">{title}</h1>
+      <h1 className="type-h1 mt-1">{title}</h1>
       {description && (
-        <p className="mt-1.5 max-w-[640px] text-[13px] leading-relaxed" style={{ color: 'var(--ink-3)' }}>
-          {description}
-        </p>
+        <p className="mt-1.5 max-w-[640px] text-[13px] leading-relaxed text-ink-3">{description}</p>
       )}
     </div>
   );

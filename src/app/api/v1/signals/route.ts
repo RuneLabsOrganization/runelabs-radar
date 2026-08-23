@@ -2,7 +2,7 @@ import { and, desc, eq, gt } from 'drizzle-orm';
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { stories } from '@/lib/db/schema';
-import { config } from '@/lib/config';
+import { urls } from '@/lib/urls';
 import { DOMAIN_MEMBERSHIP_THRESHOLD, isDomain } from '@/lib/domains';
 import { rateLimited } from '@/lib/api-limit';
 
@@ -61,7 +61,7 @@ export async function GET(req: Request) {
       tldr: s.tldr ?? null,
       why_it_matters: s.whyItMatters ?? null,
       created_at: s.createdAt.toISOString(),
-      url: `${config.siteUrl}/story/${s.id}`,
+      url: urls.story(s.id),
     }));
   return NextResponse.json(
     { window_hours: hours, domain: domain ?? 'all', count: signals.length, signals },

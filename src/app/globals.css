@@ -1,57 +1,113 @@
 @import 'tailwindcss';
 
-/* ── Runelabs Radar — scope console ─────────────────────────────
-   The product is a radar for AI news; the interface is the
-   operator's scope. CRT glass surfaces, graticule hairlines,
-   one phosphor trace for signal. Color means signal — never
-   decoration. */
+/* ── Runelabs Radar — evolved scope console ─────────────────────
+   Radar for AI intelligence. CRT glass surfaces, graticule hairlines,
+   one phosphor trace for signal. Color means signal — never decoration.
+   Marketing pages use the same tokens at a larger, more editorial scale;
+   the app stays dense and instrument-like. */
+
+@theme {
+  /* surfaces */
+  --color-scope-0: #0a0e13;
+  --color-scope-1: #0e141b;
+  --color-scope-2: #131a23;
+  --color-scope-inset: #070a0f;
+
+  /* graticule */
+  --color-grat-soft: rgba(151, 180, 205, 0.07);
+  --color-grat: rgba(151, 180, 205, 0.13);
+  --color-grat-strong: rgba(151, 180, 205, 0.26);
+
+  /* ink */
+  --color-ink: #e3eaf0;
+  --color-ink-2: #a6b4c2;
+  --color-ink-3: #8295a6;
+  --color-ink-4: #71839a;
+
+  /* phosphor + status */
+  --color-phosphor: #57d9a3;
+  --color-phosphor-dim: rgba(87, 217, 163, 0.13);
+  --color-amber: #d9a13f;
+  --color-amber-dim: rgba(217, 161, 63, 0.12);
+  --color-alert: #d96b5c;
+
+  /* sectors */
+  --color-sector-coding: #6aa7ec;
+  --color-sector-copy: #dfa947;
+  --color-sector-image: #e388bd;
+  --color-sector-video: #b291ee;
+  --color-sector-ads: #3ecdba;
+  --color-sector-agentic: #a6c355;
+
+  /* shadcn contract → scope console */
+  --color-background: var(--color-scope-0);
+  --color-foreground: var(--color-ink);
+  --color-card: var(--color-scope-1);
+  --color-card-foreground: var(--color-ink);
+  --color-popover: var(--color-scope-2);
+  --color-popover-foreground: var(--color-ink);
+  --color-primary: var(--color-phosphor);
+  --color-primary-foreground: #0a0e13;
+  --color-secondary: var(--color-scope-2);
+  --color-secondary-foreground: var(--color-ink-2);
+  --color-muted: var(--color-scope-2);
+  --color-muted-foreground: var(--color-ink-3);
+  --color-accent: var(--color-phosphor-dim);
+  --color-accent-foreground: var(--color-phosphor);
+  --color-destructive: var(--color-alert);
+  --color-border: var(--color-grat);
+  --color-input: var(--color-grat);
+  --color-ring: var(--color-phosphor);
+
+  /* radii */
+  --radius-sm: 3px;
+  --radius-md: 4px;
+  --radius-lg: 6px;
+  --radius-xl: 10px;
+  --radius: 6px;
+
+  /* fonts — literal names for @theme (Tailwind v4 parse-time) */
+  --font-sans: 'Geist', 'Geist Fallback', ui-sans-serif, system-ui, sans-serif;
+  --font-display: 'Instrument Serif', 'Instrument Serif Fallback', Georgia, 'Times New Roman', serif;
+  --font-mono: 'Geist Mono', 'Geist Mono Fallback', ui-monospace, monospace;
+  --font-readout: 'Geist Mono', 'Geist Mono Fallback', ui-monospace, monospace;
+
+  /* elevation */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.5);
+  --shadow-glow: 0 0 24px rgba(87, 217, 163, 0.12);
+}
 
 :root {
-  /* scope glass — surface elevation */
+  /* keep legacy var names for gradual migration */
   --scope-0: #0a0e13;
   --scope-1: #0e141b;
   --scope-2: #131a23;
   --scope-inset: #070a0f;
-
-  /* graticule — border progression */
   --grat-soft: rgba(151, 180, 205, 0.07);
   --grat: rgba(151, 180, 205, 0.13);
   --grat-strong: rgba(151, 180, 205, 0.26);
-
-  /* ink — text hierarchy (ink-3/ink-4 raised for WCAG AA on scope-0:
-     ink-4 #71839a measures 4.99:1 on scope-0, 4.77:1 on scope-1) */
   --ink: #e3eaf0;
   --ink-2: #a6b4c2;
   --ink-3: #8295a6;
   --ink-4: #71839a;
-
-  /* phosphor — the signal */
   --phosphor: #57d9a3;
   --phosphor-dim: rgba(87, 217, 163, 0.13);
   --amber: #d9a13f;
   --amber-dim: rgba(217, 161, 63, 0.12);
   --alert: #d96b5c;
-
-  /* sector ticks — identification, not decoration.
-     Validated (dataviz six checks, dark surface): chroma floor ✓, CVD worst-pair
-     ΔE 13.8 ✓, contrast ✓; always paired with mono text labels. */
   --sector-coding: #6aa7ec;
   --sector-copy: #dfa947;
   --sector-image: #e388bd;
   --sector-video: #b291ee;
   --sector-ads: #3ecdba;
   --sector-agentic: #a6c355;
-
-  --font-readout:
-    ui-monospace, 'Cascadia Mono', 'SF Mono', Menlo, Consolas, monospace;
-
-  /* chrome pieces that can't stay literal under a second theme */
+  --font-readout: 'Geist Mono', 'Geist Mono Fallback', ui-monospace, monospace;
   --header-bg: rgba(10, 14, 19, 0.88);
   --overlay-bg: rgba(7, 10, 15, 0.6);
   --row-hover: rgba(151, 180, 205, 0.045);
-  --hatch: rgba(151, 180, 205, 0.10);
-
-  /* aliases — surfaces written against the earlier token names */
+  --hatch: rgba(151, 180, 205, 0.1);
   --bg: var(--scope-0);
   --panel: var(--scope-1);
   --panel-2: var(--scope-2);
@@ -69,44 +125,81 @@
   --d-video: var(--sector-video);
   --d-ads: var(--sector-ads);
   --d-agentic: var(--sector-agentic);
+  --radius: 6px;
 }
 
-/* ── light theme: the same scope console on paper ─────────────────
-   Surfaces invert (white panel on gray canvas), hairlines go dark
-   blue-gray, and every signal hue is deepened until it holds WCAG AA
-   on white. Sector ticks keep their hue family — identity, not décor. */
 :root[data-theme='light'] {
   --scope-0: #eceff3;
   --scope-1: #ffffff;
   --scope-2: #f5f7fa;
   --scope-inset: #e4e9ef;
-
   --grat-soft: rgba(30, 55, 80, 0.09);
   --grat: rgba(30, 55, 80, 0.16);
   --grat-strong: rgba(30, 55, 80, 0.32);
-
   --ink: #16232f;
   --ink-2: #3a4c5e;
   --ink-3: #52667a;
   --ink-4: #576b7d;
-
   --phosphor: #0c7a52;
   --phosphor-dim: rgba(12, 122, 82, 0.12);
   --amber: #97650f;
   --amber-dim: rgba(151, 101, 15, 0.12);
   --alert: #b34434;
-
   --sector-coding: #2f6fc4;
   --sector-copy: #a97b1e;
   --sector-image: #c4538f;
   --sector-video: #7e5bc9;
   --sector-ads: #0f8d7f;
   --sector-agentic: #6d8f2f;
-
   --header-bg: rgba(236, 239, 243, 0.88);
   --overlay-bg: rgba(236, 239, 243, 0.6);
   --row-hover: rgba(30, 55, 80, 0.05);
-  --hatch: rgba(30, 55, 80, 0.10);
+  --hatch: rgba(30, 55, 80, 0.1);
+
+  --color-scope-0: #eceff3;
+  --color-scope-1: #ffffff;
+  --color-scope-2: #f5f7fa;
+  --color-scope-inset: #e4e9ef;
+  --color-grat-soft: rgba(30, 55, 80, 0.09);
+  --color-grat: rgba(30, 55, 80, 0.16);
+  --color-grat-strong: rgba(30, 55, 80, 0.32);
+  --color-ink: #16232f;
+  --color-ink-2: #3a4c5e;
+  --color-ink-3: #52667a;
+  --color-ink-4: #576b7d;
+  --color-phosphor: #0c7a52;
+  --color-phosphor-dim: rgba(12, 122, 82, 0.12);
+  --color-amber: #97650f;
+  --color-amber-dim: rgba(151, 101, 15, 0.12);
+  --color-alert: #b34434;
+  --color-sector-coding: #2f6fc4;
+  --color-sector-copy: #a97b1e;
+  --color-sector-image: #c4538f;
+  --color-sector-video: #7e5bc9;
+  --color-sector-ads: #0f8d7f;
+  --color-sector-agentic: #6d8f2f;
+  --color-background: #eceff3;
+  --color-foreground: #16232f;
+  --color-card: #ffffff;
+  --color-card-foreground: #16232f;
+  --color-popover: #ffffff;
+  --color-popover-foreground: #16232f;
+  --color-primary: #0c7a52;
+  --color-primary-foreground: #ffffff;
+  --color-secondary: #f5f7fa;
+  --color-secondary-foreground: #3a4c5e;
+  --color-muted: #f5f7fa;
+  --color-muted-foreground: #52667a;
+  --color-accent: rgba(12, 122, 82, 0.12);
+  --color-accent-foreground: #0c7a52;
+  --color-destructive: #b34434;
+  --color-border: rgba(30, 55, 80, 0.16);
+  --color-input: rgba(30, 55, 80, 0.16);
+  --color-ring: #0c7a52;
+  --shadow-sm: 0 1px 2px rgba(30, 55, 80, 0.08);
+  --shadow-md: 0 4px 16px rgba(30, 55, 80, 0.1);
+  --shadow-lg: 0 12px 40px rgba(30, 55, 80, 0.12);
+  --shadow-glow: 0 0 24px rgba(12, 122, 82, 0.1);
 }
 
 html {
@@ -120,14 +213,7 @@ html[data-theme='light'] {
 body {
   background: var(--scope-0);
   color: var(--ink);
-  font-family:
-    ui-sans-serif,
-    system-ui,
-    -apple-system,
-    'Segoe UI',
-    Roboto,
-    'Helvetica Neue',
-    sans-serif;
+  font-family: var(--font-sans);
   font-size: 14px;
   line-height: 1.55;
   -webkit-font-smoothing: antialiased;
@@ -141,7 +227,54 @@ a {
   background: var(--phosphor-dim);
 }
 
-/* motion — instrument, not spectacle */
+/* typography scale utilities */
+.type-display {
+  font-family: var(--font-display);
+  font-size: clamp(2.5rem, 5vw, 4rem);
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  font-weight: 400;
+}
+
+.type-h1 {
+  font-size: 1.5rem;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+  font-weight: 600;
+}
+
+.type-h2 {
+  font-size: 1.125rem;
+  line-height: 1.35;
+  font-weight: 600;
+}
+
+.type-h3 {
+  font-size: 0.9375rem;
+  line-height: 1.4;
+  font-weight: 600;
+}
+
+.type-body {
+  font-size: 0.875rem;
+  line-height: 1.55;
+}
+
+.type-small {
+  font-size: 0.75rem;
+  line-height: 1.45;
+}
+
+.type-readout {
+  font-family: var(--font-readout);
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-4);
+}
+
+/* motion */
 @keyframes bar-grow {
   from {
     transform: scaleX(0);
@@ -164,7 +297,6 @@ a {
   animation: fade-up 360ms ease-out both;
 }
 
-/* hero insight rotation — crossfade on content swap (re-keyed element) */
 @keyframes insight-in {
   from {
     opacity: 0;
@@ -176,7 +308,6 @@ a {
   animation: insight-in 400ms ease-out both;
 }
 
-/* SectionHeader hairline grows in on view */
 @keyframes hairline-grow {
   from {
     transform: scaleX(0);
@@ -188,7 +319,6 @@ a {
   animation: hairline-grow 600ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
-/* heatmap cell entrance (staggered via inline animation-delay) */
 @keyframes heat-in {
   from {
     opacity: 0;
@@ -217,7 +347,6 @@ a {
   background: var(--row-hover);
 }
 
-/* chart export affordance — whisper until hovered, always there on touch */
 .chart-frame > button {
   opacity: 0.55;
 }
@@ -230,7 +359,6 @@ a {
   }
 }
 
-/* anonymous "new since last visit" marker (stamped by AnonFresh) */
 .anon-new {
   position: relative;
 }
@@ -245,7 +373,6 @@ a {
   background: var(--phosphor);
 }
 
-/* keyboard cursor over feed entries (stamped by FeedKeys: j/k to move, Enter to open) */
 .feed-focus {
   background: var(--scope-1);
   outline: 1px solid var(--grat);
@@ -261,13 +388,16 @@ a {
     animation: none;
   }
   .hover-raise,
-  .hover-raise:hover {
+  .hover-raise:hover,
+  .row-hover,
+  .row-hover:hover,
+  .vote-btn,
+  .vote-btn:hover {
     transition: none;
     transform: none;
   }
 }
 
-/* readouts — instrument labels */
 .readout {
   font-family: var(--font-readout);
   font-size: 10.5px;
@@ -281,7 +411,6 @@ a {
   font-family: var(--font-readout);
 }
 
-/* quiet inline vote controls */
 .vote-btn {
   background: none;
   border: none;
@@ -291,7 +420,6 @@ a {
   font: inherit;
   transition: color 120ms ease;
 }
-/* touch targets: 44px minimum on coarse pointers */
 @media (pointer: coarse) {
   .vote-btn {
     display: inline-flex;
@@ -316,7 +444,6 @@ a {
   cursor: default;
 }
 
-/* shared component skins */
 .card {
   background: var(--scope-1);
   border: 1px solid var(--grat-soft);
@@ -359,7 +486,7 @@ a {
 }
 
 .btn-primary:hover {
-  background: rgba(87, 217, 163, 0.22);
+  background: color-mix(in srgb, var(--phosphor) 22%, transparent);
   border-color: transparent;
   color: var(--phosphor);
 }
@@ -388,7 +515,6 @@ a {
   color: var(--ink-4);
 }
 
-/* verdict edit affordance — pencil appears on hover; always visible on touch */
 .verdict-pencil {
   font-size: 11px;
   color: var(--ink-4);
@@ -451,8 +577,6 @@ a {
   color: var(--ink-3);
 }
 
-/* responsive tables: below 640px rows become stacked cards.
-   Cells need data-label for the generated row header. */
 @media (max-width: 639px) {
   .table-cards,
   .table-cards tbody,
@@ -500,4 +624,40 @@ a {
   letter-spacing: 0.12em;
   color: var(--ink-4);
   margin-bottom: 8px;
+}
+
+/* marketing brief prose */
+.brief-md h1,
+.brief-md h2,
+.brief-md h3 {
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin-top: 1.4em;
+  margin-bottom: 0.5em;
+}
+.brief-md h1 {
+  font-size: 1.25rem;
+}
+.brief-md h2 {
+  font-size: 1.05rem;
+}
+.brief-md h3 {
+  font-size: 0.95rem;
+}
+.brief-md p,
+.brief-md li {
+  color: var(--ink-2);
+  line-height: 1.65;
+}
+.brief-md a {
+  color: var(--phosphor);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.brief-md code {
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  background: var(--scope-2);
+  border-radius: 3px;
+  padding: 1px 5px;
 }

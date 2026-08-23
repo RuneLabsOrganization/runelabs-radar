@@ -129,10 +129,14 @@ describe('mcp server', () => {
     const names = tools.map((t) => t.name).sort();
     expect(names).toEqual(
       [
+        'add_to_batch',
+        'create_batch',
         'debate_idea',
         'generate_plan',
         'get_accuracy',
         'get_agent_stack_for',
+        'get_batch',
+        'get_batch_run',
         'get_best_right_now',
         'get_board_changes',
         'get_comps',
@@ -157,8 +161,10 @@ describe('mcp server', () => {
         'get_usage',
         'get_weekly_report',
         'list_agent_stacks',
+        'list_batches',
         'list_metrics',
         'list_stacks',
+        'run_batch',
         'scout_opportunities',
         'search_stories',
       ].sort(),

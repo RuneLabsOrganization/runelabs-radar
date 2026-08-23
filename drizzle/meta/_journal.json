@@ -176,6 +176,13 @@
       "when": 1787340000000,
       "tag": "0024_agent_stack_state",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "6",
+      "when": 1787479343931,
+      "tag": "0025_product_revamp",
+      "breakpoints": true
     }
   ]
 }

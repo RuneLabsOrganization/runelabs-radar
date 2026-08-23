@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { paths } from '@/lib/urls';
 
 /** Branded 404 — dead links (old stories, typos) land here instead of Next's default. */
 export default function NotFound() {
@@ -10,16 +11,16 @@ export default function NotFound() {
         That page doesn&rsquo;t exist — it may have moved, or never made it onto the radar.
       </p>
       <nav className="mono mt-6 flex flex-wrap gap-2 text-[11px] uppercase tracking-[0.08em]">
-        <Link href="/" className="btn">
+        <Link href={paths.app} className="btn">
           Today
         </Link>
-        <Link href="/brief" className="btn">
+        <Link href={paths.brief} className="btn">
           Brief
         </Link>
-        <Link href="/board" className="btn">
+        <Link href={paths.tools} className="btn">
           Best Tools
         </Link>
-        <Link href="/search" className="btn">
+        <Link href={paths.search} className="btn">
           Search
         </Link>
       </nav>

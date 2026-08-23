@@ -10,7 +10,7 @@ import { oauthClients, oauthCodes, oauthTokens } from './db/schema';
  * dynamically (RFC 7591) so any MCP client can connect without copying keys.
  */
 
-export const SCOPES = ['read', 'plans'] as const;
+export const SCOPES = ['read', 'plans', 'batches'] as const;
 export type Scope = (typeof SCOPES)[number];
 
 const CODE_TTL_MS = 5 * 60 * 1000; // authorization codes: 5 minutes

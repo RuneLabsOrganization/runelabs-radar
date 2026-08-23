@@ -17,8 +17,8 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { loadDotEnv } from '../src/lib/env';
-import { config } from '../src/lib/config';
 import { getIdentity } from '../src/lib/identity';
+import { urls } from '../src/lib/urls';
 import { authenticate, issuerUrl, mcpPublicUrl, wwwAuthenticate } from './lib/auth';
 import { buildServer } from './build';
 
@@ -87,7 +87,7 @@ const httpServer = createServer(async (req: IncomingMessage, res: ServerResponse
       JSON.stringify({
         resource: mcpPublicUrl(),
         authorization_servers: [issuerUrl()],
-        scopes_supported: ['read', 'plans'],
+        scopes_supported: ['read', 'plans', 'batches'],
         bearer_methods_supported: ['header'],
       }),
     );
@@ -97,7 +97,7 @@ const httpServer = createServer(async (req: IncomingMessage, res: ServerResponse
   if (url.pathname !== '/mcp') {
     // humans get docs, agents get the JSON 404 below
     if (url.pathname === '/' && req.method === 'GET') {
-      res.writeHead(302, { location: `${config.siteUrl.replace(/\/+$/, '')}/connect` });
+      res.writeHead(302, { location: urls.connect() });
       res.end();
       return;
     }
@@ -114,7 +114,7 @@ const httpServer = createServer(async (req: IncomingMessage, res: ServerResponse
     !req.headers.authorization &&
     !req.headers['mcp-protocol-version']
   ) {
-    res.writeHead(302, { location: `${config.siteUrl.replace(/\/+$/, '')}/connect` });
+    res.writeHead(302, { location: urls.connect() });
     res.end();
     return;
   }

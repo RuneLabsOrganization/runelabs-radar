@@ -37,7 +37,8 @@ describe('oauth store', () => {
 
   it('sanitizes scopes to the known set, defaulting to read', () => {
     expect(sanitizeScopes('read bogus plans')).toBe('read plans');
-    expect(sanitizeScopes('plans read')).toBe('read plans');
+    expect(sanitizeScopes('plans read batches')).toBe('read plans batches');
+    expect(sanitizeScopes('batches read')).toBe('read batches');
     expect(sanitizeScopes('bogus')).toBe('read');
     expect(sanitizeScopes('')).toBe('read');
     expect(sanitizeScopes(undefined)).toBe('read');

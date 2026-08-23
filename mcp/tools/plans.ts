@@ -8,7 +8,8 @@ import { planToWire, type ExecutionPlan } from '../../src/lib/plans/schema';
 import { renderPlanMarkdown } from '../../src/lib/plans/markdown';
 import { envelopeSchema, iso, respond } from '../lib/payload';
 import { marketVisible, type AuthContext } from '../lib/auth';
-import { canGeneratePlan, quotaFor, type Tier } from '../../src/lib/billing';
+import { can } from '../../src/lib/entitlements';
+import { quotaFor, type Tier } from '../../src/lib/billing';
 
 // --- plan-generation quotas (§8a): anonymous callers keep the flat per-caller
 // daily cap (plans cost 6-7 LLM calls each, and the global MiniMax cap is
@@ -125,17 +126,18 @@ export function registerPlanTools(server: McpServer, auth: AuthContext): void {
         // authed: monthly entitlement quota. Usage comes from llm_calls rows
         // written by generation itself, so cache hits (no LLM rows) are free.
         // In-flight generations count at ENTRY, same rule as the daily cap.
-        const gate = canGeneratePlan(auth.userId);
-        const used = gate.used + (planPending.get(auth.rateKey) ?? 0);
-        if (!gate.ok || used >= gate.quota) {
-          const nextTier: Tier | null = gate.tier === 'free' ? 'builder' : gate.tier === 'builder' ? 'factory' : null;
+        const gate = can({ id: auth.userId }, 'plan');
+        const used = (gate.used ?? 0) + (planPending.get(auth.rateKey) ?? 0);
+        if (!gate.ok || (gate.quota !== undefined && used >= gate.quota)) {
+          const nextTier: Tier | null =
+            gate.tier === 'free' ? 'builder' : gate.tier === 'builder' ? 'factory' : null;
           const hint = nextTier
             ? `upgrade to ${nextTier} for ${quotaFor(nextTier)} plans/mo — see /pricing`
             : 'see /pricing for higher-volume options';
           return respond(
             {
               ok: false,
-              error: `monthly plan quota reached for tier "${gate.tier}" (${used}/${gate.quota} this cycle) — ${hint}`,
+              error: `monthly plan quota reached for tier "${gate.tier}" (${used}/${gate.quota ?? used} this cycle) — ${hint}`,
             },
             {
               summary: `Monthly plan quota reached (${used}/${gate.quota} this cycle, tier "${gate.tier}") — ${hint}.`,

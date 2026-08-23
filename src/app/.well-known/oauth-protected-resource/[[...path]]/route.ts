@@ -17,7 +17,7 @@ export async function GET() {
     {
       resource,
       authorization_servers: [issuer],
-      scopes_supported: ['read', 'plans'],
+      scopes_supported: ['read', 'plans', 'batches'],
       bearer_methods_supported: ['header'],
     },
     { headers: { 'access-control-allow-origin': '*' } },

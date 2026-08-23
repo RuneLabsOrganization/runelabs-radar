@@ -25,6 +25,7 @@ import { runWeeklyReport } from '../src/lib/brief/weekly';
 import { syncAgentPlans } from '../src/lib/agent-plans';
 import { syncAgentStacks } from '../src/lib/agent-stacks-sync';
 import { runRadarEval } from '../src/lib/science/eval';
+import { createWeeklyRadarDrop } from '../src/lib/batches';
 
 const jobs: Record<JobName, () => Promise<Record<string, unknown>>> = {
   ingest: runIngest,
@@ -50,6 +51,7 @@ const jobs: Record<JobName, () => Promise<Record<string, unknown>>> = {
   'agent-plans': syncAgentPlans,
   'agent-stacks': syncAgentStacks,
   'radar-eval': runRadarEval,
+  'radar-batch': createWeeklyRadarDrop,
 };
 
 const name = process.argv[2] as JobName | undefined;

@@ -3,8 +3,13 @@ import { blob, real, sqliteTable, text, integer, primaryKey, uniqueIndex } from 
 export const users = sqliteTable('users', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   name: text('name').notNull().unique(),
-  passwordHash: text('password_hash').notNull(),
+  passwordHash: text('password_hash').notNull().default(''),
+  email: text('email').unique(),
+  emailVerified: integer('email_verified', { mode: 'boolean' }).notNull().default(false),
+  /** Better Auth user id (text PK). Domain FKs keep using integer users.id. */
+  authUserId: text('auth_user_id').unique(),
   role: text('role', { enum: ['admin', 'member'] }).notNull().default('member'),
+  stripeCustomerId: text('stripe_customer_id'),
   lastSeenAt: integer('last_seen_at', { mode: 'timestamp' }),
   // Previous visit's timestamp: the stable anchor for "since your last visit"
   // while lastSeenAt acts as a heartbeat during the current visit.
@@ -454,4 +459,133 @@ export const userProfiles = sqliteTable('user_profiles', {
   capitalBand: text('capital_band'), // null | 'bootstrap' | 'small' | 'comfortable' | 'funded'
   avoidedSectors: text('avoided_sectors').notNull().default('[]'), // JSON string[]
   updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
+});
+
+/**
+ * Batches — named working sets (workspace) or weekly Radar drops (kind='drop').
+ * Bulk runs apply debate / generate_plan / scout across every item.
+ */
+export const batches = sqliteTable('batches', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  ownerId: integer('owner_id').references(() => users.id), // null = system Radar Batch
+  kind: text('kind', { enum: ['workspace', 'drop'] }).notNull().default('workspace'),
+  slug: text('slug').notNull().unique(),
+  title: text('title').notNull(),
+  cohort: text('cohort'), // e.g. '2026-W34' for weekly drops
+  visibility: text('visibility', { enum: ['private', 'members', 'public'] }).notNull().default('private'),
+  description: text('description'),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
+});
+
+export const batchItems = sqliteTable('batch_items', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  batchId: integer('batch_id')
+    .notNull()
+    .references(() => batches.id),
+  refType: text('ref_type', { enum: ['opportunity', 'story', 'entity', 'idea'] }).notNull(),
+  refId: integer('ref_id'), // opportunity/story id when applicable
+  refKey: text('ref_key'), // entity name or opportunity slug
+  ideaText: text('idea_text'),
+  position: integer('position').notNull().default(0),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+});
+
+export const batchRuns = sqliteTable('batch_runs', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  batchId: integer('batch_id')
+    .notNull()
+    .references(() => batches.id),
+  op: text('op', { enum: ['debate', 'plan', 'scout'] }).notNull(),
+  status: text('status', { enum: ['pending', 'running', 'ok', 'error'] }).notNull().default('pending'),
+  requestedBy: integer('requested_by').references(() => users.id),
+  stats: text('stats'), // JSON {total, ok, error, ...}
+  error: text('error'),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+  finishedAt: integer('finished_at', { mode: 'timestamp' }),
+});
+
+export const batchRunItems = sqliteTable('batch_run_items', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  runId: integer('run_id')
+    .notNull()
+    .references(() => batchRuns.id),
+  batchItemId: integer('batch_item_id')
+    .notNull()
+    .references(() => batchItems.id),
+  status: text('status', { enum: ['pending', 'running', 'ok', 'error', 'skipped'] }).notNull().default('pending'),
+  resultRef: text('result_ref'), // debate id, plan slug, etc.
+  estCostUsd: real('est_cost_usd').notNull().default(0),
+  error: text('error'),
+  finishedAt: integer('finished_at', { mode: 'timestamp' }),
+});
+
+/**
+ * Better Auth tables (text PKs). Linked to domain users via users.auth_user_id.
+ * Generated to match better-auth drizzle adapter expectations.
+ */
+export const authUser = sqliteTable('auth_user', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  email: text('email').notNull().unique(),
+  emailVerified: integer('email_verified', { mode: 'boolean' }).notNull().default(false),
+  image: text('image'),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
+  stripeCustomerId: text('stripe_customer_id'),
+});
+
+export const authSession = sqliteTable('auth_session', {
+  id: text('id').primaryKey(),
+  expiresAt: integer('expires_at', { mode: 'timestamp' }).notNull(),
+  token: text('token').notNull().unique(),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
+  ipAddress: text('ip_address'),
+  userAgent: text('user_agent'),
+  userId: text('user_id')
+    .notNull()
+    .references(() => authUser.id),
+});
+
+export const authAccount = sqliteTable('auth_account', {
+  id: text('id').primaryKey(),
+  accountId: text('account_id').notNull(),
+  providerId: text('provider_id').notNull(),
+  userId: text('user_id')
+    .notNull()
+    .references(() => authUser.id),
+  accessToken: text('access_token'),
+  refreshToken: text('refresh_token'),
+  idToken: text('id_token'),
+  accessTokenExpiresAt: integer('access_token_expires_at', { mode: 'timestamp' }),
+  refreshTokenExpiresAt: integer('refresh_token_expires_at', { mode: 'timestamp' }),
+  scope: text('scope'),
+  password: text('password'),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
+});
+
+export const authVerification = sqliteTable('auth_verification', {
+  id: text('id').primaryKey(),
+  identifier: text('identifier').notNull(),
+  value: text('value').notNull(),
+  expiresAt: integer('expires_at', { mode: 'timestamp' }).notNull(),
+  createdAt: integer('created_at', { mode: 'timestamp' }),
+  updatedAt: integer('updated_at', { mode: 'timestamp' }),
+});
+
+export const subscription = sqliteTable('subscription', {
+  id: text('id').primaryKey(),
+  plan: text('plan').notNull(),
+  referenceId: text('reference_id').notNull(),
+  stripeCustomerId: text('stripe_customer_id'),
+  stripeSubscriptionId: text('stripe_subscription_id'),
+  status: text('status').notNull(),
+  periodStart: integer('period_start', { mode: 'timestamp' }),
+  periodEnd: integer('period_end', { mode: 'timestamp' }),
+  cancelAtPeriodEnd: integer('cancel_at_period_end', { mode: 'boolean' }),
+  seats: integer('seats'),
+  trialStart: integer('trial_start', { mode: 'timestamp' }),
+  trialEnd: integer('trial_end', { mode: 'timestamp' }),
 });

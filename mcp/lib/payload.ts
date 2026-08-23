@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { config } from '../../src/lib/config';
+import { urls } from '../../src/lib/urls';
 import { getIdentity } from '../../src/lib/identity';
 
 /**
@@ -8,7 +8,7 @@ import { getIdentity } from '../../src/lib/identity';
  */
 export function attribution(): string {
   const id = getIdentity();
-  return `\n\n—\nSource: ${id.productName} · ${config.siteUrl}`;
+  return `\n\n—\nSource: ${id.productName} · ${urls.home()}`;
 }
 
 /** Plain-text/markdown payload with the attribution footer. */

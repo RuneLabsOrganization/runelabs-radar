@@ -3,8 +3,8 @@ import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { getDb } from '../../src/lib/db';
 import { items, sources, stories } from '../../src/lib/db/schema';
-import { config } from '../../src/lib/config';
 import { DOMAINS } from '../../src/lib/domains';
+import { urls } from '../../src/lib/urls';
 import { envelopeSchema, hoursAgo, parseJsonColumn, respond } from '../lib/payload';
 
 const domainEnum = z.enum(DOMAINS).optional();
@@ -29,7 +29,7 @@ function toSignal(s: StoryRow, score: number) {
     tldr: s.tldr ?? null,
     why_it_matters: s.whyItMatters ?? null,
     created_at: s.createdAt.toISOString(),
-    url: `${config.siteUrl}/story/${s.id}`,
+    url: urls.story(s.id),
   };
 }
 
@@ -152,7 +152,7 @@ export function registerSignalTools(server: McpServer): void {
         tldr: r.tldr,
         why_it_matters: r.why_it_matters,
         created_at: new Date(r.created_at * 1000).toISOString(),
-        url: `${config.siteUrl}/story/${r.id}`,
+        url: urls.story(r.id),
       }));
       const top = results[0];
       return respond(
@@ -258,7 +258,7 @@ export function registerSignalTools(server: McpServer): void {
             hindsight: s.hindsight ?? null,
             created_at: s.createdAt.toISOString(),
             updated_at: s.updatedAt ? s.updatedAt.toISOString() : null,
-            url: `${config.siteUrl}/story/${s.id}`,
+            url: urls.story(s.id),
             sources: srcs.map((r) => ({
               source: r.source,
               title: r.title,

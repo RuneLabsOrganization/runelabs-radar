@@ -8,6 +8,7 @@ import { runDebate } from '../../src/lib/opportunities/critic';
 import { promptLine } from '../../src/lib/prompt-hygiene';
 import { envelopeSchema, respond, type NextAction } from '../lib/payload';
 import type { AuthContext } from '../lib/auth';
+import { can } from '../../src/lib/entitlements';
 
 // --- per-caller daily cap (§9b): a debate costs 4 LLM calls and there is no
 // cache to serve repeats from, so EVERY call counts — recorded at entry,
@@ -205,7 +206,30 @@ export function registerDebateTools(server: McpServer, auth: AuthContext): void 
       },
     },
     async ({ idea }) => {
-      if (debateCapExceeded(auth.rateKey)) {
+      if (auth.userId != null) {
+        const gate = can({ id: auth.userId }, 'debate');
+        if (!gate.ok) {
+          const hint = gate.upgradeHint ? ` — ${gate.upgradeHint}` : '';
+          return respond(
+            {
+              ok: false,
+              error:
+                gate.reason ??
+                `debate quota reached (${gate.used}/${gate.quota})${hint}`,
+            },
+            {
+              summary: `Debate quota reached (${gate.used}/${gate.quota}, tier "${gate.tier}")${hint}.`,
+              next: [
+                {
+                  tool: 'get_opportunities',
+                  arguments: { limit: 10 },
+                  reason: 'already-reviewed openings cost nothing to browse',
+                },
+              ],
+            },
+          );
+        }
+      } else if (debateCapExceeded(auth.rateKey)) {
         return respond(
           { ok: false, error: `daily debate cap reached (${DEBATE_DAILY_CAP}) — every debate is a fresh 4-call LLM run, so the cap resets tomorrow` },
           {
@@ -220,8 +244,8 @@ export function registerDebateTools(server: McpServer, auth: AuthContext): void 
           },
         );
       }
-      // every call counts — record at entry, before the LLM run
-      recordDebate(auth.rateKey);
+      // anonymous flat cap: record at entry, before the LLM run
+      if (auth.userId == null) recordDebate(auth.rateKey);
 
       const grounding = buildGrounding(idea);
       const ideaText =

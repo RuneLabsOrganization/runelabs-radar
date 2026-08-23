@@ -3,7 +3,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { entityDailySeries, topEntities } from '../../src/lib/analytics';
 import { canonicalEntityKey, entitySlug, resolveEntity } from '../../src/lib/entity';
 import { boardPlacements, coMentioned } from '../../src/lib/entity-extras';
-import { config } from '../../src/lib/config';
+import { urls } from '../../src/lib/urls';
 import { envelopeSchema, respond } from '../lib/payload';
 
 export function registerEntityTools(server: McpServer): void {
@@ -70,7 +70,7 @@ export function registerEntityTools(server: McpServer): void {
               slug: c.slug,
               count: c.count,
             })),
-            url: `${config.siteUrl}/entity/${entitySlug(base.name)}`,
+            url: urls.entity(base.name),
           },
         },
         {
