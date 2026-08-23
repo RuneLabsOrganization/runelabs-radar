@@ -35,10 +35,25 @@ interface Lock {
   reticleMat: THREE.LineBasicMaterial;
 }
 
+/**
+ * Some design tokens carry an alpha channel. THREE.Color cannot take it either
+ * way: `rgba()` warns, and the minified `#rrggbbaa` form is rejected outright
+ * and silently left white — which drained the graticule of its slate tint in
+ * production but not in dev. Materials set their own opacity here, so alpha is
+ * stripped rather than honoured.
+ */
+function stripAlpha(value: string): string {
+  if (/^#(?:[0-9a-f]{4}|[0-9a-f]{8})$/i.test(value)) {
+    return value.slice(0, value.length === 9 ? 7 : 4);
+  }
+  const rgba = value.match(/^rgba?\(\s*([^,\s]+)[,\s]+([^,\s]+)[,\s]+([^,\s/)]+)/i);
+  return rgba ? `rgb(${rgba[1]}, ${rgba[2]}, ${rgba[3]})` : value;
+}
+
 function readColor(name: string, fallback: string): THREE.Color {
-  const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  const raw = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
   try {
-    return new THREE.Color(v || fallback);
+    return new THREE.Color(raw ? stripAlpha(raw) : fallback);
   } catch {
     return new THREE.Color(fallback);
   }
