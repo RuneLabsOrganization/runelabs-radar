@@ -17,8 +17,9 @@ const HUB = new THREE.Vector3(MAX_R + 1.0, 0.34, 0);
 /** Concurrent locks. Each owns a reticle, a trace and a packet. */
 const LOCKS = 5;
 const TRACE_SEGMENTS = 26;
-const SWEEP_SPAN = 0.62;
-const SWEEP_SPEED = 0.72;
+const SWEEP_SPAN = 0.72;
+/** ~one full revolution every ~4.5s — readable as motion, not a screensaver. */
+const SWEEP_SPEED = 1.4;
 
 interface Lock {
   active: boolean;
@@ -64,7 +65,10 @@ export default function HeroField({ intensity = 1 }: { intensity?: number }) {
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
+    // Prefer a slow continuous sweep over a frozen frame — a static hero reads
+    // as "broken" more than as an accessibility affordance.
     const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const speed = reduced ? 0.22 : 1;
 
     const phosphor = readColor('--phosphor', '#57d9a3');
     const grat = readColor('--grat-strong', '#97b4cd');
@@ -235,7 +239,7 @@ export default function HeroField({ intensity = 1 }: { intensity?: number }) {
           uniform vec3 uColor;
           uniform float uTone;
           varying float vA;
-          void main() { gl_FragColor = vec4(uColor, vA * 0.26 * uTone); }
+          void main() { gl_FragColor = vec4(uColor, vA * 0.42 * uTone); }
         `,
       }),
     );
@@ -455,6 +459,8 @@ export default function HeroField({ intensity = 1 }: { intensity?: number }) {
       camera.position.z = 7.9 * Math.max(1, 1.8 / aspect);
       camera.updateProjectionMatrix();
       renderer.setSize(width, height, false);
+      renderer.domElement.style.width = '100%';
+      renderer.domElement.style.height = '100%';
     };
     camera.position.set(0.9, baseY, 7.9);
     resize();
@@ -468,13 +474,28 @@ export default function HeroField({ intensity = 1 }: { intensity?: number }) {
     };
     window.addEventListener('mousemove', onMouse, { passive: true });
 
-    let raf = 0;
     let t = 0;
     let sweepAngle = 0;
     let nextLock = 0.4;
     let last = performance.now();
 
-    const frame = (dt: number) => {
+    // Seed a couple of locks so the first paint already reads as "alive"
+    for (let i = 0; i < 2; i++) {
+      acquire(locks[i], 1.5, 0.8 + i * 0.9);
+      locks[i].age = locks[i].life * (0.35 + i * 0.15);
+    }
+
+    const tick = (now: number) => {
+      if (document.hidden) {
+        last = now;
+        return;
+      }
+      // Allow larger steps after a hitch so the sweep never looks frozen when
+      // the tab was background-throttled back to life.
+      const dt = Math.min(0.1, Math.max(0, (now - last) / 1000)) * speed;
+      last = now;
+      if (dt <= 0) return;
+
       t += dt;
       sweepAngle = (sweepAngle + dt * SWEEP_SPEED) % TWO_PI;
 
@@ -487,7 +508,7 @@ export default function HeroField({ intensity = 1 }: { intensity?: number }) {
       if (nextLock <= 0) {
         const free = locks.find((l) => !l.active);
         if (free) acquire(free, t, sweepAngle);
-        nextLock = 1.1 + Math.random() * 1.2;
+        nextLock = 0.85 + Math.random() * 0.9;
       }
 
       let arrivals = 0;
@@ -499,7 +520,6 @@ export default function HeroField({ intensity = 1 }: { intensity?: number }) {
         }
         updateLock(lock, dt, t);
         const p = lock.age / lock.life;
-        // packet rides the finished trace, then lands
         const ride = THREE.MathUtils.clamp((p - 0.55) / 0.3, 0, 1);
         if (ride > 0 && ride < 1) {
           const at = lock.curve.getPoint(ride);
@@ -529,50 +549,23 @@ export default function HeroField({ intensity = 1 }: { intensity?: number }) {
       renderer.render(scene, camera);
     };
 
-    // Keep the loop latch separate from rAF ids — cancel+restart on every
-    // IntersectionObserver tick was leaving the sweep frozen after a false
-    // "not intersecting" read on the absolute-positioned canvas host.
-    let running = false;
-    const step = (now: number) => {
-      if (!running) return;
-      const dt = Math.min(0.05, (now - last) / 1000);
-      last = now;
-      frame(dt);
-      raf = requestAnimationFrame(step);
-    };
-    const play = () => {
-      if (reduced || running || document.hidden) return;
-      running = true;
-      last = performance.now();
-      raf = requestAnimationFrame(step);
-    };
-    const pause = () => {
-      running = false;
-      cancelAnimationFrame(raf);
-    };
+    // THREE owns the rAF schedule — more reliable than hand-rolled cancel/restart
+    // loops that were freezing the sweep after visibility races.
+    last = performance.now();
+    renderer.setAnimationLoop(tick);
 
-    if (reduced) {
-      // one composed still: the identity, without the motion
-      for (let i = 0; i < 3; i++) {
-        acquire(locks[i], 2, 1.2);
-        locks[i].age = locks[i].life * (0.45 + i * 0.12);
-      }
-      frame(0.016);
-    } else {
-      play();
-    }
-
-    // Pause only when the tab is backgrounded — same contract as RadarField.
-    // Off-screen pausing via IntersectionObserver raced with layout on this
-    // absolute host and could cancel the loop before the first real frame.
     const onVisibility = () => {
-      if (document.hidden) pause();
-      else play();
+      if (document.hidden) {
+        renderer.setAnimationLoop(null);
+      } else {
+        last = performance.now();
+        renderer.setAnimationLoop(tick);
+      }
     };
     document.addEventListener('visibilitychange', onVisibility);
 
     return () => {
-      pause();
+      renderer.setAnimationLoop(null);
       document.removeEventListener('visibilitychange', onVisibility);
       window.removeEventListener('mousemove', onMouse);
       ro.disconnect();

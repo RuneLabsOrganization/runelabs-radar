@@ -7,16 +7,17 @@ import dynamic from 'next/dynamic';
 const HeroField = dynamic(() => import('./HeroField'), { ssr: false });
 
 /**
- * Mounts the WebGL hero only where it earns its cost: viewports ≥768px with a
- * fine pointer. Phones keep the CSS gradient, and the GPU stays idle.
- * Reduced-motion still mounts — HeroField renders a single static frame.
+ * Mounts the WebGL hero on viewports ≥768px. Touch-capable laptops often
+ * report `pointer: coarse` as primary — requiring `pointer: fine` left those
+ * machines with a dead black hero. Reduced-motion still mounts; HeroField
+ * slows the sweep instead of freezing it.
  */
 export default function HeroScope({ intensity = 1 }: { intensity?: number }) {
   const [enabled, setEnabled] = React.useState(false);
   const [themeKey, setThemeKey] = React.useState(0);
 
   React.useEffect(() => {
-    const mq = window.matchMedia('(min-width: 768px) and (pointer: fine)');
+    const mq = window.matchMedia('(min-width: 768px)');
     const update = () => setEnabled(mq.matches);
     update();
     mq.addEventListener('change', update);
