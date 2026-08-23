@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import { flushSync } from 'react-dom';
 import { Check, CornerDownRight, FileCode2, Loader2, Pause, Play, RotateCcw, Terminal } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { DEMO_TABS, type DemoStep, type DemoTab } from './script';
@@ -47,6 +48,11 @@ function tokensOf(step: DemoStep & { kind: 'assistant' }): string[] {
   return cached;
 }
 
+/** Joined payload for character-streamed code blocks. */
+function payloadOf(step: DemoStep & { kind: 'result' | 'file' }): string {
+  return step.lines.join('\n');
+}
+
 function unitsIn(step: DemoStep): number {
   switch (step.kind) {
     case 'user':
@@ -55,7 +61,10 @@ function unitsIn(step: DemoStep): number {
       return tokensOf(step).length;
     case 'result':
     case 'file':
-      return step.lines.length;
+      // Characters, not lines — whole-line reveals read as "chunky streaming"
+      // even when the rAF loop itself is healthy (the JSON phase is most of
+      // the screen time on every tab).
+      return payloadOf(step).length;
     default:
       return 1;
   }
@@ -72,13 +81,32 @@ function rateOf(step: DemoStep): number {
     case 'assistant':
       return 42; // pseudo-tokens ≈ 190 chars/s, a flagship model's pace
     case 'result':
-      return 26; // lines
+      return 160; // characters — tool JSON arriving over the wire
     case 'file':
-      return 18; // lines
+      return 120; // characters
     case 'call':
       return 1000 / step.runMs;
     case 'chain':
       return 1000 / 420;
+  }
+}
+
+/**
+ * Hard cap on units committed in a single paint. Without this, a hitch from the
+ * hero WebGL (or any long frame) spends the accumulated credit as a burst —
+ * which is exactly the "goes by chunks on live, smooth on idle local" texture.
+ */
+function maxGainOf(step: DemoStep): number {
+  switch (step.kind) {
+    case 'user':
+      return 2;
+    case 'assistant':
+      return 2;
+    case 'result':
+    case 'file':
+      return 4;
+    default:
+      return 1;
   }
 }
 
@@ -98,96 +126,152 @@ function leadInOf(step: DemoStep): number {
 
 const STEP_GAP = 380;
 
-/**
- * Walks the transcript one step at a time. `sub` counts revealed units inside
- * the current step (characters, words or lines depending on the step kind).
- *
- * `calm` is the reduced-motion path. It still plays — it just reveals whole
- * steps instead of typing them character by character. Jumping straight to the
- * finished transcript (the old behaviour) read as a broken component to anyone
- * who had OS animations switched off.
- */
-interface Cursor {
-  step: number;
-  sub: number;
+/** Visible text for `sub` units of a streamable step. */
+function textAt(step: DemoStep, sub: number): string {
+  switch (step.kind) {
+    case 'user':
+      return step.text.slice(0, sub);
+    case 'assistant':
+      return tokensOf(step).slice(0, sub).join('');
+    case 'result':
+    case 'file':
+      return payloadOf(step).slice(0, sub);
+    default:
+      return '';
+  }
 }
 
-function useTranscript(steps: DemoStep[], playing: boolean, calm: boolean) {
-  const [cursor, setCursor] = React.useState<Cursor>({ step: 0, sub: 0 });
+/**
+ * Drives the transcript. Hot-path reveals write straight to a DOM node via
+ * `textContent` — they never touch React. React only re-renders when a step
+ * boundary is crossed (a few times per demo), which is what keeps the stream
+ * smooth under production concurrent rendering and the hero WebGL load.
+ *
+ * `prefers-reduced-motion` is intentionally ignored: collapsing into whole-step
+ * dumps made the console look broken on Windows machines with OS animations
+ * off. Pause is the accessibility affordance.
+ */
+function useTranscript(steps: DemoStep[], playing: boolean) {
+  /** How many steps are fully finished and owned by React. */
+  const [committed, setCommitted] = React.useState(0);
   const [runId, setRunId] = React.useState(0);
-  /** Mutable position, so a frame never waits on a state round trip. */
-  const live = React.useRef<Cursor>({ step: 0, sub: 0 });
-  const done = cursor.step >= steps.length;
+  const [armed, setArmed] = React.useState(false);
+  const hostRef = React.useRef<HTMLElement | null>(null);
+  const committedRef = React.useRef(0);
+  const stepsRef = React.useRef(steps);
+  stepsRef.current = steps;
 
   const replay = React.useCallback(() => {
-    live.current = { step: 0, sub: 0 };
-    setCursor(live.current);
-    setRunId((n) => n + 1); // restarts the loop if it already ran to the end
+    committedRef.current = 0;
+    setCommitted(0);
+    setArmed(false);
+    if (hostRef.current) hostRef.current.textContent = '';
+    setRunId((n) => n + 1);
   }, []);
 
   React.useEffect(() => {
-    if (!playing || live.current.step >= steps.length) return;
+    if (!playing) return;
+    setArmed(true);
 
     let raf = 0;
-    let last = performance.now();
-    /** fractional units carried between frames, so the rate is frame-rate independent */
-    let credit = 0;
-    let hold = leadInOf(steps[live.current.step]);
+    let alive = true;
+    let stepIdx = committedRef.current;
+    let sub = 0;
+    let emittedAt = 0;
+    let holdUntil = 0;
+    let rate = 1;
+
+    const list = () => stepsRef.current;
+
+    const beginStep = (now: number, gap = 0) => {
+      const step = list()[stepIdx];
+      if (!step) return;
+      sub = 0;
+      emittedAt = 0;
+      rate = rateOf(step) * (0.85 + Math.random() * 0.3);
+      if (step.kind === 'call') {
+        holdUntil = now + gap + step.runMs;
+      } else if (step.kind === 'chain') {
+        holdUntil = now + gap + 420;
+      } else {
+        holdUntil = now + gap + leadInOf(step);
+      }
+      if (hostRef.current) hostRef.current.textContent = '';
+    };
+
+    if (stepIdx < list().length) beginStep(performance.now());
+    else holdUntil = Infinity;
+
+    const paintHost = (step: DemoStep, nextSub: number) => {
+      const el = hostRef.current;
+      if (!el) return false;
+      el.textContent = textAt(step, nextSub);
+      return true;
+    };
+
+    const commitStep = (now: number) => {
+      stepIdx += 1;
+      committedRef.current = stepIdx;
+      // Step boundaries only — a handful of React commits per demo.
+      flushSync(() => setCommitted(stepIdx));
+      sub = 0;
+      if (stepIdx < list().length) beginStep(now, STEP_GAP);
+    };
 
     const frame = (now: number) => {
-      // A long frame must cost time, not dump a burst of tokens at once.
-      const dt = Math.min(50, now - last);
-      last = now;
-
-      const cur = live.current;
-      if (cur.step >= steps.length) return; // finished: stop rescheduling
+      if (!alive) return;
       raf = requestAnimationFrame(frame);
 
-      if (hold > 0) {
-        hold -= dt;
-        return;
-      }
+      const stepsNow = list();
+      if (stepIdx >= stepsNow.length) return;
 
-      const step = steps[cur.step];
+      const step = stepsNow[stepIdx]!;
+      if (now < holdUntil) return;
+
       const total = unitsIn(step);
 
-      if (cur.sub >= total) {
-        const next = { step: cur.step + 1, sub: 0 };
-        live.current = next;
-        setCursor(next);
-        credit = 0;
-        hold =
-          (calm ? 560 : STEP_GAP) +
-          (next.step < steps.length ? leadInOf(steps[next.step]) : 0);
+      // call / chain: dwell already spent in holdUntil, then commit
+      if (step.kind === 'call' || step.kind === 'chain') {
+        commitStep(now);
         return;
       }
 
-      if (calm) {
-        live.current = { step: cur.step, sub: total };
-        setCursor(live.current);
+      if (emittedAt === 0) emittedAt = now;
+
+      if (sub >= total) {
+        commitStep(now);
         return;
       }
 
-      // Real streams arrive in uneven bursts and occasionally hitch, so the
-      // rate wobbles rather than ticking like a metronome.
-      credit += (dt / 1000) * rateOf(step) * (0.7 + Math.random() * 0.6);
-      if (step.kind === 'assistant' && Math.random() < 0.004) {
-        hold = 45 + Math.random() * 90;
+      if (step.kind === 'assistant' && Math.random() < 0.003) {
+        holdUntil = now + 40 + Math.random() * 80;
+        emittedAt = now - (sub / rate) * 1000;
+        return;
       }
 
-      const gained = Math.floor(credit);
-      if (gained < 1) return;
-      credit -= gained;
-      live.current = { step: cur.step, sub: Math.min(total, cur.sub + gained) };
-      setCursor(live.current);
+      const target = Math.floor(((now - emittedAt) / 1000) * rate);
+      const nextSub = Math.min(total, sub + Math.min(maxGainOf(step), Math.max(0, target - sub)));
+      if (nextSub === sub) return;
+
+      if (!paintHost(step, nextSub)) {
+        // Host not mounted yet (React hasn't committed the shell) — try again
+        // next frame without advancing the clock.
+        emittedAt = now - (sub / rate) * 1000;
+        return;
+      }
+      sub = nextSub;
     };
 
     raf = requestAnimationFrame(frame);
-    return () => cancelAnimationFrame(raf);
-  }, [playing, calm, steps, runId]);
+    return () => {
+      alive = false;
+      cancelAnimationFrame(raf);
+    };
+  }, [playing, runId]);
 
-  const started = cursor.step > 0 || cursor.sub > 0;
-  return { cursor, done, started, replay };
+  const done = committed >= steps.length;
+  const streaming = playing && !done ? steps[committed] : null;
+  return { committed, streaming, hostRef, done, started: armed || committed > 0, replay };
 }
 
 /* ── syntax colouring ──────────────────────────────────────────────────── */
@@ -263,37 +347,26 @@ function CodeBlock({ lines, className }: { lines: string[]; className?: string }
 }
 
 /**
- * Memoised: a streaming step re-renders every frame, and without this the
- * finished steps above it re-reconcile their whole payload alongside it.
+ * Finished steps only — the in-progress step is a StreamingShell that the rAF
+ * loop writes into without React.
  */
 const StepView = React.memo(function StepView({
   step,
-  sub,
-  complete,
-  caret,
+  complete = true,
 }: {
   step: DemoStep;
-  sub: number;
-  complete: boolean;
-  caret: boolean;
+  complete?: boolean;
 }) {
   switch (step.kind) {
-    case 'user': {
-      const shown = step.text.slice(0, complete ? undefined : sub);
+    case 'user':
       return (
         <div className="flex gap-3">
           <span className="mono mt-0.5 shrink-0 text-[10px] uppercase tracking-[0.1em] text-ink-4">You</span>
-          <p className="text-[13.5px] leading-relaxed text-ink">
-            {shown}
-            {!complete && caret && (
-              <span className="ml-px inline-block w-[7px] animate-pulse text-phosphor">▌</span>
-            )}
-          </p>
+          <p className="text-[13.5px] leading-relaxed text-ink">{step.text}</p>
         </div>
       );
-    }
 
-    case 'call': {
+    case 'call':
       return (
         <div className="rounded-lg border border-grat bg-scope-0/70">
           <div className="flex items-center gap-2 border-b border-grat-soft px-3 py-2">
@@ -322,23 +395,19 @@ const StepView = React.memo(function StepView({
           )}
         </div>
       );
-    }
 
-    case 'result': {
-      const lines = complete ? step.lines : step.lines.slice(0, sub);
+    case 'result':
       return (
         <div className="rounded-lg border border-phosphor/20 bg-scope-0/70">
           <div className="mono flex items-center gap-2 border-b border-grat-soft px-3 py-1.5 text-[10px] uppercase tracking-[0.08em] text-ink-4">
             <CornerDownRight className="h-3 w-3 text-phosphor" />
             {step.meta}
           </div>
-          <CodeBlock lines={lines} />
+          <CodeBlock lines={step.lines} />
         </div>
       );
-    }
 
-    case 'file': {
-      const lines = complete ? step.lines : step.lines.slice(0, sub);
+    case 'file':
       return (
         <div className="rounded-lg border border-amber/25 bg-scope-0/70">
           <div className="mono flex items-center gap-2 border-b border-grat-soft px-3 py-1.5 text-[10px] uppercase tracking-[0.08em] text-ink-4">
@@ -346,7 +415,7 @@ const StepView = React.memo(function StepView({
             wrote {step.name}
           </div>
           <pre className="mono overflow-x-auto px-3 py-2 text-[11.5px] leading-[1.65] text-ink-3">
-            {lines.map((l, i) => (
+            {step.lines.map((l, i) => (
               <div key={i} className={l.startsWith('#') ? 'text-ink' : undefined}>
                 {l || '\u00a0'}
               </div>
@@ -354,22 +423,18 @@ const StepView = React.memo(function StepView({
           </pre>
         </div>
       );
-    }
 
-    case 'assistant': {
-      // tokens carry their own leading whitespace, so they join bare
-      const shown = complete ? step.text : tokensOf(step).slice(0, sub).join('');
+    case 'assistant':
       return (
         <div className="flex gap-3">
           <span className="mono mt-0.5 shrink-0 text-[10px] uppercase tracking-[0.1em] text-phosphor">
             Agent
           </span>
-          <p className="text-[13.5px] leading-relaxed text-ink-2">{prose(shown)}</p>
+          <p className="text-[13.5px] leading-relaxed text-ink-2">{prose(step.text)}</p>
         </div>
       );
-    }
 
-    case 'chain': {
+    case 'chain':
       return (
         <div className="flex flex-wrap items-center gap-2 rounded-lg border border-dashed border-grat bg-scope-0/40 px-3 py-2">
           <span className="mono text-[10px] uppercase tracking-[0.1em] text-ink-4">next</span>
@@ -379,36 +444,113 @@ const StepView = React.memo(function StepView({
           <span className="text-[12px] text-ink-4">{step.reason}</span>
         </div>
       );
-    }
   }
 });
+
+/**
+ * Shell for the in-progress step. The rAF loop writes into `hostRef` every
+ * frame; React does not re-render as characters arrive.
+ */
+function StreamingShell({
+  step,
+  hostRef,
+}: {
+  step: DemoStep;
+  hostRef: React.MutableRefObject<HTMLElement | null>;
+}) {
+  const setHost = (node: HTMLElement | null) => {
+    hostRef.current = node;
+  };
+
+  switch (step.kind) {
+    case 'user':
+      return (
+        <div className="flex gap-3">
+          <span className="mono mt-0.5 shrink-0 text-[10px] uppercase tracking-[0.1em] text-ink-4">You</span>
+          <p className="text-[13.5px] leading-relaxed text-ink">
+            <span ref={setHost} />
+            <span className="ml-px inline-block w-[7px] animate-pulse text-phosphor">▌</span>
+          </p>
+        </div>
+      );
+
+    case 'assistant':
+      return (
+        <div className="flex gap-3">
+          <span className="mono mt-0.5 shrink-0 text-[10px] uppercase tracking-[0.1em] text-phosphor">
+            Agent
+          </span>
+          <p className="text-[13.5px] leading-relaxed text-ink-2">
+            <span ref={setHost} />
+            <span className="ml-px inline-block w-[7px] animate-pulse text-phosphor">▌</span>
+          </p>
+        </div>
+      );
+
+    case 'result':
+      return (
+        <div className="rounded-lg border border-phosphor/20 bg-scope-0/70">
+          <div className="mono flex items-center gap-2 border-b border-grat-soft px-3 py-1.5 text-[10px] uppercase tracking-[0.08em] text-ink-4">
+            <CornerDownRight className="h-3 w-3 text-phosphor" />
+            {step.meta}
+          </div>
+          <pre className="mono overflow-x-auto px-3 py-2 text-[11.5px] leading-[1.65] text-phosphor whitespace-pre-wrap">
+            <span ref={setHost} />
+            <span className="animate-pulse">▌</span>
+          </pre>
+        </div>
+      );
+
+    case 'file':
+      return (
+        <div className="rounded-lg border border-amber/25 bg-scope-0/70">
+          <div className="mono flex items-center gap-2 border-b border-grat-soft px-3 py-1.5 text-[10px] uppercase tracking-[0.08em] text-ink-4">
+            <FileCode2 className="h-3 w-3 text-amber" />
+            wrote {step.name}
+          </div>
+          <pre className="mono overflow-x-auto px-3 py-2 text-[11.5px] leading-[1.65] text-ink-3 whitespace-pre-wrap">
+            <span ref={setHost} />
+            <span className="animate-pulse text-amber">▌</span>
+          </pre>
+        </div>
+      );
+
+    case 'call':
+    case 'chain':
+      // Dwell-only steps: reuse the finished chrome with a running indicator.
+      return <StepView step={step} complete={false} />;
+  }
+}
 
 /* ── the console ───────────────────────────────────────────────────────── */
 
 function Session({
   tab,
   playing,
-  calm,
   onToggle,
 }: {
   tab: DemoTab;
   playing: boolean;
-  calm: boolean;
   onToggle: () => void;
 }) {
-  const { cursor, done, started, replay } = useTranscript(tab.steps, playing, calm);
+  const { committed, streaming, hostRef, done, started, replay } = useTranscript(tab.steps, playing);
   const scroller = React.useRef<HTMLDivElement>(null);
 
   React.useEffect(() => {
     const node = scroller.current;
     if (!node) return;
-    // Follow the stream, but let go once the reader scrolls back up to reread
-    // something rather than yanking them down every frame.
     const slack = node.scrollHeight - node.scrollTop - node.clientHeight;
     if (slack < 140) node.scrollTop = node.scrollHeight;
-  }, [cursor]);
-
-  const visible = done ? tab.steps.length : cursor.step + 1;
+    // Re-check often while streaming — host text grows without React commits.
+    if (!playing || done) return;
+    const id = window.setInterval(() => {
+      const n = scroller.current;
+      if (!n) return;
+      const s = n.scrollHeight - n.scrollTop - n.clientHeight;
+      if (s < 140) n.scrollTop = n.scrollHeight;
+    }, 100);
+    return () => clearInterval(id);
+  }, [committed, playing, done]);
 
   return (
     <div className="overflow-hidden rounded-xl border border-grat bg-scope-0 shadow-glow">
@@ -436,17 +578,12 @@ function Session({
             </p>
           </div>
         ) : (
-          tab.steps.slice(0, visible).map((step, i) => (
-            <StepView
-              key={i}
-              step={step}
-              // only the streaming step gets a moving `sub`; the finished ones
-              // keep stable props so the memo above holds them steady
-              sub={i === cursor.step ? cursor.sub : 0}
-              complete={done || i < cursor.step}
-              caret={!calm}
-            />
-          ))
+          <>
+            {tab.steps.slice(0, committed).map((step, i) => (
+              <StepView key={i} step={step} />
+            ))}
+            {streaming ? <StreamingShell key={committed} step={streaming} hostRef={hostRef} /> : null}
+          </>
         )}
       </div>
 
@@ -492,17 +629,8 @@ const PROPERTIES = [
 
 export function McpDemo() {
   const [playing, setPlaying] = React.useState(false);
-  const [calm, setCalm] = React.useState(false);
   const [active, setActive] = React.useState(DEMO_TABS[0].id);
   const stageRef = React.useRef<HTMLDivElement>(null);
-
-  React.useEffect(() => {
-    const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
-    const update = () => setCalm(mq.matches);
-    update();
-    mq.addEventListener('change', update);
-    return () => mq.removeEventListener('change', update);
-  }, []);
 
   React.useEffect(() => {
     const node = stageRef.current;
@@ -545,7 +673,10 @@ export function McpDemo() {
             {DEMO_TABS.map((t) => (
               <TabsContent key={t.id} value={t.id}>
                 <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_280px]">
-                  <Session tab={t} playing={playing} calm={calm} onToggle={toggle} />
+                  {/* Only the active tab streams — inactive panels unmount under
+                      Radix Presence, but gating `playing` keeps a stray mount
+                      from spinning a second rAF loop against the hero. */}
+                  <Session tab={t} playing={playing && active === t.id} onToggle={toggle} />
                   <aside className="lg:pt-2">
                     <h3 className="type-h2 text-[17px] text-ink">{t.headline}</h3>
                     <p className="mt-3 text-[13px] leading-relaxed text-ink-3">{t.blurb}</p>
