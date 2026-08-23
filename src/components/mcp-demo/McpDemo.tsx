@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { Check, CornerDownRight, FileCode2, Loader2, RotateCcw, Terminal } from 'lucide-react';
+import { Check, CornerDownRight, FileCode2, Loader2, Pause, Play, RotateCcw, Terminal } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { DEMO_TABS, type DemoStep, type DemoTab } from './script';
 import { cn } from '@/lib/utils';
@@ -51,35 +51,44 @@ const STEP_GAP = 420;
 /**
  * Walks the transcript one step at a time. `sub` counts revealed units inside
  * the current step (characters, words or lines depending on the step kind).
+ *
+ * `calm` is the reduced-motion path. It still plays — it just reveals whole
+ * steps instead of typing them character by character. Jumping straight to the
+ * finished transcript (the old behaviour) read as a broken component to anyone
+ * who had OS animations switched off.
  */
-function useTranscript(steps: DemoStep[], playing: boolean, skip: boolean) {
+function useTranscript(steps: DemoStep[], playing: boolean, calm: boolean) {
   const [cursor, setCursor] = React.useState({ step: 0, sub: 0 });
   const done = cursor.step >= steps.length;
 
   React.useEffect(() => {
-    if (skip) {
-      setCursor({ step: steps.length, sub: 0 });
-    }
-  }, [skip, steps.length]);
-
-  React.useEffect(() => {
-    if (!playing || skip || done) return;
+    if (!playing || done) return;
     const step = steps[cursor.step];
     const total = unitsIn(step);
+
     if (cursor.sub < total) {
-      const { inc, delay } = paceOf(step);
+      // the tool-call spinner still needs its dwell, or the round trip reads
+      // as instant rather than as work being done
+      const { inc, delay } = calm
+        ? { inc: total, delay: step.kind === 'call' ? step.runMs : 240 }
+        : paceOf(step);
       const id = setTimeout(
         () => setCursor((c) => ({ step: c.step, sub: Math.min(total, c.sub + inc) })),
         delay,
       );
       return () => clearTimeout(id);
     }
-    const id = setTimeout(() => setCursor((c) => ({ step: c.step + 1, sub: 0 })), STEP_GAP);
+
+    const id = setTimeout(
+      () => setCursor((c) => ({ step: c.step + 1, sub: 0 })),
+      calm ? 650 : STEP_GAP,
+    );
     return () => clearTimeout(id);
-  }, [cursor, playing, skip, done, steps]);
+  }, [cursor, playing, calm, done, steps]);
 
   const replay = React.useCallback(() => setCursor({ step: 0, sub: 0 }), []);
-  return { cursor, done, replay };
+  const started = cursor.step > 0 || cursor.sub > 0;
+  return { cursor, done, started, replay };
 }
 
 /* ── syntax colouring ──────────────────────────────────────────────────── */
@@ -154,7 +163,17 @@ function CodeBlock({ lines, className }: { lines: string[]; className?: string }
   );
 }
 
-function StepView({ step, sub, complete }: { step: DemoStep; sub: number; complete: boolean }) {
+function StepView({
+  step,
+  sub,
+  complete,
+  caret,
+}: {
+  step: DemoStep;
+  sub: number;
+  complete: boolean;
+  caret: boolean;
+}) {
   switch (step.kind) {
     case 'user': {
       const shown = step.text.slice(0, complete ? undefined : sub);
@@ -163,7 +182,9 @@ function StepView({ step, sub, complete }: { step: DemoStep; sub: number; comple
           <span className="mono mt-0.5 shrink-0 text-[10px] uppercase tracking-[0.1em] text-ink-4">You</span>
           <p className="text-[13.5px] leading-relaxed text-ink">
             {shown}
-            {!complete && <span className="ml-px inline-block w-[7px] animate-pulse text-phosphor">▌</span>}
+            {!complete && caret && (
+              <span className="ml-px inline-block w-[7px] animate-pulse text-phosphor">▌</span>
+            )}
           </p>
         </div>
       );
@@ -261,10 +282,19 @@ function StepView({ step, sub, complete }: { step: DemoStep; sub: number; comple
 
 /* ── the console ───────────────────────────────────────────────────────── */
 
-function Session({ tab, playing, skip }: { tab: DemoTab; playing: boolean; skip: boolean }) {
-  const { cursor, done, replay } = useTranscript(tab.steps, playing, skip);
+function Session({
+  tab,
+  playing,
+  calm,
+  onToggle,
+}: {
+  tab: DemoTab;
+  playing: boolean;
+  calm: boolean;
+  onToggle: () => void;
+}) {
+  const { cursor, done, started, replay } = useTranscript(tab.steps, playing, calm);
   const scroller = React.useRef<HTMLDivElement>(null);
-  const armed = playing || skip;
 
   React.useEffect(() => {
     const node = scroller.current;
@@ -291,27 +321,41 @@ function Session({ tab, playing, skip }: { tab: DemoTab; playing: boolean; skip:
       </div>
 
       <div ref={scroller} className="h-[440px] space-y-3.5 overflow-y-auto px-4 py-4">
-        {!armed ? (
+        {!started && !playing ? (
           <div className="flex h-full flex-col items-start justify-center gap-2 text-ink-4">
-            <span className="mono text-[10px] uppercase tracking-[0.1em]">Waiting for viewport</span>
+            <span className="mono text-[10px] uppercase tracking-[0.1em]">Session idle</span>
             <p className="max-w-sm text-[13px] leading-relaxed text-ink-3">
-              The round trip starts as soon as this console is on screen.
+              Press play to watch the round trip, or scroll the console into view.
             </p>
           </div>
         ) : (
           tab.steps.slice(0, visible).map((step, i) => (
-            <StepView key={i} step={step} sub={cursor.sub} complete={done || i < cursor.step} />
+            <StepView
+              key={i}
+              step={step}
+              sub={cursor.sub}
+              complete={done || i < cursor.step}
+              caret={!calm}
+            />
           ))
         )}
       </div>
 
       <div className="mono flex items-center gap-3 border-t border-grat bg-scope-1 px-3 py-2 text-[10px] uppercase tracking-[0.08em] text-ink-4">
-        <span>38 tools · 10 resources · 6 prompts</span>
+        <span className="hidden sm:inline">38 tools · 10 resources · 6 prompts</span>
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-label={playing ? 'Pause session' : 'Play session'}
+          className="ml-auto inline-flex items-center gap-1.5 rounded px-1.5 py-0.5 text-ink-3 transition-colors hover:text-phosphor focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+        >
+          {playing ? <Pause className="h-3 w-3" /> : <Play className="h-3 w-3" />}
+          {playing ? 'pause' : 'play'}
+        </button>
         <button
           type="button"
           onClick={replay}
-          disabled={!armed}
-          className="ml-auto inline-flex items-center gap-1.5 rounded px-1.5 py-0.5 text-ink-3 transition-colors hover:text-phosphor focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-40"
+          className="inline-flex items-center gap-1.5 rounded px-1.5 py-0.5 text-ink-3 transition-colors hover:text-phosphor focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
         >
           <RotateCcw className="h-3 w-3" /> replay
         </button>
@@ -339,12 +383,16 @@ const PROPERTIES = [
 
 export function McpDemo() {
   const [playing, setPlaying] = React.useState(false);
-  const [skip, setSkip] = React.useState(false);
+  const [calm, setCalm] = React.useState(false);
   const [active, setActive] = React.useState(DEMO_TABS[0].id);
   const stageRef = React.useRef<HTMLDivElement>(null);
 
   React.useEffect(() => {
-    setSkip(window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+    const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const update = () => setCalm(mq.matches);
+    update();
+    mq.addEventListener('change', update);
+    return () => mq.removeEventListener('change', update);
   }, []);
 
   React.useEffect(() => {
@@ -362,6 +410,8 @@ export function McpDemo() {
     io.observe(node);
     return () => io.disconnect();
   }, []);
+
+  const toggle = React.useCallback(() => setPlaying((p) => !p), []);
 
   return (
     <section className="border-y border-grat bg-scope-1">
@@ -386,7 +436,7 @@ export function McpDemo() {
             {DEMO_TABS.map((t) => (
               <TabsContent key={t.id} value={t.id}>
                 <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_280px]">
-                  <Session tab={t} playing={playing} skip={skip} />
+                  <Session tab={t} playing={playing} calm={calm} onToggle={toggle} />
                   <aside className="lg:pt-2">
                     <h3 className="type-h2 text-[17px] text-ink">{t.headline}</h3>
                     <p className="mt-3 text-[13px] leading-relaxed text-ink-3">{t.blurb}</p>

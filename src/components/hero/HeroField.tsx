@@ -11,7 +11,7 @@ import * as THREE from 'three';
  */
 
 const TWO_PI = Math.PI * 2;
-const CONTACTS = 3600;
+const CONTACTS = 2200;
 const MAX_R = 4.2;
 const HUB = new THREE.Vector3(MAX_R + 1.0, 0.34, 0);
 /** Concurrent locks. Each owns a reticle, a trace and a packet. */
@@ -65,10 +65,11 @@ export default function HeroField({ intensity = 1 }: { intensity?: number }) {
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    // Prefer a slow continuous sweep over a frozen frame — a static hero reads
-    // as "broken" more than as an accessibility affordance.
+    // Reduced motion tones the sweep down and drops the mouse parallax (the
+    // part that actually provokes vestibular discomfort). A near-frozen 0.22x
+    // crawl read as a broken hero rather than as an accessibility affordance.
     const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    const speed = reduced ? 0.22 : 1;
+    const speed = reduced ? 0.6 : 1;
 
     const phosphor = readColor('--phosphor', '#57d9a3');
     const grat = readColor('--grat-strong', '#97b4cd');
@@ -85,16 +86,18 @@ export default function HeroField({ intensity = 1 }: { intensity?: number }) {
     try {
       // high-performance: this is the landing hero, not ambient chrome. low-power
       // + IntersectionObserver pause races were freezing the sweep on some GPUs.
+      // No MSAA and no preserved buffer: the scene is additively blended points
+      // and hairlines, so both cost real fill rate and bandwidth every frame
+      // while buying almost nothing visually under the phosphor glow.
       renderer = new THREE.WebGLRenderer({
-        antialias: true,
+        antialias: false,
         alpha: true,
         powerPreference: 'high-performance',
-        preserveDrawingBuffer: true,
       });
     } catch {
       return; // no WebGL — the CSS canvas stays the backdrop
     }
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75));
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
     renderer.setClearColor(0x000000, 0);
     el.appendChild(renderer.domElement);
     renderer.domElement.style.display = 'block';
@@ -472,7 +475,7 @@ export default function HeroField({ intensity = 1 }: { intensity?: number }) {
       mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
       mouse.y = (e.clientY / window.innerHeight) * 2 - 1;
     };
-    window.addEventListener('mousemove', onMouse, { passive: true });
+    if (!reduced) window.addEventListener('mousemove', onMouse, { passive: true });
 
     let t = 0;
     let sweepAngle = 0;
@@ -490,9 +493,10 @@ export default function HeroField({ intensity = 1 }: { intensity?: number }) {
         last = now;
         return;
       }
-      // Allow larger steps after a hitch so the sweep never looks frozen when
-      // the tab was background-throttled back to life.
-      const dt = Math.min(0.1, Math.max(0, (now - last) / 1000)) * speed;
+      // Clamp to ~2 frames. Letting a long frame advance the full elapsed time
+      // makes the sweep teleport, which reads as choppier than simply losing a
+      // little time — under load the motion should slow, not stutter.
+      const dt = Math.min(0.034, Math.max(0, (now - last) / 1000)) * speed;
       last = now;
       if (dt <= 0) return;
 
