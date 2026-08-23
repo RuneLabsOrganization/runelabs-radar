@@ -1,0 +1,2 @@
+ALTER TABLE `auth_account` ADD `issuer` text DEFAULT 'local:credential' NOT NULL;--> statement-breakpoint
+CREATE UNIQUE INDEX `auth_account_issuer_account_uid` ON `auth_account` (`issuer`,`account_id`);
