@@ -8,7 +8,6 @@ import { seriesFor } from '@/lib/metrics';
 import ChartFrame from '@/components/ChartFrame';
 import MetricsExplorer, { type ExplorerSeries, type MetricKey } from '@/components/MetricsExplorer';
 import { Card, CardContent } from '@/components/ui/card';
-import { WorkspaceNav } from '@/components/app/WorkspaceNav';
 
 export const metadata = {
   title: 'Metrics — explorer',
@@ -218,7 +217,6 @@ export default async function MetricsPage({
 
   return (
     <div>
-      <WorkspaceNav section="decide" />
       <div className="readout text-phosphor">Decide · Metrics</div>
       <h1 className="type-h1 mt-1">Metrics</h1>
       <p className="mt-2 max-w-xl text-[13.5px] leading-relaxed text-ink-3">

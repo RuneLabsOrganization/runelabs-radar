@@ -5,7 +5,6 @@ import { AGENT_PLANS } from '@/lib/agent-plans';
 import { timeAgo } from '@/lib/feed';
 import { paths } from '@/lib/urls';
 import SectionHeader from '@/components/SectionHeader';
-import { WorkspaceNav } from '@/components/app/WorkspaceNav';
 import { AgentsTabs } from './AgentsTabs';
 
 export const metadata = {
@@ -346,7 +345,6 @@ export default async function AgentsPage({
 
   return (
     <div>
-      <WorkspaceNav section="decide" />
       <AgentsTabs stacks={stacks} plans={plans} defaultTab={defaultTab} />
     </div>
   );

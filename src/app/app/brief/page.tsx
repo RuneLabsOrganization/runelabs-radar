@@ -5,7 +5,6 @@ import { getDb } from '@/lib/db';
 import { briefs, stories } from '@/lib/db/schema';
 import { renderMarkdown } from '@/lib/markdown';
 import PageHeader from '@/components/PageHeader';
-import { WorkspaceNav } from '@/components/app/WorkspaceNav';
 import { paths } from '@/lib/urls';
 
 const briefStyles = `
@@ -100,7 +99,6 @@ export default async function BriefPage({
     <div className="mx-auto max-w-[760px] px-6 py-7">
       <style>{briefStyles}</style>
 
-      <WorkspaceNav section="signal" />
       <PageHeader
         kicker={selected ? `daily brief · written at ${utcTime(selected.createdAt)} utc` : 'daily brief'}
         title="Brief"

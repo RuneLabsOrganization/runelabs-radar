@@ -21,7 +21,6 @@ import {
 } from '@/lib/entity-extras';
 import MiniTrend from '@/components/MiniTrend';
 import PageHeader from '@/components/PageHeader';
-import { WorkspaceNav } from '@/components/app/WorkspaceNav';
 import { DOMAIN_LABELS, isDomain } from '@/lib/domains';
 
 export async function generateMetadata({ params }: { params: Promise<{ name: string }> }) {
@@ -173,7 +172,6 @@ export default async function EntityPage({ params }: { params: Promise<{ name: s
     <div className="mx-auto max-w-[760px] px-6 py-7">
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
 
-      <WorkspaceNav section="signal" />
       <PageHeader
         kicker={
           <span className="inline-flex items-center gap-2.5">

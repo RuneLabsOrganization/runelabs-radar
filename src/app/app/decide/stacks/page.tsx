@@ -8,7 +8,6 @@ import { allEntityNames, matchEntity, stackMarkdown } from '@/lib/stacks/match';
 import VerdictEditor from '@/components/VerdictEditor';
 import CopyButton from '@/components/CopyButton';
 import { Card, CardContent } from '@/components/ui/card';
-import { WorkspaceNav } from '@/components/app/WorkspaceNav';
 import { paths } from '@/lib/urls';
 
 interface Layer {
@@ -71,7 +70,6 @@ export default async function StacksPage() {
 
   return (
     <div>
-      <WorkspaceNav section="decide" />
       <div className="readout text-phosphor">Decide · Stacks</div>
       <h1 className="type-h1 mt-1">Stacks</h1>
       <p className="mt-2 max-w-xl text-[13.5px] leading-relaxed text-ink-3">

@@ -22,7 +22,6 @@ import ActivityPanel from '@/components/ActivityPanel';
 import ScanRow from '@/components/ScanRow';
 import SectionHeader from '@/components/SectionHeader';
 import PageHeader from '@/components/PageHeader';
-import { WorkspaceNav } from '@/components/app/WorkspaceNav';
 import SectorStrip, { type SectorStat } from '@/components/SectorStrip';
 import SignalEntry from '@/components/SignalEntry';
 import { paths } from '@/lib/urls';
@@ -148,7 +147,6 @@ export default async function DomainPage({ params }: { params: Promise<{ slug: s
 
   return (
     <div className="mx-auto max-w-[860px] px-6 py-7">
-      <WorkspaceNav section="signal" />
       <PageHeader
         kicker={
           <>

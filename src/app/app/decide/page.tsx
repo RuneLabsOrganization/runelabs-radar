@@ -3,7 +3,6 @@ import { BarChart3, Bot, Layers, LayoutGrid } from 'lucide-react';
 import { paths } from '@/lib/urls';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { WorkspaceNav } from '@/components/app/WorkspaceNav';
 
 export const metadata = {
   title: 'Decide',
@@ -20,7 +19,6 @@ const LINKS = [
 export default function DecidePage() {
   return (
     <div>
-      <WorkspaceNav section="decide" />
       <div className="readout flex items-center gap-2 text-phosphor">
         <Layers className="h-3.5 w-3.5" />
         Workspace · What to use

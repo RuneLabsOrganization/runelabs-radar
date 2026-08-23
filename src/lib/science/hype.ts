@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, sql } from 'drizzle-orm';
+import { and, gte, inArray, sql } from 'drizzle-orm';
 import { getDb } from '../db';
 import { metricPoints } from '../db/schema';
 import { topEntities } from '../analytics';
@@ -29,30 +29,31 @@ export function hypeIndex(limit = 12): HypeEntry[] {
   const db = getDb();
   const weekAgo = new Date(Date.now() - 7 * 864e5).toISOString().slice(0, 10);
 
+  // every velocity series in the window, once — the name match then happens in
+  // JS instead of one LIKE scan per entity
+  const window = db
+    .select({
+      entity: metricPoints.entity,
+      metric: metricPoints.metric,
+      latest: sql<number>`max(${metricPoints.value})`,
+      earliest: sql<number>`min(${metricPoints.value})`,
+    })
+    .from(metricPoints)
+    .where(
+      and(
+        gte(metricPoints.date, weekAgo),
+        inArray(metricPoints.metric, ['stars', 'downloads', 'weekly_downloads']),
+      ),
+    )
+    .groupBy(metricPoints.source, metricPoints.entity, metricPoints.metric)
+    .all()
+    .map((r) => ({ ...r, haystack: r.entity.toLowerCase() }));
+
   return topEntities(limit).map((e) => {
     const needle = e.name.toLowerCase();
     if (needle.length < 3) return { name: e.name, mentions: e.count, artifacts: 0, score: null };
 
-    // matched series across the velocity sources
-    const series = db
-      .select({
-        source: metricPoints.source,
-        entity: metricPoints.entity,
-        metric: metricPoints.metric,
-        latest: sql<number>`max(${metricPoints.value})`,
-        earliest: sql<number>`min(${metricPoints.value})`,
-      })
-      .from(metricPoints)
-      .where(
-        and(
-          gte(metricPoints.date, weekAgo),
-          sql`lower(${metricPoints.entity}) LIKE ${'%' + needle + '%'}`,
-          sql`${metricPoints.metric} IN ('stars','downloads','weekly_downloads')`,
-        ),
-      )
-      .groupBy(metricPoints.source, metricPoints.entity, metricPoints.metric)
-      .all();
-
+    const series = window.filter((r) => r.haystack.includes(needle));
     if (series.length === 0) return { name: e.name, mentions: e.count, artifacts: 0, score: null };
 
     let artifacts = 0;

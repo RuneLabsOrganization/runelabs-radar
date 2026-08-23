@@ -12,7 +12,7 @@ const RadarField = dynamic(() => import('./RadarField'), { ssr: false });
  * reduced-motion setups we render nothing — the CSS scope-0 canvas is the
  * backdrop, and the GPU/battery stays idle.
  */
-export default function RadarBackdrop({ intensity }: { intensity?: number }) {
+export default function RadarBackdrop({ intensity, fps }: { intensity?: number; fps?: number }) {
   const [enabled, setEnabled] = React.useState(false);
   // theme flips re-mount the field so it re-reads the flipped CSS tokens
   const [themeKey, setThemeKey] = React.useState(0);
@@ -32,5 +32,5 @@ export default function RadarBackdrop({ intensity }: { intensity?: number }) {
     };
   }, []);
   if (!enabled) return null;
-  return <RadarField key={themeKey} intensity={intensity} />;
+  return <RadarField key={themeKey} intensity={intensity} fps={fps} />;
 }

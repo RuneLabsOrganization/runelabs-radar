@@ -3,7 +3,6 @@ import { topicHierarchy, topicHierarchyAsOf } from '@/lib/analytics';
 import { WINDOW_DAYS } from '@/lib/science/cluster';
 import BubbleMap from '@/components/BubbleMap';
 import PageHeader from '@/components/PageHeader';
-import { WorkspaceNav } from '@/components/app/WorkspaceNav';
 
 export default async function MapPage() {
   await requireViewer();
@@ -12,7 +11,6 @@ export default async function MapPage() {
 
   return (
     <div className="mx-auto max-w-[1100px] px-6 py-7">
-      <WorkspaceNav section="signal" />
       <PageHeader
         kicker="topic map · categories → subtopics → stories"
         title="Topic Map"

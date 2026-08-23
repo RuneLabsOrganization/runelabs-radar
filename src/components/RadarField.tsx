@@ -14,7 +14,7 @@ const MAX_R = 4.2;
  * Ambient (pointer-events: none), DPR-capped, paused when hidden, static
  * under prefers-reduced-motion.
  */
-export default function RadarField({ intensity = 0.15 }: { intensity?: number }) {
+export default function RadarField({ intensity = 0.15, fps = 60 }: { intensity?: number; fps?: number }) {
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -179,8 +179,15 @@ export default function RadarField({ intensity = 0.15 }: { intensity?: number })
       camera.lookAt(0, 0, 0);
       renderer.render(scene, camera);
     };
+    // ambient chrome does not need 60fps — skipping frames keeps the main
+    // thread free for navigation without changing how the sweep reads
+    const minFrameMs = 1000 / Math.max(1, fps);
+    let lastDrawn = 0;
     const loop = (now: number) => {
-      renderFrame(now);
+      if (now - lastDrawn >= minFrameMs) {
+        lastDrawn = now;
+        renderFrame(now);
+      }
       raf = requestAnimationFrame(loop);
     };
     if (reduced) {
@@ -210,7 +217,7 @@ export default function RadarField({ intensity = 0.15 }: { intensity?: number })
       renderer.dispose();
       el.removeChild(renderer.domElement);
     };
-  }, []);
+  }, [fps]);
 
   return (
     <div

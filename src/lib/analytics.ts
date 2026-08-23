@@ -1,4 +1,5 @@
-import { and, count, desc, eq, gte, inArray, isNotNull, sql } from 'drizzle-orm';
+﻿import { and, count, desc, eq, gte, inArray, isNotNull, sql } from 'drizzle-orm';
+import { memo, TTL } from './cache';
 import { config } from './config';
 import { getDb } from './db';
 import {
@@ -41,7 +42,7 @@ export interface DayCount {
  * membership (score >= threshold). Days with no activity are zero-filled so
  * traces stay continuous.
  */
-export function dailyDomainCounts(days = 14): DayCount[] {
+function _dailyDomainCounts(days = 14): DayCount[] {
   const db = getDb();
   const start = new Date(Date.now() - days * DAY_MS);
   const rows = db
@@ -81,7 +82,7 @@ export interface Momentum {
 }
 
 /** Week-over-week story volume per domain. */
-export function domainMomentum(): Momentum[] {
+function _domainMomentum(): Momentum[] {
   const db = getDb();
   const twoWeeksAgo = new Date(Date.now() - 14 * DAY_MS);
   const weekAgo = Date.now() - 7 * DAY_MS;
@@ -182,7 +183,7 @@ function collectEntities(rows: { entities: string | null }[]): Map<string, { nam
  * the series behind each entity-surge pattern's trend chart. Keys are
  * canonicalEntityKey(name); arrays align with dailyDomainCounts' days.
  */
-export function entityDailySeries(names: string[], days = 14): Map<string, number[]> {
+function _entityDailySeries(names: string[], days = 14): Map<string, number[]> {
   const wanted = new Set(names.map((n) => canonicalEntityKey(n)));
   const out = new Map<string, number[]>();
   if (wanted.size === 0) return out;
@@ -229,7 +230,7 @@ export function entityDailySeries(names: string[], days = 14): Map<string, numbe
 }
 
 /** Most-mentioned entities across the last 7 days of curated stories, with prior-week counts. */
-export function topEntities(limit = 8): EntityCount[] {
+function _topEntities(limit = 8): EntityCount[] {
   const db = getDb();
   const weekAgo = new Date(Date.now() - 7 * DAY_MS);
   const twoWeeksAgo = new Date(Date.now() - 14 * DAY_MS);
@@ -263,7 +264,7 @@ export interface EchoStats {
 }
 
 /** Cross-source corroboration: the same story landing from several feeds is a strong signal. */
-export function echoStats(): EchoStats {
+function _echoStats(): EchoStats {
   const db = getDb();
   const weekAgo = new Date(Date.now() - 7 * DAY_MS);
   const recent = db
@@ -369,7 +370,7 @@ function latestAaSnapshotModels(limit = 60): { fetchedAt: string; models: AaMode
 }
 
 /** Genuine AA rows from the latest stored snapshot — the §6e divergence logger compares against these. */
-export function aaSnapshotModels(): AaModel[] {
+function _aaSnapshotModels(): AaModel[] {
   return latestAaSnapshotModels()?.models ?? [];
 }
 
@@ -491,7 +492,7 @@ function firstPartyModels(): { latestDate: string | null; models: MarketModel[] 
  * consecutive weekly syncs, AA defaults to disabled — ops unsets AA_API_KEY
  * and the remaining snapshot ages out of the backstop role.
  */
-export function marketModels(limit = 60): { fetchedAt: string; models: MarketModel[] } | null {
+function _marketModels(limit = 60): { fetchedAt: string; models: MarketModel[] } | null {
   const fp = firstPartyModels();
   const covered = new Set(fp.models.map((m) => normalizeModelKey(m.name)));
   const aa = latestAaSnapshotModels(limit);
@@ -513,7 +514,7 @@ export function marketModels(limit = 60): { fetchedAt: string; models: MarketMod
  * backstop). Sorted by intelligence, capped to keep the scatter readable.
  * Shape unchanged from the pre-§6d AA-only reader.
  */
-export function aaModels(limit = 60): { fetchedAt: string; models: AaModel[] } | null {
+function _aaModels(limit = 60): { fetchedAt: string; models: AaModel[] } | null {
   return marketModels(limit);
 }
 
@@ -527,7 +528,7 @@ export interface RadarScore {
  * 'composite' and 'cost_efficiency' may come from different days (a model
  * without price data writes no cost_efficiency row) — each takes its own latest.
  */
-export function latestRadarScores(): Map<string, RadarScore> {
+function _latestRadarScores(): Map<string, RadarScore> {
   const db = getDb();
   const rows = db
     .select({
@@ -569,7 +570,7 @@ export const MEDIA_TYPES = [
 export type MediaKey = (typeof MEDIA_TYPES)[number]['key'];
 
 /** Latest AA media-arena snapshots (image/video/image-editing), top models by ELO rank. */
-export function aaMedia(limit = 10): { fetchedAt: string; arenas: Partial<Record<MediaKey, MediaModel[]>> } | null {
+function _aaMedia(limit = 10): { fetchedAt: string; arenas: Partial<Record<MediaKey, MediaModel[]>> } | null {
   const db = getDb();
   const arenas: Partial<Record<MediaKey, MediaModel[]>> = {};
   let newest: Date | null = null;
@@ -620,7 +621,7 @@ export interface SourceVolumeRow {
 }
 
 /** Item volume per source: daily counts for sparklines + 7-day totals + story yield. */
-export function sourceVolume(days = 14): SourceVolumeRow[] {
+function _sourceVolume(days = 14): SourceVolumeRow[] {
   const db = getDb();
   const start = new Date(Date.now() - days * DAY_MS);
   const rows = db
@@ -685,42 +686,47 @@ const KNOWN_JOBS: readonly JobName[] = [
 ];
 
 /** Recent runs per job for the health timeline (oldest → newest), for every job present in job_runs. */
-export function jobHistory(perJob = 28): Record<string, JobRunCell[]> {
-  const db = getDb();
-  const present = db
-    .selectDistinct({ job: jobRuns.job })
+function _jobHistory(perJob = 28): Record<string, JobRunCell[]> {
+  // one descending pass, sliced per job in JS — the old shape ran a separate
+  // LIMIT query for each of the ~20 job names on every admin render
+  const rows = getDb()
+    .select({
+      job: jobRuns.job,
+      status: jobRuns.status,
+      startedAt: jobRuns.startedAt,
+      finishedAt: jobRuns.finishedAt,
+    })
     .from(jobRuns)
-    .all()
-    .map((r) => r.job);
+    .orderBy(desc(jobRuns.id))
+    .all();
+
+  const recent = new Map<string, JobRunCell[]>();
+  for (const r of rows) {
+    const bucket = recent.get(r.job) ?? [];
+    if (bucket.length >= perJob) continue;
+    bucket.push({
+      // a 'running' row past the reap threshold means the process died
+      // mid-run — present it as failed, not as still running
+      status: r.status === 'running' && r.startedAt.getTime() < Date.now() - RUNNING_FRESH_MS ? 'error' : r.status,
+      startedAt: r.startedAt,
+      durationMs: r.finishedAt ? r.finishedAt.getTime() - r.startedAt.getTime() : null,
+    });
+    recent.set(r.job, bucket);
+  }
+
   const known = new Set<string>(KNOWN_JOBS);
+  const present = [...recent.keys()];
   const jobs = [
-    ...KNOWN_JOBS.filter((j) => present.includes(j)),
+    ...KNOWN_JOBS.filter((j) => recent.has(j)),
     ...present.filter((j) => !known.has(j)).sort(),
   ];
   const out: Record<string, JobRunCell[]> = {};
-  for (const job of jobs) {
-    const rows = db
-      .select()
-      .from(jobRuns)
-      .where(eq(jobRuns.job, job))
-      .orderBy(desc(jobRuns.id))
-      .limit(perJob)
-      .all();
-    out[job] = rows
-      .reverse()
-      .map((r) => ({
-        // a 'running' row past the reap threshold means the process died
-        // mid-run — present it as failed, not as still running
-        status: r.status === 'running' && r.startedAt.getTime() < Date.now() - RUNNING_FRESH_MS ? 'error' : r.status,
-        startedAt: r.startedAt,
-        durationMs: r.finishedAt ? r.finishedAt.getTime() - r.startedAt.getTime() : null,
-      }));
-  }
+  for (const job of jobs) out[job] = recent.get(job)!.reverse();
   return out;
 }
 
 /** Daily LLM call counts (zero-filled) plus the configured cap. */
-export function llmUsageHistory(days = 14): { days: { date: string; calls: number }[]; cap: number } {
+function _llmUsageHistory(days = 14): { days: { date: string; calls: number }[]; cap: number } {
   const db = getDb();
   const rows = db.select().from(llmUsage).all();
   const byDate = new Map(rows.map((r) => [r.date, r.calls]));
@@ -775,7 +781,7 @@ export interface Funnel {
 }
 
 /** 7-day pipeline conversion: fetched items → stories → curated → top signals. */
-export function pipelineFunnel(days = 7): Funnel {
+function _pipelineFunnel(days = 7): Funnel {
   const db = getDb();
   const start = new Date(Date.now() - days * DAY_MS);
   const itemCount =
@@ -804,7 +810,7 @@ export interface PatternRow {
 }
 
 /** The most recent day's anomaly detections, strongest first. */
-export function latestPatterns(limit = 6): PatternRow[] {
+function _latestPatterns(limit = 6): PatternRow[] {
   const db = getDb();
   const latest = db
     .select({ date: patterns.date })
@@ -840,7 +846,7 @@ export interface TopicNode {
 }
 
 /** Latest clustering run as a macro→subtopic tree (largest first at each level). */
-export function topicHierarchy(): TopicNode[] | null {
+function _topicHierarchy(): TopicNode[] | null {
   const db = getDb();
   const rows = db.select().from(topicClusters).all();
   if (rows.length === 0) return null;
@@ -867,7 +873,7 @@ export function topicHierarchy(): TopicNode[] | null {
 }
 
 /** Day (YYYY-MM-DD UTC) of the latest clustering run — the topic map's as-of date. */
-export function topicHierarchyAsOf(): string | null {
+function _topicHierarchyAsOf(): string | null {
   const db = getDb();
   const latest = db
     .select({ date: topicClusters.date })
@@ -930,7 +936,7 @@ export interface FactoryFunnel {
 }
 
 /** The factory path in numbers: detected → briefed → stack-ready → launch waves → evergreen comps. */
-export function factoryFunnel(): FactoryFunnel {
+function _factoryFunnel(): FactoryFunnel {
   const db = getDb();
   const active = db
     .select({ brief: opportunitiesTable.brief })
@@ -952,7 +958,7 @@ export function factoryFunnel(): FactoryFunnel {
 }
 
 /** Latest analyst notes (written by the daily brief job). */
-export function latestInsights(): { date: string; items: Insight[] } | null {
+function _latestInsights(): { date: string; items: Insight[] } | null {
   const db = getDb();
   const latest = db.select().from(insights).orderBy(desc(insights.date)).limit(1).get();
   if (!latest) return null;
@@ -971,3 +977,30 @@ export function latestInsights(): { date: string; items: Insight[] } | null {
     return null;
   }
 }
+
+/*
+ * Memoized surface. These are all read rollups over tables the worker owns, so
+ * a short in-process TTL turns a page render from dozens of scans into a map
+ * lookup without ever showing a user their own stale write.
+ */
+
+export const dailyDomainCounts = memo('dailyDomainCounts', TTL.short, _dailyDomainCounts);
+export const domainMomentum = memo('domainMomentum', TTL.short, _domainMomentum);
+export const entityDailySeries = memo('entityDailySeries', TTL.short, _entityDailySeries);
+export const topEntities = memo('topEntities', TTL.short, _topEntities);
+export const echoStats = memo('echoStats', TTL.short, _echoStats);
+export const latestPatterns = memo('latestPatterns', TTL.short, _latestPatterns);
+export const latestInsights = memo('latestInsights', TTL.short, _latestInsights);
+export const jobHistory = memo('jobHistory', TTL.short, _jobHistory);
+
+export const aaSnapshotModels = memo('aaSnapshotModels', TTL.long, _aaSnapshotModels);
+export const marketModels = memo('marketModels', TTL.long, _marketModels);
+export const aaModels = memo('aaModels', TTL.long, _aaModels);
+export const latestRadarScores = memo('latestRadarScores', TTL.long, _latestRadarScores);
+export const aaMedia = memo('aaMedia', TTL.long, _aaMedia);
+export const sourceVolume = memo('sourceVolume', TTL.long, _sourceVolume);
+export const llmUsageHistory = memo('llmUsageHistory', TTL.long, _llmUsageHistory);
+export const pipelineFunnel = memo('pipelineFunnel', TTL.long, _pipelineFunnel);
+export const topicHierarchy = memo('topicHierarchy', TTL.long, _topicHierarchy);
+export const topicHierarchyAsOf = memo('topicHierarchyAsOf', TTL.long, _topicHierarchyAsOf);
+export const factoryFunnel = memo('factoryFunnel', TTL.long, _factoryFunnel);

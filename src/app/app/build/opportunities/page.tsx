@@ -6,7 +6,6 @@ import { factoryFunnel } from '@/lib/analytics';
 import { oppViewFromRow } from '@/lib/opportunities/view';
 import FactoryPipeline from '@/components/FactoryPipeline';
 import OpportunityList from '@/components/OpportunityList';
-import { WorkspaceNav } from '@/components/app/WorkspaceNav';
 
 export const metadata = {
   title: 'Opportunities — monetizable openings',
@@ -24,7 +23,6 @@ export default async function OpportunitiesPage() {
 
   return (
     <div>
-      <WorkspaceNav section="build" />
       <div className="readout text-phosphor">Build · Opportunities</div>
       <h1 className="type-h1 mt-1">Opportunities</h1>
       <p className="mt-2 max-w-xl text-[13.5px] leading-relaxed text-ink-3">

@@ -353,10 +353,8 @@ export function lovedPctSum(rows: HarnessRow[] = HARNESS_LANDSCAPE): number {
   return closeLovedPie(rows).reduce((s, h) => s + h.lovedPct, 0);
 }
 
-/** 7-day mention count across alias keys in the curated story graph. */
-export function harnessMentions7d(aliases: string[]): number {
-  if (aliases.length === 0) return 0;
-  const series = entityDailySeries(aliases, 7);
+/** Sums a prefetched series over an alias set, counting each canonical key once. */
+function sumAliases(series: Map<string, number[]>, aliases: string[]): number {
   let n = 0;
   const seen = new Set<string>();
   for (const alias of aliases) {
@@ -370,9 +368,18 @@ export function harnessMentions7d(aliases: string[]): number {
   return n;
 }
 
+/** 7-day mention count across alias keys in the curated story graph. */
+export function harnessMentions7d(aliases: string[]): number {
+  if (aliases.length === 0) return 0;
+  return sumAliases(entityDailySeries(aliases, 7), aliases);
+}
+
 export function landscapeWithMentions(rows: HarnessRow[] = HARNESS_LANDSCAPE): Array<HarnessRow & { mentions7d: number }> {
-  return closeLovedPie(rows)
-    .map((h) => ({ ...h, mentions7d: harnessMentions7d(h.aliases) }))
+  const landscape = closeLovedPie(rows);
+  // one pass over the story window for every harness, not one per harness
+  const series = entityDailySeries([...new Set(landscape.flatMap((h) => h.aliases))], 7);
+  return landscape
+    .map((h) => ({ ...h, mentions7d: sumAliases(series, h.aliases) }))
     .sort((a, b) => b.lovedPct - a.lovedPct || b.mentions7d - a.mentions7d || a.name.localeCompare(b.name));
 }
 

@@ -11,7 +11,6 @@ import { paths, urls } from '@/lib/urls';
 import OppDossier, { VerdictChip } from '@/components/OppDossier';
 import OppBrief from '@/components/OppBrief';
 import BriefSection from '@/components/BriefSection';
-import { WorkspaceNav } from '@/components/app/WorkspaceNav';
 import { AddToBatchButton } from '@/components/batches/AddToBatchButton';
 
 function getOpportunity(id: number) {
@@ -113,7 +112,6 @@ export default async function OpportunityPage({ params }: { params: Promise<{ id
     <div>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
 
-      <WorkspaceNav section="build" />
 
       {/* kicker: what this is, where it lives, how fresh */}
       <div className="mono flex flex-wrap items-center gap-x-2.5 gap-y-1.5 text-[10.5px] uppercase tracking-[0.08em]">

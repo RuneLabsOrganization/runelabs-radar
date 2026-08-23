@@ -9,9 +9,8 @@ import TaskCostExplorer from '@/components/TaskCostExplorer';
 import ValueBars from '@/components/ValueBars';
 import VerdictEditor from '@/components/VerdictEditor';
 import SectionHeader from '@/components/SectionHeader';
-import { WorkspaceNav } from '@/components/app/WorkspaceNav';
 import { aaMedia, aaModels } from '@/lib/analytics';
-import { seriesFor } from '@/lib/metrics';
+import { seriesForMany } from '@/lib/metrics';
 import { forecastFrontierPrice } from '@/lib/science/forecast';
 import { lagFindings, lagReadiness } from '@/lib/science/lag';
 import ForecastChart from '@/components/ForecastChart';
@@ -58,9 +57,10 @@ function scatterHistory(models: { name: string }[]): import('@/components/ModelS
   const intel: Record<string, (number | null)[]> = {};
   const price: Record<string, (number | null)[]> = {};
   const raw = new Map<string, { i: Map<string, number>; p: Map<string, number> }>();
+  const series = seriesForMany('aa', models.map((m) => m.name), ['intelligence', 'price_blended'], DAYS);
   for (const m of models) {
-    const iSeries = seriesFor('aa', m.name, 'intelligence', DAYS);
-    const pSeries = seriesFor('aa', m.name, 'price_blended', DAYS);
+    const iSeries = series.get(`${m.name}\u0000intelligence`) ?? [];
+    const pSeries = series.get(`${m.name}\u0000price_blended`) ?? [];
     if (iSeries.length === 0 && pSeries.length === 0) continue;
     const entry = { i: new Map(iSeries.map((r) => [r.date, r.value])), p: new Map(pSeries.map((r) => [r.date, r.value])) };
     raw.set(m.name, entry);
@@ -132,7 +132,6 @@ export default async function BoardPage() {
 
   return (
     <div>
-      <WorkspaceNav section="decide" />
       <div className="readout text-phosphor">Decide · Best tools</div>
       <h1 className="type-h1 mt-1">Best Right Now</h1>
       <p className="mt-2 max-w-xl text-[13.5px] leading-relaxed text-ink-3">

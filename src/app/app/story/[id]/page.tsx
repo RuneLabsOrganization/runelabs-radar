@@ -13,7 +13,6 @@ import { paths, urls } from '@/lib/urls';
 import { parseDomainScores, topDomain } from '@/components/DomainChips';
 import { AddToBatchButton } from '@/components/batches/AddToBatchButton';
 import SignalMeter from '@/components/SignalMeter';
-import { WorkspaceNav } from '@/components/app/WorkspaceNav';
 import { ExternalLink } from 'lucide-react';
 
 function storySources(db: ReturnType<typeof getDb>, storyId: number) {
@@ -110,7 +109,6 @@ export default async function StoryPage({ params }: { params: Promise<{ id: stri
   return (
     <div>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
-      <WorkspaceNav section="signal" />
 
       <div className="grid gap-10 lg:grid-cols-[minmax(0,1fr)_250px]">
         <div className="min-w-0">

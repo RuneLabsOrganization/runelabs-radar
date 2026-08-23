@@ -35,7 +35,7 @@ export function Logo({
 
   if (href) {
     return (
-      <Link href={href} className="shrink-0">
+      <Link href={href} aria-label={`${name} — home`} className="shrink-0">
         {lockup}
       </Link>
     );

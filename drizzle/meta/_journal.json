@@ -183,6 +183,13 @@
       "when": 1787479343931,
       "tag": "0025_product_revamp",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "6",
+      "when": 1787483252530,
+      "tag": "0026_redundant_makkari",
+      "breakpoints": true
     }
   ]
 }

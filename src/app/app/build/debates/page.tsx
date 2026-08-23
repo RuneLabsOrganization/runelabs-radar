@@ -9,7 +9,6 @@ import { UpgradeWall } from '@/components/UpgradeWall';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { DebateIdeaForm } from '@/components/batches/DebateIdeaForm';
-import { WorkspaceNav } from '@/components/app/WorkspaceNav';
 
 export const metadata = { title: 'Debates' };
 
@@ -41,7 +40,6 @@ export default async function DebatesPage() {
 
   return (
     <div>
-      <WorkspaceNav section="build" />
       <div className="readout text-phosphor">Build · Debates</div>
       <h1 className="type-h1 mt-1">Debates</h1>
       <p className="mt-2 max-w-xl text-[13.5px] text-ink-3">

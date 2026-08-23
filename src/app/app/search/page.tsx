@@ -5,7 +5,6 @@ import { getDb } from '@/lib/db';
 import { timeAgo } from '@/lib/feed';
 import DomainTicks, { parseDomainScores } from '@/components/DomainChips';
 import PageHeader from '@/components/PageHeader';
-import { WorkspaceNav } from '@/components/app/WorkspaceNav';
 import { paths } from '@/lib/urls';
 
 export const metadata = { title: 'Search', robots: { index: false } };
@@ -55,7 +54,6 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
 
   return (
     <div className="mx-auto max-w-[760px] px-6 py-7">
-      <WorkspaceNav section="signal" />
       <PageHeader
         kicker="full-text search"
         title="Search"

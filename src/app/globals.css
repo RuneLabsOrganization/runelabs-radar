@@ -411,6 +411,21 @@ a {
   font-family: var(--font-readout);
 }
 
+/**
+ * Nav strips scroll sideways instead of collapsing into a menu, so the tab
+ * bar stays reachable on narrow screens. The scrollbar itself is suppressed —
+ * the clipped last item is the affordance.
+ */
+.scroll-x {
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+}
+
+.scroll-x::-webkit-scrollbar {
+  display: none;
+}
+
 .vote-btn {
   background: none;
   border: none;

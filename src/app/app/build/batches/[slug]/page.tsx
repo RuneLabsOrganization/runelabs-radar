@@ -9,7 +9,6 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { SectionHeader } from '@/components/ui/section-header';
 import { BatchRunControls } from '@/components/batches/BatchRunControls';
-import { WorkspaceNav } from '@/components/app/WorkspaceNav';
 
 export default async function BatchDetailPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
@@ -23,7 +22,6 @@ export default async function BatchDetailPage({ params }: { params: Promise<{ sl
   if (batch.visibility === 'members' && !user) {
     return (
       <div>
-        <WorkspaceNav section="build" />
         <Badge variant="phosphor">Radar Batch</Badge>
         <div className="readout mt-2 text-phosphor">Build · Batches</div>
         <h1 className="type-h1 mt-1">{batch.title}</h1>
@@ -46,7 +44,6 @@ export default async function BatchDetailPage({ params }: { params: Promise<{ sl
 
   return (
     <div>
-      <WorkspaceNav section="build" />
       <div className="readout text-phosphor">Build · Batches</div>
       <div className="mt-1 flex items-center gap-2">
         <Badge variant={batch.kind === 'drop' ? 'phosphor' : 'default'}>{batch.kind}</Badge>

@@ -3,7 +3,6 @@ import { MessageSquare, Package, Sparkles, Target } from 'lucide-react';
 import { paths } from '@/lib/urls';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { WorkspaceNav } from '@/components/app/WorkspaceNav';
 
 export const metadata = {
   title: 'Build',
@@ -19,7 +18,6 @@ const LINKS = [
 export default function BuildPage() {
   return (
     <div>
-      <WorkspaceNav section="build" />
       <div className="readout flex items-center gap-2 text-phosphor">
         <Sparkles className="h-3.5 w-3.5" />
         Workspace · What to build

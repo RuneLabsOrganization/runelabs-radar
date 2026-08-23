@@ -1,3 +1,4 @@
+import { cache } from 'react';
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { eq } from 'drizzle-orm';
@@ -13,8 +14,12 @@ export type User = typeof users.$inferSelect;
 /**
  * Resolve the current domain user from Better Auth session first,
  * falling back to the legacy radar_session cookie for seeded operators.
+ *
+ * Memoized per request: the app layout and the page it wraps both need the
+ * viewer, and without this each navigation pays for two session verifications
+ * plus two user lookups.
  */
-export async function getCurrentUser(): Promise<User | null> {
+export const getCurrentUser = cache(async (): Promise<User | null> => {
   try {
     const session = await auth.api.getSession({ headers: await headers() });
     if (session?.user) {
@@ -33,7 +38,7 @@ export async function getCurrentUser(): Promise<User | null> {
   const uid = verifySession(store.get(SESSION_COOKIE)?.value);
   if (!uid) return null;
   return getDb().select().from(users).where(eq(users.id, uid)).get() ?? null;
-}
+});
 
 export async function requireUser(): Promise<User> {
   const user = await getCurrentUser();

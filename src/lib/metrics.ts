@@ -1,4 +1,4 @@
-import { and, asc, eq, gte } from 'drizzle-orm';
+import { and, asc, eq, gte, inArray } from 'drizzle-orm';
 import { getDb } from './db';
 import { metricPoints } from './db/schema';
 
@@ -65,4 +65,47 @@ export function seriesFor(
     )
     .orderBy(asc(metricPoints.date))
     .all();
+}
+
+export type SeriesRow = { date: string; value: number };
+
+/**
+ * Series for many entity/metric pairs in one query, keyed `entity\u0000metric`.
+ * Charts that plot every model would otherwise issue one query per model per
+ * metric — 120+ round-trips to draw a single scatter.
+ */
+export function seriesForMany(
+  source: string,
+  entities: string[],
+  metrics: string[],
+  days = 90,
+): Map<string, SeriesRow[]> {
+  const out = new Map<string, SeriesRow[]>();
+  if (entities.length === 0 || metrics.length === 0) return out;
+  const start = utcDay(new Date(Date.now() - days * 864e5));
+  const rows = getDb()
+    .select({
+      entity: metricPoints.entity,
+      metric: metricPoints.metric,
+      date: metricPoints.date,
+      value: metricPoints.value,
+    })
+    .from(metricPoints)
+    .where(
+      and(
+        eq(metricPoints.source, source),
+        inArray(metricPoints.entity, entities),
+        inArray(metricPoints.metric, metrics),
+        gte(metricPoints.date, start),
+      ),
+    )
+    .orderBy(asc(metricPoints.date))
+    .all();
+  for (const r of rows) {
+    const key = `${r.entity}\u0000${r.metric}`;
+    const bucket = out.get(key);
+    if (bucket) bucket.push({ date: r.date, value: r.value });
+    else out.set(key, [{ date: r.date, value: r.value }]);
+  }
+  return out;
 }

@@ -39,7 +39,6 @@ import SectorStrip, { type SectorStat } from '@/components/SectorStrip';
 import ScopeHero, { type ScopeInsight } from '@/components/ScopeHero';
 import { paths } from '@/lib/urls';
 import { ChevronUp } from 'lucide-react';
-import { WorkspaceNav } from '@/components/app/WorkspaceNav';
 
 type ItemAgg = { count: number; firstUrl: string | null; sourceName: string | null };
 type VoteAgg = { up: number; down: number; mine: 1 | -1 | 0 };
@@ -338,7 +337,6 @@ export default async function BriefingPage() {
     <div>
       {user && <MarkSeen />}
 
-      <WorkspaceNav section="signal" />
       <div className="mb-5">
         <PageHeader
           kicker={dateLine(new Date())}

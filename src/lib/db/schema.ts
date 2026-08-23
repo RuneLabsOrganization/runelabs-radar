@@ -1,4 +1,4 @@
-import { blob, real, sqliteTable, text, integer, primaryKey, uniqueIndex } from 'drizzle-orm/sqlite-core';
+import { blob, index, real, sqliteTable, text, integer, primaryKey, uniqueIndex } from 'drizzle-orm/sqlite-core';
 
 export const users = sqliteTable('users', {
   id: integer('id').primaryKey({ autoIncrement: true }),
@@ -28,49 +28,62 @@ export const sources = sqliteTable('sources', {
   consecutiveFailures: integer('consecutive_failures').notNull().default(0),
 });
 
-export const stories = sqliteTable('stories', {
-  id: integer('id').primaryKey({ autoIncrement: true }),
-  title: text('title').notNull(),
-  tldr: text('tldr'),
-  whyItMatters: text('why_it_matters'),
-  whyShown: text('why_shown'),
-  domainScores: text('domain_scores'),
-  // JSON [{name, kind: 'model'|'tool'|'org'|'technique'}] extracted at curation
-  entities: text('entities'),
-  // Float32Array bytes from the local sentence-embedding model (embed job)
-  embedding: blob('embedding', { mode: 'buffer' }),
-  // semantic-map placement, refreshed by the daily science job
-  clusterId: integer('cluster_id'),
-  mapX: real('map_x'),
-  mapY: real('map_y'),
-  topScore: integer('top_score').notNull().default(0),
-  // hindsight: what the story actually turned out to be worth 36-60h later
-  // (echoes, launches, follow-ups) — feeds the accuracy page + calibration
-  hindsight: integer('hindsight'),
-  hindsightAt: integer('hindsight_at', { mode: 'timestamp' }),
-  // contrarian "second look" — why this might NOT matter + one second-order
-  // effect, written once per high-score story by the second-look job
-  secondLook: text('second_look'),
-  secondLookAt: integer('second_look_at', { mode: 'timestamp' }),
-  status: text('status', { enum: ['raw', 'curated', 'filtered'] }).notNull().default('raw'),
-  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
-  // last time a new item merged into this story — null until first merge;
-  // the "updated" freshness signal and the re-curation trigger
-  updatedAt: integer('updated_at', { mode: 'timestamp' }),
-});
+export const stories = sqliteTable(
+  'stories',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    title: text('title').notNull(),
+    tldr: text('tldr'),
+    whyItMatters: text('why_it_matters'),
+    whyShown: text('why_shown'),
+    domainScores: text('domain_scores'),
+    // JSON [{name, kind: 'model'|'tool'|'org'|'technique'}] extracted at curation
+    entities: text('entities'),
+    // Float32Array bytes from the local sentence-embedding model (embed job)
+    embedding: blob('embedding', { mode: 'buffer' }),
+    // semantic-map placement, refreshed by the daily science job
+    clusterId: integer('cluster_id'),
+    mapX: real('map_x'),
+    mapY: real('map_y'),
+    topScore: integer('top_score').notNull().default(0),
+    // hindsight: what the story actually turned out to be worth 36-60h later
+    // (echoes, launches, follow-ups) — feeds the accuracy page + calibration
+    hindsight: integer('hindsight'),
+    hindsightAt: integer('hindsight_at', { mode: 'timestamp' }),
+    // contrarian "second look" — why this might NOT matter + one second-order
+    // effect, written once per high-score story by the second-look job
+    secondLook: text('second_look'),
+    secondLookAt: integer('second_look_at', { mode: 'timestamp' }),
+    status: text('status', { enum: ['raw', 'curated', 'filtered'] }).notNull().default('raw'),
+    createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+    // last time a new item merged into this story — null until first merge;
+    // the "updated" freshness signal and the re-curation trigger
+    updatedAt: integer('updated_at', { mode: 'timestamp' }),
+  },
+  (t) => [
+    // every feed/analytics read is "curated stories in the last N days"
+    index('stories_status_created').on(t.status, t.createdAt),
+    index('stories_top_score').on(t.topScore),
+    index('stories_cluster').on(t.clusterId),
+  ],
+);
 
-export const items = sqliteTable('items', {
-  id: integer('id').primaryKey({ autoIncrement: true }),
-  sourceId: integer('source_id')
-    .notNull()
-    .references(() => sources.id),
-  url: text('url').notNull().unique(),
-  title: text('title').notNull(),
-  excerpt: text('excerpt'),
-  publishedAt: integer('published_at', { mode: 'timestamp' }),
-  fetchedAt: integer('fetched_at', { mode: 'timestamp' }).notNull(),
-  storyId: integer('story_id').references(() => stories.id),
-});
+export const items = sqliteTable(
+  'items',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    sourceId: integer('source_id')
+      .notNull()
+      .references(() => sources.id),
+    url: text('url').notNull().unique(),
+    title: text('title').notNull(),
+    excerpt: text('excerpt'),
+    publishedAt: integer('published_at', { mode: 'timestamp' }),
+    fetchedAt: integer('fetched_at', { mode: 'timestamp' }).notNull(),
+    storyId: integer('story_id').references(() => stories.id),
+  },
+  (t) => [index('items_story').on(t.storyId)],
+);
 
 export const votes = sqliteTable(
   'votes',
@@ -83,7 +96,7 @@ export const votes = sqliteTable(
       .references(() => stories.id),
     value: integer('value').notNull(),
   },
-  (t) => [primaryKey({ columns: [t.userId, t.storyId] })],
+  (t) => [primaryKey({ columns: [t.userId, t.storyId] }), index('votes_story').on(t.storyId)],
 );
 
 export const boardEntries = sqliteTable(
@@ -299,19 +312,23 @@ export const opportunities = sqliteTable('opportunities', {
 });
 
 /** "The machine noticed" — daily anomaly detections, narrated. */
-export const patterns = sqliteTable('patterns', {
-  id: integer('id').primaryKey({ autoIncrement: true }),
-  kind: text('kind').notNull(), // 'sector-spike' | 'entity-surge' | 'price-drop' | 'launch-spike' | 'cluster-heat' | 'pain-cluster'
-  // what the detection is about (entity name, sector slug, model name…) —
-  // lets the UI fetch the underlying series for a per-pattern trend chart
-  subject: text('subject'),
-  headline: text('headline').notNull(),
-  detail: text('detail').notNull(),
-  score: real('score').notNull(), // magnitude for ranking (z-score, ratio, %)
-  evidence: text('evidence').notNull().default('[]'), // JSON refs
-  date: text('date').notNull(), // detection day (YYYY-MM-DD UTC)
-  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
-});
+export const patterns = sqliteTable(
+  'patterns',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    kind: text('kind').notNull(), // 'sector-spike' | 'entity-surge' | 'price-drop' | 'launch-spike' | 'cluster-heat' | 'pain-cluster'
+    // what the detection is about (entity name, sector slug, model name…) —
+    // lets the UI fetch the underlying series for a per-pattern trend chart
+    subject: text('subject'),
+    headline: text('headline').notNull(),
+    detail: text('detail').notNull(),
+    score: real('score').notNull(), // magnitude for ranking (z-score, ratio, %)
+    evidence: text('evidence').notNull().default('[]'), // JSON refs
+    date: text('date').notNull(), // detection day (YYYY-MM-DD UTC)
+    createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+  },
+  (t) => [index('patterns_date').on(t.date)],
+);
 
 export const insights = sqliteTable('insights', {
   date: text('date').primaryKey(),
@@ -320,15 +337,20 @@ export const insights = sqliteTable('insights', {
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
 });
 
-export const jobRuns = sqliteTable('job_runs', {
-  id: integer('id').primaryKey({ autoIncrement: true }),
-  job: text('job').notNull(),
-  startedAt: integer('started_at', { mode: 'timestamp' }).notNull(),
-  finishedAt: integer('finished_at', { mode: 'timestamp' }),
-  status: text('status', { enum: ['running', 'ok', 'error'] }).notNull(),
-  error: text('error'),
-  stats: text('stats'),
-});
+export const jobRuns = sqliteTable(
+  'job_runs',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    job: text('job').notNull(),
+    startedAt: integer('started_at', { mode: 'timestamp' }).notNull(),
+    finishedAt: integer('finished_at', { mode: 'timestamp' }),
+    status: text('status', { enum: ['running', 'ok', 'error'] }).notNull(),
+    error: text('error'),
+    stats: text('stats'),
+  },
+  // the header's freshness indicator runs this on every navigation
+  (t) => [index('job_runs_job_status').on(t.job, t.status, t.finishedAt)],
+);
 
 export const llmUsage = sqliteTable('llm_usage', {
   date: text('date').primaryKey(),
@@ -341,18 +363,22 @@ export const llmUsage = sqliteTable('llm_usage', {
  * completionTokens / durationMs per model = our own measured output-speed
  * series, rolled into metric_points (source 'radar-speed') by the science job.
  */
-export const llmCalls = sqliteTable('llm_calls', {
-  id: integer('id').primaryKey({ autoIncrement: true }),
-  ts: integer('ts', { mode: 'timestamp' }).notNull(),
-  feature: text('feature').notNull(), // 'curate'|'brief'|'plan'|'stack'|'pain'|'opportunity'|'debate'|'scout'|'digest'|'second-look'|...
-  job: text('job'), // worker job name when applicable
-  userId: integer('user_id'), // oauth user when MCP-triggered; null = pipeline/anonymous
-  model: text('model').notNull(),
-  promptTokens: integer('prompt_tokens').notNull().default(0),
-  completionTokens: integer('completion_tokens').notNull().default(0),
-  durationMs: integer('duration_ms').notNull().default(0), // wall time — also powers first-party speed data
-  estCostUsd: real('est_cost_usd').notNull().default(0),
-});
+export const llmCalls = sqliteTable(
+  'llm_calls',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    ts: integer('ts', { mode: 'timestamp' }).notNull(),
+    feature: text('feature').notNull(), // 'curate'|'brief'|'plan'|'stack'|'pain'|'opportunity'|'debate'|'scout'|'digest'|'second-look'|...
+    job: text('job'), // worker job name when applicable
+    userId: integer('user_id'), // oauth user when MCP-triggered; null = pipeline/anonymous
+    model: text('model').notNull(),
+    promptTokens: integer('prompt_tokens').notNull().default(0),
+    completionTokens: integer('completion_tokens').notNull().default(0),
+    durationMs: integer('duration_ms').notNull().default(0), // wall time — also powers first-party speed data
+    estCostUsd: real('est_cost_usd').notNull().default(0),
+  },
+  (t) => [index('llm_calls_ts').on(t.ts), index('llm_calls_feature_ts').on(t.feature, t.ts)],
+);
 
 /**
  * OAuth 2.1 for the MCP server (Next.js is the authorization server, the MCP
