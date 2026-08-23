@@ -79,7 +79,14 @@ export default function HeroField({ intensity = 1 }: { intensity?: number }) {
 
     let renderer: THREE.WebGLRenderer;
     try {
-      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'low-power' });
+      // high-performance: this is the landing hero, not ambient chrome. low-power
+      // + IntersectionObserver pause races were freezing the sweep on some GPUs.
+      renderer = new THREE.WebGLRenderer({
+        antialias: true,
+        alpha: true,
+        powerPreference: 'high-performance',
+        preserveDrawingBuffer: true,
+      });
     } catch {
       return; // no WebGL — the CSS canvas stays the backdrop
     }
@@ -522,22 +529,26 @@ export default function HeroField({ intensity = 1 }: { intensity?: number }) {
       renderer.render(scene, camera);
     };
 
+    // Keep the loop latch separate from rAF ids — cancel+restart on every
+    // IntersectionObserver tick was leaving the sweep frozen after a false
+    // "not intersecting" read on the absolute-positioned canvas host.
+    let running = false;
     const step = (now: number) => {
+      if (!running) return;
       const dt = Math.min(0.05, (now - last) / 1000);
       last = now;
       frame(dt);
       raf = requestAnimationFrame(step);
     };
-
-    // stop rendering when hidden or scrolled away — this is a hero, not a tax
-    let onscreen = true;
-    const sync = () => {
-      if (reduced) return;
+    const play = () => {
+      if (reduced || running || document.hidden) return;
+      running = true;
+      last = performance.now();
+      raf = requestAnimationFrame(step);
+    };
+    const pause = () => {
+      running = false;
       cancelAnimationFrame(raf);
-      if (onscreen && !document.hidden) {
-        last = performance.now();
-        raf = requestAnimationFrame(step);
-      }
     };
 
     if (reduced) {
@@ -548,21 +559,20 @@ export default function HeroField({ intensity = 1 }: { intensity?: number }) {
       }
       frame(0.016);
     } else {
-      raf = requestAnimationFrame(step);
+      play();
     }
 
-    const io = new IntersectionObserver(([entry]) => {
-      onscreen = entry.isIntersecting;
-      sync();
-    });
-    io.observe(el);
-
-    const onVisibility = sync;
+    // Pause only when the tab is backgrounded — same contract as RadarField.
+    // Off-screen pausing via IntersectionObserver raced with layout on this
+    // absolute host and could cancel the loop before the first real frame.
+    const onVisibility = () => {
+      if (document.hidden) pause();
+      else play();
+    };
     document.addEventListener('visibilitychange', onVisibility);
 
     return () => {
-      cancelAnimationFrame(raf);
-      io.disconnect();
+      pause();
       document.removeEventListener('visibilitychange', onVisibility);
       window.removeEventListener('mousemove', onMouse);
       ro.disconnect();
