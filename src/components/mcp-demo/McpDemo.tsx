@@ -264,6 +264,7 @@ function StepView({ step, sub, complete }: { step: DemoStep; sub: number; comple
 function Session({ tab, playing, skip }: { tab: DemoTab; playing: boolean; skip: boolean }) {
   const { cursor, done, replay } = useTranscript(tab.steps, playing, skip);
   const scroller = React.useRef<HTMLDivElement>(null);
+  const armed = playing || skip;
 
   React.useEffect(() => {
     const node = scroller.current;
@@ -290,9 +291,18 @@ function Session({ tab, playing, skip }: { tab: DemoTab; playing: boolean; skip:
       </div>
 
       <div ref={scroller} className="h-[440px] space-y-3.5 overflow-y-auto px-4 py-4">
-        {tab.steps.slice(0, visible).map((step, i) => (
-          <StepView key={i} step={step} sub={cursor.sub} complete={done || i < cursor.step} />
-        ))}
+        {!armed ? (
+          <div className="flex h-full flex-col items-start justify-center gap-2 text-ink-4">
+            <span className="mono text-[10px] uppercase tracking-[0.1em]">Waiting for viewport</span>
+            <p className="max-w-sm text-[13px] leading-relaxed text-ink-3">
+              The round trip starts as soon as this console is on screen.
+            </p>
+          </div>
+        ) : (
+          tab.steps.slice(0, visible).map((step, i) => (
+            <StepView key={i} step={step} sub={cursor.sub} complete={done || i < cursor.step} />
+          ))
+        )}
       </div>
 
       <div className="mono flex items-center gap-3 border-t border-grat bg-scope-1 px-3 py-2 text-[10px] uppercase tracking-[0.08em] text-ink-4">
@@ -300,7 +310,8 @@ function Session({ tab, playing, skip }: { tab: DemoTab; playing: boolean; skip:
         <button
           type="button"
           onClick={replay}
-          className="ml-auto inline-flex items-center gap-1.5 rounded px-1.5 py-0.5 text-ink-3 transition-colors hover:text-phosphor focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          disabled={!armed}
+          className="ml-auto inline-flex items-center gap-1.5 rounded px-1.5 py-0.5 text-ink-3 transition-colors hover:text-phosphor focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-40"
         >
           <RotateCcw className="h-3 w-3" /> replay
         </button>
@@ -329,25 +340,32 @@ const PROPERTIES = [
 export function McpDemo() {
   const [playing, setPlaying] = React.useState(false);
   const [skip, setSkip] = React.useState(false);
-  const ref = React.useRef<HTMLDivElement>(null);
+  const [active, setActive] = React.useState(DEMO_TABS[0].id);
+  const stageRef = React.useRef<HTMLDivElement>(null);
 
   React.useEffect(() => {
     setSkip(window.matchMedia('(prefers-reduced-motion: reduce)').matches);
   }, []);
 
   React.useEffect(() => {
-    const node = ref.current;
+    const node = stageRef.current;
     if (!node) return;
-    const io = new IntersectionObserver(([entry]) => setPlaying(entry.isIntersecting), {
-      threshold: 0.2,
-    });
+    // Start once the console enters the viewport, then keep going — pausing on
+    // every IntersectionObserver tick froze mid-type the same way the hero did
+    // (a tall section rarely stays ≥20% visible while you read it).
+    const io = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) setPlaying(true);
+      },
+      { threshold: 0.05, rootMargin: '120px 0px' },
+    );
     io.observe(node);
     return () => io.disconnect();
   }, []);
 
   return (
     <section className="border-y border-grat bg-scope-1">
-      <div ref={ref} className="mx-auto max-w-[1100px] px-4 py-16 sm:px-6">
+      <div className="mx-auto max-w-[1100px] px-4 py-16 sm:px-6">
         <div className="readout">See it work</div>
         <h2 className="type-h1 mt-2">Your agent, holding the radar</h2>
         <p className="mt-3 max-w-2xl text-[14px] leading-relaxed text-ink-2">
@@ -355,27 +373,29 @@ export function McpDemo() {
           once you connect. Pick a job and watch the round trip.
         </p>
 
-        <Tabs defaultValue={DEMO_TABS[0].id} className="mt-8">
-          <TabsList className="flex-wrap">
-            {DEMO_TABS.map((t) => (
-              <TabsTrigger key={t.id} value={t.id}>
-                {t.label}
-              </TabsTrigger>
-            ))}
-          </TabsList>
+        <div ref={stageRef} className="mt-8">
+          <Tabs value={active} onValueChange={setActive}>
+            <TabsList className="flex-wrap">
+              {DEMO_TABS.map((t) => (
+                <TabsTrigger key={t.id} value={t.id}>
+                  {t.label}
+                </TabsTrigger>
+              ))}
+            </TabsList>
 
-          {DEMO_TABS.map((t) => (
-            <TabsContent key={t.id} value={t.id}>
-              <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_280px]">
-                <Session tab={t} playing={playing} skip={skip} />
-                <aside className="lg:pt-2">
-                  <h3 className="type-h2 text-[17px] text-ink">{t.headline}</h3>
-                  <p className="mt-3 text-[13px] leading-relaxed text-ink-3">{t.blurb}</p>
-                </aside>
-              </div>
-            </TabsContent>
-          ))}
-        </Tabs>
+            {DEMO_TABS.map((t) => (
+              <TabsContent key={t.id} value={t.id}>
+                <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_280px]">
+                  <Session tab={t} playing={playing} skip={skip} />
+                  <aside className="lg:pt-2">
+                    <h3 className="type-h2 text-[17px] text-ink">{t.headline}</h3>
+                    <p className="mt-3 text-[13px] leading-relaxed text-ink-3">{t.blurb}</p>
+                  </aside>
+                </div>
+              </TabsContent>
+            ))}
+          </Tabs>
+        </div>
 
         <div className="mt-10 grid gap-6 border-t border-grat pt-8 md:grid-cols-3">
           {PROPERTIES.map((p) => (
