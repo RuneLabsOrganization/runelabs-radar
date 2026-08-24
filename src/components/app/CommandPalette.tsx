@@ -22,7 +22,7 @@ const QUICK = [
   { label: 'Best Tools', href: paths.tools, group: 'Decide' },
   { label: 'Stacks', href: paths.stacks, group: 'Decide' },
   { label: 'Agents', href: paths.agents, group: 'Decide' },
-  { label: 'Metrics', href: paths.metrics, group: 'Decide' },
+  { label: 'Pulse', href: paths.metrics, group: 'Decide' },
   { label: 'Opportunities', href: paths.opportunities, group: 'Build' },
   { label: 'Batches', href: paths.batches, group: 'Build' },
   { label: 'Debates', href: paths.debates, group: 'Build' },

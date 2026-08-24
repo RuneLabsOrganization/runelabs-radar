@@ -6,14 +6,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 
 export const metadata = {
   title: 'Decide',
-  description: 'Best tools, stacks, agent playbooks, and metrics — what to use right now.',
+  description: 'Best tools, stacks, agent playbooks, and market pulse — what to use right now.',
 };
 
 const LINKS = [
   { href: paths.tools, title: 'Best Tools', desc: 'Cost-benefit board per domain and task.', icon: LayoutGrid },
   { href: paths.stacks, title: 'Stacks', desc: 'Venture ship-it playbooks by layer.', icon: Layers },
   { href: paths.agents, title: 'Agents', desc: 'IDE + harness + model pairings and subscription plans.', icon: Bot },
-  { href: paths.metrics, title: 'Metrics', desc: 'Explore first-party price and capability series.', icon: BarChart3 },
+  { href: paths.metrics, title: 'Pulse', desc: 'What’s moving — launch heat, rising adoption, plan prices.', icon: BarChart3 },
 ] as const;
 
 export default function DecidePage() {

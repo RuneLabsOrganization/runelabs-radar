@@ -1,9 +1,8 @@
-import { and, desc, eq, gte, notLike, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, sql } from 'drizzle-orm';
 import { getDb } from '../db';
 import {
   boardHistory,
   launches,
-  metricPoints,
   opportunities,
   patterns,
   reports,
@@ -13,6 +12,7 @@ import { getIdentity } from '../identity';
 import { chatJSON, drainLlmUsageStats, LlmError } from '../llm/minimax';
 import { utcDay } from '../metrics';
 import { promptLine, stripCjkDeep } from '../prompt-hygiene';
+import { marketMovers } from '../pulse';
 
 /** YYYY-MM-DD (UTC) of the Sunday opening the current week (today when it IS Sunday). */
 export function weekSunday(now: Date = new Date()): string {
@@ -28,61 +28,6 @@ function upsertReport(date: string, markdown: string): void {
     .values({ date, markdown, createdAt: now })
     .onConflictDoUpdate({ target: reports.date, set: { markdown, createdAt: now } })
     .run();
-}
-
-interface Mover {
-  source: string;
-  entity: string;
-  metric: string;
-  from: number;
-  to: number;
-  pct: number;
-}
-
-/**
- * Biggest first-party series moves over the last 7 days: for each
- * (source, entity, metric), latest in-window value vs the last baseline
- * point before the window (earliest in-window when no baseline exists).
- * AA-derived series are never eligible (same `notLike source 'aa%'` rule as
- * the public dump) — republication terms apply to the report too.
- */
-function marketMovers(sinceDay: string, limit = 8): Mover[] {
-  const db = getDb();
-  // 14d lookback so each series has a pre-window baseline point
-  const rows = db
-    .select({
-      source: metricPoints.source,
-      entity: metricPoints.entity,
-      metric: metricPoints.metric,
-      value: metricPoints.value,
-      date: metricPoints.date,
-    })
-    .from(metricPoints)
-    .where(and(notLike(metricPoints.source, 'aa%'), gte(metricPoints.date, utcDay(new Date(Date.now() - 14 * 864e5)))))
-    .orderBy(metricPoints.date)
-    .all();
-
-  const series = new Map<string, { source: string; entity: string; metric: string; pts: { date: string; value: number }[] }>();
-  for (const r of rows) {
-    const key = `${r.source}${r.entity}${r.metric}`;
-    const s = series.get(key) ?? { source: r.source, entity: r.entity, metric: r.metric, pts: [] };
-    s.pts.push({ date: r.date, value: r.value });
-    series.set(key, s);
-  }
-
-  const movers: Mover[] = [];
-  for (const s of series.values()) {
-    const inWindow = s.pts.filter((p) => p.date >= sinceDay);
-    if (inWindow.length === 0) continue;
-    const before = s.pts.filter((p) => p.date < sinceDay);
-    const base = before.length > 0 ? before[before.length - 1]! : inWindow[0]!;
-    const last = inWindow[inWindow.length - 1]!;
-    if (base.value === 0 || base.date === last.date) continue;
-    const pct = ((last.value - base.value) / Math.abs(base.value)) * 100;
-    if (Math.abs(pct) < 10) continue; // noise floor — movers only
-    movers.push({ source: s.source, entity: s.entity, metric: s.metric, from: base.value, to: last.value, pct });
-  }
-  return movers.sort((a, b) => Math.abs(b.pct) - Math.abs(a.pct)).slice(0, limit);
 }
 
 /** Static issue when the week had no material input at all — no LLM call. */

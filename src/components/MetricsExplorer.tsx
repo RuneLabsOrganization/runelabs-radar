@@ -3,6 +3,7 @@
 import * as React from 'react';
 import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { paths } from '@/lib/urls';
 
 export interface MetricKey {
   source: string;
@@ -19,7 +20,14 @@ export interface ExplorerSeries {
   points: { date: string; value: number }[];
 }
 
-export const MAX_SERIES = 6;
+export interface ExplorerPreset {
+  id: string;
+  label: string;
+  keys: { source: string; entity: string; metric: string }[];
+}
+
+/** Allow launch-heat (8 categories) and a few overlays. */
+export const MAX_SERIES = 8;
 export const DAY_OPTIONS = [30, 90, 180, 365];
 
 /**
@@ -37,21 +45,22 @@ function csvCell(v: string): string {
 }
 
 /**
- * Picker bar for /metrics: source → entity → metric selects, active-series
- * chips, range select, CSV export of the visible series, and the full daily
- * dataset download. Selection lives in the URL (`?s=…&s=…&days=…`) so views
- * are shareable and the chart itself stays a server-rendered SVG.
+ * Picker bar for Pulse explorer: source → entity → metric selects, preset
+ * chips, active-series chips, range select, CSV export. Selection lives in
+ * the URL (`?s=…&s=…&days=…`) so views are shareable.
  */
 export default function MetricsExplorer({
   keys,
   active,
   days,
   series,
+  presets = [],
 }: {
   keys: MetricKey[];
   active: { source: string; entity: string; metric: string }[];
   days: number;
   series: ExplorerSeries[];
+  presets?: ExplorerPreset[];
 }) {
   const router = useRouter();
   const [source, setSource] = useState('');
@@ -70,10 +79,10 @@ export default function MetricsExplorer({
 
   function navigate(next: { source: string; entity: string; metric: string }[], nextDays: number) {
     const p = new URLSearchParams();
-    for (const k of next) p.append('s', encodeKey(k));
+    for (const k of next.slice(0, MAX_SERIES)) p.append('s', encodeKey(k));
     if (nextDays !== 90) p.set('days', String(nextDays));
     const q = p.toString();
-    router.push(q ? `/metrics?${q}` : '/metrics');
+    router.push(q ? `${paths.metrics}?${q}` : paths.metrics);
   }
 
   function add() {
@@ -103,7 +112,21 @@ export default function MetricsExplorer({
   const canAdd = !!source && !!entity && !!metric && active.length < MAX_SERIES;
 
   return (
-    <div className="mt-5">
+    <div className="mt-4">
+      {presets.length > 0 && (
+        <div className="mono mb-2 flex flex-wrap gap-1.5 text-[11px]">
+          {presets.map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              className="rounded-[3px] border border-[var(--grat)] bg-[var(--scope-1)] px-2 py-0.5 text-ink-3 transition-colors hover:border-[var(--phosphor)] hover:text-ink-2"
+              onClick={() => navigate(p.keys, days)}
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
+      )}
       <div className="card flex flex-wrap items-center gap-2">
         <select
           className="input mono"
