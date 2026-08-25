@@ -204,6 +204,13 @@
       "when": 1787678185060,
       "tag": "0028_certain_scarlet_spider",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "6",
+      "when": 1787696149707,
+      "tag": "0029_acoustic_screwball",
+      "breakpoints": true
     }
   ]
 }

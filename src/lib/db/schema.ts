@@ -672,3 +672,25 @@ export const subscription = sqliteTable('subscription', {
   trialStart: integer('trial_start', { mode: 'timestamp' }),
   trialEnd: integer('trial_end', { mode: 'timestamp' }),
 });
+
+/**
+ * Durable replacement for the in-memory rate/quota Maps in mcp/server.ts and
+ * the per-tool daily caps. Keyed by (bucket, feature, windowStart) so a fixed
+ * window is a single upsert-and-read. Survives deploys; correct across replicas.
+ */
+export const usageCounters = sqliteTable(
+  'usage_counters',
+  {
+    // 'user:123' or 'ip:1.2.3.4' — the AuthContext.rateKey, verbatim
+    bucket: text('bucket').notNull(),
+    // 'rate' | 'scout' | 'debate' | 'lead_refine' | 'forge' | ...
+    feature: text('feature').notNull(),
+    // start of the fixed window, epoch ms — hour/day granularity
+    windowStart: integer('window_start', { mode: 'timestamp' }).notNull(),
+    count: integer('count').notNull().default(0),
+  },
+  (t) => [
+    primaryKey({ columns: [t.bucket, t.feature, t.windowStart] }),
+    index('usage_counters_window').on(t.windowStart),
+  ],
+);
