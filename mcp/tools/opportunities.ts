@@ -226,22 +226,25 @@ export function registerOpportunityTools(server: McpServer, auth: AuthContext): 
         });
       const ranked = rankRows(rows, auth.rateKey, fitFor);
       const offset = cursor ?? 0;
-      const page = ranked.slice(offset);
 
       // sector-quota walk over the salted ranking: at most SECTOR_QUOTA per
-      // sector, filling limit-1 slots; overflow is dropped, not deferred
+      // sector, filling limit-1 slots. Stop once the page is full — do not
+      // scan the rest of `ranked` just to populate overflow.
       const picked: OppRow[] = [];
       const rest: OppRow[] = [];
       const buckets = new Map<string | null, number>();
       const normalSlots = Math.max(limit - 1, 0);
-      for (const row of page) {
+      let i = offset;
+      while (i < ranked.length && picked.length < normalSlots) {
+        const row = ranked[i]!;
         const sec = row.sector ?? null;
-        if (picked.length < normalSlots && (buckets.get(sec) ?? 0) < SECTOR_QUOTA) {
+        if ((buckets.get(sec) ?? 0) < SECTOR_QUOTA) {
           picked.push(row);
           buckets.set(sec, (buckets.get(sec) ?? 0) + 1);
         } else {
           rest.push(row);
         }
+        i++;
       }
 
       // exploration slot: highest-ranked overflow item from a sector not yet
@@ -249,14 +252,32 @@ export function registerOpportunityTools(server: McpServer, auth: AuthContext): 
       // every sector is already present (or nothing overflows), the last
       // slot just follows normal quota ranking.
       const present = new Set(picked.map((o) => o.sector ?? null));
-      const last =
-        rest.find((o) => !present.has(o.sector ?? null)) ??
-        rest.find((o) => (buckets.get(o.sector ?? null) ?? 0) < SECTOR_QUOTA);
-      if (last && picked.length < limit) picked.push(last);
+      if (picked.length < limit) {
+        const last =
+          rest.find((o) => !present.has(o.sector ?? null)) ??
+          rest.find((o) => (buckets.get(o.sector ?? null) ?? 0) < SECTOR_QUOTA);
+        if (last) {
+          picked.push(last);
+        } else {
+          while (i < ranked.length && picked.length < limit) {
+            const row = ranked[i]!;
+            const sec = row.sector ?? null;
+            if (!present.has(sec) || (buckets.get(sec) ?? 0) < SECTOR_QUOTA) {
+              picked.push(row);
+              if ((buckets.get(sec) ?? 0) < SECTOR_QUOTA) {
+                buckets.set(sec, (buckets.get(sec) ?? 0) + 1);
+              }
+              i++;
+              break;
+            }
+            rest.push(row);
+            i++;
+          }
+        }
+      }
 
-      // Only advertise more when there is genuinely more to serve.
-      const consumed = offset + picked.length;
-      const nextCursor = consumed < ranked.length ? consumed : null;
+      // One past the farthest ranked index examined to fill this page.
+      const nextCursor = i < ranked.length ? i : null;
 
       const top = picked[0];
       const filters = [sector && `sector=${sector}`, verdict && `verdict=${verdict}`, min_flip && `flip≥${min_flip}`]
@@ -330,6 +351,7 @@ export function registerOpportunityTools(server: McpServer, auth: AuthContext): 
             .select()
             .from(opportunities)
             .where(and(eq(opportunities.slug, opportunity), visibleTo(auth.userId)))
+            .orderBy(desc(opportunities.ownerUserId))
             .get();
       if (!row) {
         const suggestions = closestSlugs(opportunity, auth.userId);

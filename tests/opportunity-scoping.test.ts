@@ -8,13 +8,20 @@ import { opportunities } from '@/lib/db/schema';
 import { seedUser, useTestDb } from './helpers/db';
 import type { Db } from '@/lib/db';
 
-function seedOpp(db: Db, slug: string, ownerUserId: number | null, flip = 60, sector = 'devtools') {
+function seedOpp(
+  db: Db,
+  slug: string,
+  ownerUserId: number | null,
+  flip = 60,
+  sector = 'devtools',
+  title?: string,
+) {
   const now = new Date();
   db.insert(opportunities)
     .values({
       slug,
       ownerUserId,
-      title: `Title for ${slug}`,
+      title: title ?? `Title for ${slug}`,
       thesis: 'A sufficiently long thesis to satisfy any downstream validation rules.',
       sector,
       status: 'active',
@@ -108,5 +115,65 @@ describe('opportunity read scoping', () => {
       .map((o) => o.slug)
       .filter((s) => page1.opportunities.some((p) => p.slug === s));
     expect(overlap).toEqual([]);
+  });
+
+  it('paging does not repeat the exploration-slot item', async () => {
+    // 9d/9e shape: two sectors fill quota, a third sector is the exploration pick
+    // from later in the ranking. next_cursor must skip past that pick.
+    // beforeEach already seeded public/alice/bob rows, so page1 order is not the
+    // pure [a1,b1,a2,b2,c1] fixture — keep c1-as-exploration and no-repeat.
+    seedOpp(db, 'a1', null, 90, 'devtools');
+    seedOpp(db, 'a2', null, 80, 'devtools');
+    seedOpp(db, 'a3', null, 70, 'devtools');
+    seedOpp(db, 'b1', null, 85, 'ai-coding');
+    seedOpp(db, 'b2', null, 75, 'ai-coding');
+    seedOpp(db, 'b3', null, 65, 'ai-coding');
+    seedOpp(db, 'c1', null, 60, 'ai-media');
+    // Tail after the exploration pick so next_cursor is non-null (c1 is
+    // otherwise last in rank, and a correct cursor would be null).
+    seedOpp(db, 'd1', null, 50, 'saas-tools');
+    seedOpp(db, 'd2', null, 45, 'saas-tools');
+    seedOpp(db, 'd3', null, 40, 'saas-tools');
+    const client = await wire(1);
+    const first = await client.callTool({ name: 'get_opportunities', arguments: { limit: 5 } });
+    const page1 = first.structuredContent as { opportunities: { slug: string }[]; next_cursor: number | null };
+    expect(page1.opportunities).toHaveLength(5);
+    expect(page1.opportunities.map((o) => o.slug)).toContain('c1');
+    expect(page1.next_cursor).not.toBeNull();
+
+    const second = await client.callTool({
+      name: 'get_opportunities',
+      arguments: { limit: 5, cursor: page1.next_cursor },
+    });
+    const page2 = second.structuredContent as { opportunities: { slug: string }[] };
+    expect(page2.opportunities.map((o) => o.slug)).not.toContain('c1');
+    for (const slug of page1.opportunities.map((o) => o.slug)) {
+      expect(page2.opportunities.map((o) => o.slug)).not.toContain(slug);
+    }
+  });
+
+  it('prefers the caller private dossier when a public row shares the slug', async () => {
+    seedOpp(db, 'shared-slug', null, 70, 'devtools', 'Public shared title');
+    seedOpp(db, 'shared-slug', 1, 70, 'devtools', 'Alice private shared title');
+
+    const alice = await wire(1);
+    const owned = await alice.callTool({
+      name: 'get_opportunity',
+      arguments: { opportunity: 'shared-slug' },
+    });
+    expect((owned.structuredContent as { found: boolean }).found).toBe(true);
+    expect(
+      (owned.structuredContent as { opportunity: { title: string } }).opportunity.title,
+    ).toBe('Alice private shared title');
+
+    const anon = await wire(null);
+    const pub = await anon.callTool({
+      name: 'get_opportunity',
+      arguments: { opportunity: 'shared-slug' },
+    });
+    expect((pub.structuredContent as { found: boolean }).found).toBe(true);
+    expect(
+      (pub.structuredContent as { opportunity: { title: string } }).opportunity.title,
+    ).toBe('Public shared title');
   });
 });
