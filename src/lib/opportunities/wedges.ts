@@ -6,7 +6,7 @@
  * Rows live in the database (admin-editable); DEFAULT_WEDGES below is the
  * shipped starting set, installed idempotently by seedWedges().
  */
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { getDb } from '../db';
 import { wedgeValues } from '../db/schema';
 
@@ -83,7 +83,7 @@ export function seedWedges(): number {
     const prior = db
       .select({ id: wedgeValues.id })
       .from(wedgeValues)
-      .where(eq(wedgeValues.slug, w.slug))
+      .where(and(eq(wedgeValues.axis, w.axis), eq(wedgeValues.slug, w.slug)))
       .get();
     if (prior) continue;
     db.insert(wedgeValues)
