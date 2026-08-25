@@ -7,22 +7,22 @@ import { normalizeSlug, proposeOpportunities, type ScoutConstraints } from '../.
 import { persistScoutDrafts } from '../../src/lib/opportunities/persist-scout';
 import { getProfile } from '../../src/lib/personalization';
 import { can } from '../../src/lib/entitlements';
+import { bump, peek } from '../../src/lib/usage/counters';
 import { envelopeSchema, respond, withUserEconomy, type NextAction } from '../lib/payload';
 import type { AuthContext } from '../lib/auth';
 
-// --- per-caller daily cap (§9c): every scout run is a fresh LLM call, so
-// every call counts — recorded at entry, same pattern as debate_idea ---
+// Per-caller daily cap for anonymous callers: every scout run is a fresh LLM
+// call, so every call counts. Signed-in callers go through entitlements
+// instead (can(user, 'scout')). Persisted, so a deploy no longer grants
+// everyone a fresh allowance.
 const SCOUT_DAILY_CAP = Number(process.env.MCP_SCOUT_DAILY_CAP ?? 10);
-const scoutUsage = new Map<string, { date: string; count: number }>();
+
 function scoutCapExceeded(key: string): boolean {
-  const today = new Date().toISOString().slice(0, 10);
-  const rec = scoutUsage.get(key);
-  return (rec?.date === today ? rec.count : 0) >= SCOUT_DAILY_CAP;
+  return peek(key, 'scout', 'day') >= SCOUT_DAILY_CAP;
 }
+
 function recordScout(key: string): void {
-  const today = new Date().toISOString().slice(0, 10);
-  const rec = scoutUsage.get(key);
-  scoutUsage.set(key, { date: today, count: (rec?.date === today ? rec.count : 0) + 1 });
+  bump(key, 'scout', 'day');
 }
 
 const kpiSchema = z.object({

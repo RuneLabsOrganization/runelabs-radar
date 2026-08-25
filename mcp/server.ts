@@ -21,29 +21,12 @@ import { getIdentity } from '../src/lib/identity';
 import { urls } from '../src/lib/urls';
 import { authenticate, issuerUrl, mcpPublicUrl, wwwAuthenticate } from './lib/auth';
 import { buildServer } from './build';
+import { rateLimited, rateLimitPerHour } from './lib/rate';
+import { gcCounters } from '../src/lib/usage/counters';
 
 loadDotEnv();
 
 const PORT = Number(process.env.MCP_PORT ?? 3122);
-const RATE_LIMIT_PER_HOUR = Number(process.env.MCP_RATE_LIMIT ?? 300);
-
-// --- rate limiting: fixed window per bucket (token or IP), in-memory ---
-const buckets = new Map<string, { count: number; resetAt: number }>();
-function rateLimited(key: string): boolean {
-  const now = Date.now();
-  const b = buckets.get(key);
-  if (!b || b.resetAt < now) {
-    buckets.set(key, { count: 1, resetAt: now + 36e5 });
-    return false;
-  }
-  b.count += 1;
-  return b.count > RATE_LIMIT_PER_HOUR;
-}
-// GC the bucket map so a flood of unique keys can't grow it forever
-setInterval(() => {
-  const now = Date.now();
-  for (const [key, b] of buckets) if (b.resetAt < now) buckets.delete(key);
-}, 600e3).unref();
 
 const httpServer = createServer(async (req: IncomingMessage, res: ServerResponse) => {
   const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
@@ -131,7 +114,7 @@ const httpServer = createServer(async (req: IncomingMessage, res: ServerResponse
 
   if (rateLimited(auth.rateKey)) {
     res.writeHead(429, { 'content-type': 'application/json' });
-    res.end(JSON.stringify({ error: 'rate limit exceeded', limit_per_hour: RATE_LIMIT_PER_HOUR }));
+    res.end(JSON.stringify({ error: 'rate limit exceeded', limit_per_hour: rateLimitPerHour() }));
     return;
   }
 
@@ -145,6 +128,15 @@ const httpServer = createServer(async (req: IncomingMessage, res: ServerResponse
   await server.connect(transport);
   await transport.handleRequest(req, res);
 });
+
+// prune expired counter rows hourly; unref so it never holds the process open
+setInterval(() => {
+  try {
+    gcCounters();
+  } catch {
+    /* best-effort — a failed GC must never take the server down */
+  }
+}, 36e5).unref();
 
 httpServer.listen(PORT, () => {
   console.log(
