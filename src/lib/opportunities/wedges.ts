@@ -100,3 +100,76 @@ export function seedWedges(): number {
   }
   return inserted;
 }
+
+/** Active taxonomy values grouped by axis, in stable id order. */
+export type WedgeSpace = Record<WedgeAxis, WedgeValue[]>;
+
+function parseTags(raw: string): string[] {
+  try {
+    const v = JSON.parse(raw);
+    return Array.isArray(v) ? v.filter((t): t is string => typeof t === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Load the active taxonomy, grouped by axis. */
+export function loadWedges(): WedgeSpace {
+  const rows = getDb()
+    .select()
+    .from(wedgeValues)
+    .where(eq(wedgeValues.active, true))
+    .orderBy(wedgeValues.id)
+    .all();
+  const space = { business_model: [], delivery_form: [], buyer: [], moat_play: [] } as WedgeSpace;
+  for (const r of rows) {
+    if (!(WEDGE_AXES as readonly string[]).includes(r.axis)) continue;
+    space[r.axis as WedgeAxis].push({
+      id: r.id,
+      axis: r.axis as WedgeAxis,
+      slug: r.slug,
+      label: r.label,
+      requiresTags: parseTags(r.requiresTags),
+      excludesTags: parseTags(r.excludesTags),
+      weight: r.weight,
+    });
+  }
+  return space;
+}
+
+/** Total number of distinct wedges — the size of the axis cross-product. */
+export function wedgeSpaceSize(space: WedgeSpace): number {
+  return WEDGE_AXES.reduce((n, axis) => n * space[axis].length, 1);
+}
+
+/**
+ * Mixed-radix decode: index → exactly one wedge. Bijective over
+ * [0, wedgeSpaceSize), which is what lets composition enumerate the space by
+ * integer without materialising it.
+ */
+export function wedgeAt(space: WedgeSpace, index: number): Wedge {
+  let rest = index;
+  const out = {} as Wedge;
+  for (const axis of WEDGE_AXES) {
+    const values = space[axis];
+    out[axis] = values[rest % values.length];
+    rest = Math.floor(rest / values.length);
+  }
+  return out;
+}
+
+/**
+ * Does this wedge value make sense for a primitive carrying these tags?
+ * All requiresTags must be present; any excludesTag disqualifies. Excludes are
+ * checked first so a contradictory rule fails closed.
+ */
+export function isCompatible(value: WedgeValue, primitiveTags: string[]): boolean {
+  const tags = new Set(primitiveTags);
+  if (value.excludesTags.some((t) => tags.has(t))) return false;
+  return value.requiresTags.every((t) => tags.has(t));
+}
+
+/** True when every axis of the wedge is compatible with the primitive. */
+export function wedgeCompatible(wedge: Wedge, primitiveTags: string[]): boolean {
+  return WEDGE_AXES.every((axis) => isCompatible(wedge[axis], primitiveTags));
+}
