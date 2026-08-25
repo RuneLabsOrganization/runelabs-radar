@@ -712,3 +712,35 @@ export const usageCounters = sqliteTable(
     index('usage_counters_window').on(t.windowStart),
   ],
 );
+
+/**
+ * The wedge taxonomy: the four axes Rung-0 composition crosses against
+ * intelligence primitives. Admin-editable rows rather than a hardcoded module
+ * so the combination space can grow without a deploy — the same reasoning that
+ * makes `sources` a table.
+ *
+ * requiresTags / excludesTags are JSON string arrays matched against a
+ * primitive's derived tags; they are what stop the cross-product from emitting
+ * incoherent pairings ("compliance certification moat" on a hobbyist toy).
+ */
+export const wedgeValues = sqliteTable(
+  'wedge_values',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    // 'business_model' | 'delivery_form' | 'buyer' | 'moat_play'
+    axis: text('axis').notNull(),
+    slug: text('slug').notNull(),
+    label: text('label').notNull(),
+    // JSON string[] — primitive must carry ALL of these tags
+    requiresTags: text('requires_tags').notNull().default('[]'),
+    // JSON string[] — primitive must carry NONE of these tags
+    excludesTags: text('excludes_tags').notNull().default('[]'),
+    // 0..20 nudge into the heuristic score; higher = generally stronger wedge
+    weight: integer('weight').notNull().default(10),
+    active: integer('active', { mode: 'boolean' }).notNull().default(true),
+  },
+  (t) => [
+    uniqueIndex('wedge_values_axis_slug').on(t.axis, t.slug),
+    index('wedge_values_axis_active').on(t.axis, t.active),
+  ],
+);
