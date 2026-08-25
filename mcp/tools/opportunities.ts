@@ -4,7 +4,19 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { getDb } from '../../src/lib/db';
 import { opportunities } from '../../src/lib/db/schema';
 import { urls } from '../../src/lib/urls';
-import { envelopeSchema, iso, parseJsonColumn, respond, type NextAction } from '../lib/payload';
+import { can } from '../../src/lib/entitlements';
+import { fitBonus, getProfile, getSession, setSession } from '../../src/lib/personalization';
+import { estimateTokens } from '../../src/lib/mcp-economy';
+import {
+  detailSchema,
+  envelopeSchema,
+  iso,
+  parseJsonColumn,
+  respond,
+  withUserEconomy,
+  type DetailLevel,
+  type NextAction,
+} from '../lib/payload';
 import { marketVisible, type AuthContext } from '../lib/auth';
 
 type OppRow = typeof opportunities.$inferSelect;
@@ -25,6 +37,41 @@ function summary(o: OppRow) {
     has_plan: o.plan !== null,
     first_seen: o.firstSeenAt.toISOString(),
     url: urls.opportunity(o.slug),
+  };
+}
+
+function dossierCompact(row: OppRow, brief: Record<string, unknown> | null) {
+  const review = parseJsonColumn<Record<string, unknown> | null>(row.review, null);
+  return {
+    slug: row.slug,
+    title: row.title,
+    thesis: row.thesis,
+    sector: row.sector ?? null,
+    window: row.window ?? null,
+    flip_score: row.flipScore,
+    hold_score: row.holdScore,
+    exploring_count: row.planRuns,
+    verdict: row.verdict,
+    confidence: row.confidence,
+    sub_scores: parseJsonColumn<Record<string, number>>(row.scores, {}),
+    kpis: parseJsonColumn<Record<string, unknown> | null>(row.kpis, null),
+    kill_risks: Array.isArray(review?.killRisks) ? (review!.killRisks as string[]) : [],
+    has_plan: row.plan !== null,
+    brief_icp: typeof brief?.icp === 'string' ? brief.icp : null,
+    url: urls.opportunity(row.slug),
+  };
+}
+
+function dossierSummary(row: OppRow) {
+  return {
+    slug: row.slug,
+    title: row.title,
+    flip_score: row.flipScore,
+    hold_score: row.holdScore,
+    verdict: row.verdict,
+    confidence: row.confidence,
+    has_plan: row.plan !== null,
+    url: urls.opportunity(row.slug),
   };
 }
 
@@ -60,8 +107,8 @@ const SECTOR_QUOTA = 2;
 const CROWDED_THRESHOLD = 3;
 const CROWDED_PENALTY = 10;
 
-function effectiveScore(o: OppRow): number {
-  return o.flipScore - (o.planRuns >= CROWDED_THRESHOLD ? CROWDED_PENALTY : 0);
+function effectiveScore(o: OppRow, fit: number): number {
+  return o.flipScore - (o.planRuns >= CROWDED_THRESHOLD ? CROWDED_PENALTY : 0) + fit;
 }
 
 /**
@@ -80,10 +127,14 @@ function saltHash(rateKey: string, slug: string): number {
 }
 
 /** effectiveScore desc, salt-hash asc within equal scores — a total order. */
-function rankRows(rows: OppRow[], rateKey: string): OppRow[] {
+function rankRows(rows: OppRow[], rateKey: string, fitFor: (o: OppRow) => number): OppRow[] {
   return rows
     .slice()
-    .sort((a, b) => effectiveScore(b) - effectiveScore(a) || saltHash(rateKey, a.slug) - saltHash(rateKey, b.slug));
+    .sort(
+      (a, b) =>
+        effectiveScore(b, fitFor(b)) - effectiveScore(a, fitFor(a)) ||
+        saltHash(rateKey, a.slug) - saltHash(rateKey, b.slug),
+    );
 }
 
 export function registerOpportunityTools(server: McpServer, auth: AuthContext): void {
@@ -135,7 +186,18 @@ export function registerOpportunityTools(server: McpServer, auth: AuthContext): 
         .where(and(...conds))
         .orderBy(desc(opportunities.flipScore))
         .all();
-      const ranked = rankRows(rows, auth.rateKey);
+      const personalize =
+        auth.userId != null && can({ id: auth.userId }, 'personalize').ok
+          ? { profile: getProfile(auth.userId), session: getSession(auth.userId) }
+          : { profile: null, session: auth.userId != null ? getSession(auth.userId) : null };
+      const fitFor = (o: OppRow) =>
+        fitBonus(personalize.profile, personalize.session, {
+          sector: o.sector,
+          thesis: o.thesis,
+          title: o.title,
+          slug: o.slug,
+        });
+      const ranked = rankRows(rows, auth.rateKey, fitFor);
 
       // sector-quota walk over the salted ranking: at most SECTOR_QUOTA per
       // sector, filling limit-1 slots; overflow is dropped, not deferred
@@ -174,14 +236,15 @@ export function registerOpportunityTools(server: McpServer, auth: AuthContext): 
             picked.length === 0
               ? `No active opportunities${filters ? ` matching ${filters}` : ''}.`
               : `${picked.length} active opportunities${filters ? ` (${filters})` : ''} — top: "${top!.title}" (flip ${top!.flipScore}, ${top!.verdict}).`,
+          economy: withUserEconomy(auth.userId, 'read'),
           next:
             picked.length === 0
               ? [{ tool: 'get_pain_points', arguments: { limit: 10 }, reason: 'raw unmet needs behind future openings' }]
               : [
                   {
                     tool: 'get_opportunity',
-                    arguments: { opportunity: top!.slug },
-                    reason: 'full dossier on the top opening',
+                    arguments: { opportunity: top!.slug, detail: 'compact' },
+                    reason: 'compact dossier on the top opening',
                   },
                   {
                     tool: 'generate_plan',
@@ -198,43 +261,21 @@ export function registerOpportunityTools(server: McpServer, auth: AuthContext): 
     'get_opportunity',
     {
       description:
-        'The full dossier for one detected opportunity: sub-scores, hard KPIs (costs, break-even), evidence, the adversarial critic\'s review, and the cached launch brief. Identify by slug or id.',
+        'Dossier for one detected opportunity. Default detail=compact (scores, KPIs, kill risks). Pass detail=full for evidence, critic review, and launch brief.',
       inputSchema: {
         opportunity: z.string().describe('opportunity slug (e.g. "bulk-bg-removal-api") or numeric id'),
+        detail: detailSchema,
       },
       outputSchema: {
         ...envelopeSchema,
         found: z.boolean(),
+        detail: z.enum(['summary', 'compact', 'full']).optional(),
         suggestions: z.array(z.string()).optional(),
-        opportunity: z
-          .object({
-            slug: z.string(),
-            title: z.string(),
-            thesis: z.string(),
-            sector: z.string().nullable(),
-            status: z.string(),
-            window: z.string().nullable(),
-            window_months: z.number().nullable(),
-            flip_score: z.number(),
-            hold_score: z.number(),
-            exploring_count: z.number(),
-            verdict: z.string(),
-            confidence: z.number(),
-            sub_scores: z.record(z.string(), z.number()),
-            kpis: z.record(z.string(), z.unknown()).nullable(),
-            evidence: z.array(z.object({ type: z.string(), label: z.string() })),
-            review: z.record(z.string(), z.unknown()).nullable(),
-            brief: z.record(z.string(), z.unknown()).nullable(),
-            has_plan: z.boolean(),
-            first_seen: z.string(),
-            last_seen: z.string(),
-            reviewed_at: z.string().nullable(),
-            url: z.string(),
-          })
-          .optional(),
+        opportunity: z.record(z.string(), z.unknown()).optional(),
       },
     },
-    async ({ opportunity }) => {
+    async ({ opportunity, detail }) => {
+      const level = (detail ?? 'compact') as DetailLevel;
       const db = getDb();
       const asId = /^\d+$/.test(opportunity) ? Number(opportunity) : null;
       const row = asId
@@ -249,54 +290,67 @@ export function registerOpportunityTools(server: McpServer, auth: AuthContext): 
           { found: false, suggestions },
           {
             summary: `No opportunity "${opportunity}"${suggestions.length ? ` — closest: ${suggestions.join(', ')}` : ''}.`,
+            economy: withUserEconomy(auth.userId, 'read'),
             next,
           },
         );
       }
+      if (auth.userId != null) {
+        try {
+          setSession(auth.userId, { lastOpportunity: row.slug });
+        } catch {
+          /* best-effort */
+        }
+      }
       const brief = parseJsonColumn<Record<string, unknown> | null>(row.brief, null);
       if (brief && !marketVisible(auth)) {
-        // AA redistribution terms: strip the model-price citations from unit
-        // economics for restricted callers (same gate as get_market_models)
         const ue = brief.unitEconomics;
         if (ue && typeof ue === 'object') delete (ue as Record<string, unknown>).assumptions;
       }
+      const fullOpp = {
+        slug: row.slug,
+        title: row.title,
+        thesis: row.thesis,
+        sector: row.sector ?? null,
+        status: row.status,
+        window: row.window ?? null,
+        window_months: row.windowMonths ?? null,
+        flip_score: row.flipScore,
+        hold_score: row.holdScore,
+        exploring_count: row.planRuns,
+        verdict: row.verdict,
+        confidence: row.confidence,
+        sub_scores: parseJsonColumn<Record<string, number>>(row.scores, {}),
+        kpis: parseJsonColumn<Record<string, unknown> | null>(row.kpis, null),
+        evidence: parseJsonColumn<{ type: string; label: string }[]>(row.evidence, [])
+          .filter((e) => e && typeof e.label === 'string')
+          .map((e) => ({ type: String(e.type ?? 'note'), label: e.label })),
+        review: parseJsonColumn<Record<string, unknown> | null>(row.review, null),
+        brief,
+        has_plan: row.plan !== null,
+        first_seen: row.firstSeenAt.toISOString(),
+        last_seen: row.lastSeenAt.toISOString(),
+        reviewed_at: iso(row.reviewedAt),
+        url: urls.opportunity(row.slug),
+      };
+      const payload =
+        level === 'summary'
+          ? dossierSummary(row)
+          : level === 'full'
+            ? fullOpp
+            : dossierCompact(row, brief);
       return respond(
-        {
-          found: true,
-          opportunity: {
-            slug: row.slug,
-            title: row.title,
-            thesis: row.thesis,
-            sector: row.sector ?? null,
-            status: row.status,
-            window: row.window ?? null,
-            window_months: row.windowMonths ?? null,
-            flip_score: row.flipScore,
-            hold_score: row.holdScore,
-            exploring_count: row.planRuns,
-            verdict: row.verdict,
-            confidence: row.confidence,
-            sub_scores: parseJsonColumn<Record<string, number>>(row.scores, {}),
-            kpis: parseJsonColumn<Record<string, unknown> | null>(row.kpis, null),
-            evidence: parseJsonColumn<{ type: string; label: string }[]>(row.evidence, [])
-              .filter((e) => e && typeof e.label === 'string')
-              .map((e) => ({ type: String(e.type ?? 'note'), label: e.label })),
-            review: parseJsonColumn<Record<string, unknown> | null>(row.review, null),
-            brief,
-            has_plan: row.plan !== null,
-            first_seen: row.firstSeenAt.toISOString(),
-            last_seen: row.lastSeenAt.toISOString(),
-            reviewed_at: iso(row.reviewedAt),
-            url: urls.opportunity(row.slug),
-          },
-        },
+        { found: true, detail: level, opportunity: payload },
         {
           summary: `"${row.title}" — flip ${row.flipScore}/hold ${row.holdScore}, verdict ${row.verdict}, confidence ${row.confidence}%.${row.plan !== null ? ' Plan already generated.' : ''}`,
+          economy: withUserEconomy(auth.userId, 'dossier', {
+            fullTokens: estimateTokens(JSON.stringify({ found: true, opportunity: fullOpp }, null, 2)),
+          }),
           next: [
             row.plan !== null
               ? {
                   tool: 'get_plan',
-                  arguments: { opportunity: row.slug },
+                  arguments: { opportunity: row.slug, format: 'markdown' },
                   reason: 'the cached execution plan',
                 }
               : {
@@ -304,11 +358,15 @@ export function registerOpportunityTools(server: McpServer, auth: AuthContext): 
                   arguments: { opportunity: row.slug },
                   reason: 'generate the executable full-lifecycle plan',
                 },
-            {
-              tool: 'get_pain_points',
-              arguments: { ...(row.sector ? { sector: row.sector } : {}), limit: 10 },
-              reason: 'the demand evidence underneath',
-            },
+            ...(level !== 'full'
+              ? [
+                  {
+                    tool: 'get_opportunity',
+                    arguments: { opportunity: row.slug, detail: 'full' },
+                    reason: 'full dossier with evidence and brief',
+                  },
+                ]
+              : []),
           ],
         },
       );

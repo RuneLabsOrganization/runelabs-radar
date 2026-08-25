@@ -13,6 +13,7 @@ export type Capability =
   | 'debate'
   | 'plan'
   | 'scout'
+  | 'ask'
   | 'batch_create'
   | 'batch_run'
   | 'personalize';
@@ -36,14 +37,36 @@ const TIER_CAPS: Record<
   {
     plansPerMonth: number;
     debatesPerMonth: number;
+    asksPerMonth: number; // -1 = unlimited; ask_radar synthesis
     workspaceBatches: number; // -1 = unlimited
     batchRuns: boolean;
     personalize: boolean;
   }
 > = {
-  free: { plansPerMonth: 3, debatesPerMonth: 3, workspaceBatches: 1, batchRuns: false, personalize: false },
-  builder: { plansPerMonth: 30, debatesPerMonth: -1, workspaceBatches: 10, batchRuns: true, personalize: true },
-  factory: { plansPerMonth: 100, debatesPerMonth: -1, workspaceBatches: -1, batchRuns: true, personalize: true },
+  free: {
+    plansPerMonth: 3,
+    debatesPerMonth: 3,
+    asksPerMonth: 10,
+    workspaceBatches: 1,
+    batchRuns: false,
+    personalize: false,
+  },
+  builder: {
+    plansPerMonth: 30,
+    debatesPerMonth: -1,
+    asksPerMonth: 100,
+    workspaceBatches: 10,
+    batchRuns: true,
+    personalize: true,
+  },
+  factory: {
+    plansPerMonth: 100,
+    debatesPerMonth: -1,
+    asksPerMonth: -1,
+    workspaceBatches: -1,
+    batchRuns: true,
+    personalize: true,
+  },
 };
 
 function tierFor(user: EntitlementUser | null | undefined): Tier {
@@ -158,6 +181,21 @@ export function can(user: EntitlementUser | null | undefined, capability: Capabi
       return used < quota
         ? { ok: true, tier, used, quota }
         : { ok: false, tier, used, quota, reason: 'Scout quota reached.', upgradeHint: 'Upgrade to Builder.' };
+    }
+
+    case 'ask': {
+      if (caps.asksPerMonth < 0) return { ok: true, tier };
+      const used = countFeature(user.id, 'ask', ent.resetDay, now);
+      return used < caps.asksPerMonth
+        ? { ok: true, tier, used, quota: caps.asksPerMonth }
+        : {
+            ok: false,
+            tier,
+            used,
+            quota: caps.asksPerMonth,
+            reason: `ask_radar quota reached (${used}/${caps.asksPerMonth}).`,
+            upgradeHint: tier === 'factory' ? 'Quota resets next cycle.' : 'Upgrade for more synthesis asks.',
+          };
     }
 
     default:

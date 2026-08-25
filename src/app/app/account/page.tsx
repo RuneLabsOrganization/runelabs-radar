@@ -1,7 +1,8 @@
 import Link from 'next/link';
 import { requireUser } from '@/lib/auth/user';
 import { entitlementFor, usageThisCycle, TIER_PRICES, quotaFor } from '@/lib/billing';
-import { can } from '@/lib/entitlements';
+import { can, TIER_CAPS } from '@/lib/entitlements';
+import { economyThisCycle, economyLifetimeSaved } from '@/lib/mcp-economy';
 import { paths } from '@/lib/urls';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -17,6 +18,10 @@ export default async function AccountPage() {
   const used = usageThisCycle(user.id);
   const planGate = can(user, 'plan');
   const debateGate = can(user, 'debate');
+  const askGate = can(user, 'ask');
+  const eco = economyThisCycle(user.id);
+  const lifetime = economyLifetimeSaved(user.id);
+  const caps = TIER_CAPS[ent.tier];
 
   return (
     <div className="mx-auto max-w-[720px]">
@@ -46,9 +51,15 @@ export default async function AccountPage() {
             <div>
               Debates:{' '}
               <span className="text-ink-2">
-                {debateGate.quota == null || debateGate.quota < 0
+                {debateGate.quota == null || caps.debatesPerMonth < 0
                   ? 'unlimited'
                   : `${debateGate.used ?? 0} / ${debateGate.quota}`}
+              </span>
+            </div>
+            <div>
+              ask_radar:{' '}
+              <span className="text-ink-2">
+                {caps.asksPerMonth < 0 ? 'unlimited' : `${askGate.used ?? 0} / ${askGate.quota ?? caps.asksPerMonth}`}
               </span>
             </div>
             <div>
@@ -64,6 +75,39 @@ export default async function AccountPage() {
               <Link href={paths.pricing}>Manage billing</Link>
             </Button>
           )}
+        </CardContent>
+      </Card>
+
+      <SectionHeader label="tokens Radar saved" />
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-[15px]">This cycle</CardTitle>
+          <CardDescription>
+            Conservative estimate of tokens kept out of your coding agent via compact MCP replies and server-side
+            research. Methodology on{' '}
+            <Link href={paths.pricing} className="text-phosphor hover:underline">
+              /pricing
+            </Link>
+            .
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-2 text-[12.5px] text-ink-3 sm:grid-cols-2">
+          <div>
+            Calls metered:{' '}
+            <span className="mono text-ink-2">{eco.calls.toLocaleString()}</span>
+          </div>
+          <div>
+            Saved vs DIY:{' '}
+            <span className="mono text-phosphor">~{eco.tokens_saved_vs_diy.toLocaleString()}</span>
+          </div>
+          <div>
+            Saved vs full dumps:{' '}
+            <span className="mono text-ink-2">~{eco.tokens_saved_vs_full.toLocaleString()}</span>
+          </div>
+          <div>
+            Lifetime vs DIY:{' '}
+            <span className="mono text-ink-2">~{lifetime.toLocaleString()}</span>
+          </div>
         </CardContent>
       </Card>
 

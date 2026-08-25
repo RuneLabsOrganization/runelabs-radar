@@ -202,6 +202,10 @@ export function registerMarketTools(server: McpServer, auth: AuthContext): void 
         entity: z.string(),
         metric: z.string(),
         days: z.number().int().min(1).max(365).default(90),
+        include_points: z
+          .boolean()
+          .default(false)
+          .describe('if true, include every daily point; default is summary stats only'),
       },
       outputSchema: {
         ...envelopeSchema,
@@ -213,13 +217,15 @@ export function registerMarketTools(server: McpServer, auth: AuthContext): void 
         last: z.number().optional(),
         delta: z.number().optional(),
         change_pct: z.number().nullable().optional(),
-        points: z.array(z.object({ date: z.string(), value: z.number() })),
+        point_count: z.number().int().optional(),
+        points: z.array(z.object({ date: z.string(), value: z.number() })).optional(),
       },
     },
-    async ({ source, entity, metric, days }) => {
+    async ({ source, entity, metric, days, include_points }) => {
       const points = seriesFor(source, entity, metric, days);
       const first = points[0]?.value;
       const last = points[points.length - 1]?.value;
+      const fullTokens = Math.ceil(JSON.stringify({ points }, null, 2).length / 4);
       return respond(
         {
           found: points.length > 0,
@@ -234,11 +240,13 @@ export function registerMarketTools(server: McpServer, auth: AuthContext): void 
                 change_pct: first !== 0 ? Math.round(((last - first) / first) * 1000) / 10 : null,
               }
             : {}),
-          points,
+          point_count: points.length,
+          ...(include_points ? { points } : {}),
         },
         points.length > 0
           ? {
-              summary: `${points.length} points for ${source}/${entity}/${metric} over the last ${days} days.`,
+              summary: `${points.length} points for ${source}/${entity}/${metric} over the last ${days} days${include_points ? '' : ' (stats only — pass include_points=true for raw series)'}.`,
+              economy: { diyKind: 'metrics_full' as const, fullTokens },
               next: [
                 {
                   tool: 'get_forecasts',
@@ -249,6 +257,7 @@ export function registerMarketTools(server: McpServer, auth: AuthContext): void 
             }
           : {
               summary: `No data for ${source}/${entity}/${metric} in the last ${days} days.`,
+              economy: { diyKind: 'read' as const },
               next: [
                 {
                   tool: 'list_metrics',

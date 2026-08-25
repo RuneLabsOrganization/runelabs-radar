@@ -6,9 +6,10 @@ import { comps, launches, opportunities, painPoints } from '../../src/lib/db/sch
 import { marketModels } from '../../src/lib/analytics';
 import { runDebate } from '../../src/lib/opportunities/critic';
 import { promptLine } from '../../src/lib/prompt-hygiene';
-import { envelopeSchema, respond, type NextAction } from '../lib/payload';
+import { envelopeSchema, respond, type NextAction, withUserEconomy } from '../lib/payload';
 import type { AuthContext } from '../lib/auth';
 import { can } from '../../src/lib/entitlements';
+import { estimateTokens } from '../../src/lib/mcp-economy';
 
 // --- per-caller daily cap (§9b): a debate costs 4 LLM calls and there is no
 // cache to serve repeats from, so EVERY call counts — recorded at entry,
@@ -188,9 +189,13 @@ export function registerDebateTools(server: McpServer, auth: AuthContext): void 
     'debate_idea',
     {
       description:
-        'Pressure-test YOUR product idea in a multi-role debate (advocate → skeptic → market realist → judge), grounded in the platform\'s live intelligence: observed pains, money comps, launch activity, the model market, and the closest detected opportunities. Returns the judge\'s verdict (pursue/watch/reject), confidence, kill risks, conditions to succeed, 2-3 strengthened variants, and the full transcript. Use before committing to a build — or when get_opportunities feels like someone else\'s list.',
+        'Pressure-test YOUR product idea in a multi-role debate (advocate → skeptic → market realist → judge), grounded in the platform\'s live intelligence: observed pains, money comps, launch activity, the model market, and the closest detected opportunities. Returns the judge\'s verdict (pursue/watch/reject), confidence, kill risks, conditions to succeed, 2-3 strengthened variants. Pass verdict_only=true to skip the full transcript.',
       inputSchema: {
         idea: z.string().min(10).max(600).describe('the idea to pressure-test, in one or two sentences'),
+        verdict_only: z
+          .boolean()
+          .default(false)
+          .describe('if true, omit the full 4-role transcript (cheaper for your context window)'),
       },
       outputSchema: {
         ...envelopeSchema,
@@ -205,7 +210,7 @@ export function registerDebateTools(server: McpServer, auth: AuthContext): void 
         grounding: z.array(z.string()).optional(),
       },
     },
-    async ({ idea }) => {
+    async ({ idea, verdict_only }) => {
       if (auth.userId != null) {
         const gate = can({ id: auth.userId }, 'debate');
         if (!gate.ok) {
@@ -274,28 +279,39 @@ export function registerDebateTools(server: McpServer, auth: AuthContext): void 
         next.push({
           tool: 'generate_plan',
           arguments: { opportunity: grounding.closest[0].slug },
-          reason: `an execution plan for the closest tracked opportunity "${grounding.closest[0].slug}" — only works because this slug already exists in the DB`,
+          reason: `an execution plan for the closest tracked opportunity "${grounding.closest[0].slug}"`,
         });
       }
-      return respond(
-        {
-          ok: true,
-          verdict: result.verdict,
-          confidence: result.confidence,
-          kill_risks: result.killRisks,
-          conditions_to_succeed: result.conditionsToSucceed,
-          strengthened_variants: result.strengthenedVariants,
-          transcript: result.transcript,
-          grounding: grounding.used,
-        },
-        {
-          summary:
-            `Debate verdict: ${result.verdict} (confidence ${result.confidence}) — ` +
-            `${result.killRisks.length} kill risk${result.killRisks.length === 1 ? '' : 's'}, ` +
-            `${result.strengthenedVariants.length} strengthened variant${result.strengthenedVariants.length === 1 ? '' : 's'}.`,
-          next,
-        },
-      );
+      const fullPayload = {
+        ok: true,
+        verdict: result.verdict,
+        confidence: result.confidence,
+        kill_risks: result.killRisks,
+        conditions_to_succeed: result.conditionsToSucceed,
+        strengthened_variants: result.strengthenedVariants,
+        transcript: result.transcript,
+        grounding: grounding.used,
+      };
+      const compact = {
+        ok: true,
+        verdict: result.verdict,
+        confidence: result.confidence,
+        kill_risks: result.killRisks,
+        conditions_to_succeed: result.conditionsToSucceed,
+        strengthened_variants: result.strengthenedVariants,
+        grounding: grounding.used,
+        ...(verdict_only ? {} : { transcript: result.transcript }),
+      };
+      return respond(compact, {
+        summary:
+          `Debate verdict: ${result.verdict} (confidence ${result.confidence}) — ` +
+          `${result.killRisks.length} kill risk${result.killRisks.length === 1 ? '' : 's'}, ` +
+          `${result.strengthenedVariants.length} strengthened variant${result.strengthenedVariants.length === 1 ? '' : 's'}.`,
+        economy: withUserEconomy(auth.userId, 'debate', {
+          fullTokens: estimateTokens(JSON.stringify(fullPayload, null, 2)),
+        }),
+        next,
+      });
     },
   );
 }

@@ -4,7 +4,10 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { getDb } from '../../src/lib/db';
 import { opportunities } from '../../src/lib/db/schema';
 import { normalizeSlug, proposeOpportunities, type ScoutConstraints } from '../../src/lib/opportunities/engine';
-import { envelopeSchema, respond, type NextAction } from '../lib/payload';
+import { persistScoutDrafts } from '../../src/lib/opportunities/persist-scout';
+import { getProfile } from '../../src/lib/personalization';
+import { can } from '../../src/lib/entitlements';
+import { envelopeSchema, respond, withUserEconomy, type NextAction } from '../lib/payload';
 import type { AuthContext } from '../lib/auth';
 
 // --- per-caller daily cap (§9c): every scout run is a fresh LLM call, so
@@ -42,6 +45,7 @@ const openingSchema = z.object({
   sub_scores: z.record(z.string(), z.number()),
   kpis: kpiSchema,
   evidence_refs: z.array(z.string()),
+  persisted: z.boolean().optional(),
 });
 
 /** Active opportunity slugs, normalized the way the daily engine keys them. */
@@ -80,11 +84,36 @@ export function registerScoutTools(server: McpServer, auth: AuthContext): void {
       },
     },
     async ({ skills, capital, hoursPerWeek, sector, b2b, riskAppetite }) => {
-      if (scoutCapExceeded(auth.rateKey)) {
+      if (auth.userId != null) {
+        const gate = can({ id: auth.userId }, 'scout');
+        if (!gate.ok) {
+          const hint = gate.upgradeHint ? ` — ${gate.upgradeHint}` : '';
+          return respond(
+            {
+              ok: false,
+              error: gate.reason ?? `scout quota reached (${gate.used}/${gate.quota})${hint}`,
+              openings: [],
+              skipped_existing: 0,
+            },
+            {
+              summary: `Scout quota reached (${gate.used}/${gate.quota}, tier "${gate.tier}")${hint}.`,
+              economy: withUserEconomy(auth.userId, 'scout'),
+              next: [
+                {
+                  tool: 'get_opportunities',
+                  arguments: { limit: 10 },
+                  reason: 'the tracked openings cost nothing to browse',
+                },
+              ],
+            },
+          );
+        }
+      } else if (scoutCapExceeded(auth.rateKey)) {
         return respond(
           { ok: false, error: `daily scout cap reached (${SCOUT_DAILY_CAP}) — the cap resets tomorrow`, openings: [], skipped_existing: 0 },
           {
             summary: `Daily scout cap reached (${SCOUT_DAILY_CAP}).`,
+            economy: withUserEconomy(auth.userId, 'scout'),
             next: [
               {
                 tool: 'get_opportunities',
@@ -95,14 +124,27 @@ export function registerScoutTools(server: McpServer, auth: AuthContext): void {
           },
         );
       }
-      // every call counts — record at entry, before the LLM run
-      recordScout(auth.rateKey);
+      // every call counts — record at entry, before the LLM run (anonymous daily cap)
+      if (auth.userId == null) recordScout(auth.rateKey);
+
+      // Prefer explicit args; fall back to saved profile for Builder+ personalize
+      let profileSkills = skills;
+      let profileSector = sector;
+      let profileCapital = capital;
+      if (auth.userId != null && can({ id: auth.userId }, 'personalize').ok) {
+        const profile = getProfile(auth.userId);
+        if (profile) {
+          if (!profileSkills && profile.skills.length) profileSkills = profile.skills.join(', ');
+          if (!profileSector && profile.interests[0]) profileSector = profile.interests[0];
+          if (!profileCapital && profile.capitalBand) profileCapital = profile.capitalBand;
+        }
+      }
 
       const constraints: ScoutConstraints = {
-        ...(skills !== undefined ? { skills } : {}),
-        ...(capital !== undefined ? { capital } : {}),
+        ...(profileSkills !== undefined ? { skills: profileSkills } : {}),
+        ...(profileCapital !== undefined ? { capital: profileCapital } : {}),
         ...(hoursPerWeek !== undefined ? { hoursPerWeek } : {}),
-        ...(sector !== undefined ? { sector } : {}),
+        ...(profileSector !== undefined ? { sector: profileSector } : {}),
         ...(b2b !== undefined ? { b2b } : {}),
         ...(riskAppetite !== undefined ? { riskAppetite } : {}),
       };
@@ -148,6 +190,11 @@ export function registerScoutTools(server: McpServer, auth: AuthContext): void {
       const existing = activeSlugs();
       const fresh = drafts.filter((d) => !existing.has(normalizeSlug(d.slug)));
       const skipped = drafts.length - fresh.length;
+
+      // Persist so generate_plan works immediately (no wait for daily engine)
+      const { persisted } = persistScoutDrafts(fresh);
+      const persistedSlugs = new Set(persisted.map((p) => p.slug));
+
       const openings = fresh.map((d) => ({
         slug: d.slug,
         title: d.title,
@@ -157,6 +204,7 @@ export function registerScoutTools(server: McpServer, auth: AuthContext): void {
         sub_scores: d.sub,
         kpis: d.kpis,
         evidence_refs: d.evidenceRefs,
+        persisted: persistedSlugs.has(normalizeSlug(d.slug)),
       }));
 
       const top = openings[0];
@@ -171,8 +219,7 @@ export function registerScoutTools(server: McpServer, auth: AuthContext): void {
           {
             tool: 'generate_plan',
             arguments: { opportunity: top.slug },
-            reason:
-              'only works for slugs already persisted in the DB (see get_opportunities) — this fresh proposal is NOT stored yet, so the call will miss until the daily engine adopts it',
+            reason: 'execution plan — openings from this scout are persisted and plan-ready',
           },
         );
       } else if (skipped > 0) {
@@ -188,9 +235,12 @@ export function registerScoutTools(server: McpServer, auth: AuthContext): void {
           ? skipped > 0
             ? `The scout proposed ${skipped} opening${skipped === 1 ? '' : 's'}, but every one is already tracked as an active opportunity — nothing fresh for these constraints right now.`
             : 'The scout found nothing genuinely actionable for these constraints — zero is an acceptable answer.'
-          : `${openings.length} fresh opening${openings.length === 1 ? '' : 's'} fitted to your constraints — top: "${top!.title}"${top!.sector ? ` (${top!.sector})` : ''}${skipped > 0 ? `; ${skipped} skipped (already tracked)` : ''}.`;
+          : `${openings.length} fresh opening${openings.length === 1 ? '' : 's'} fitted to your constraints — top: "${top!.title}"${top!.sector ? ` (${top!.sector})` : ''}${skipped > 0 ? `; ${skipped} skipped (already tracked)` : ''}; ${persisted.filter((p) => p.created).length} newly persisted for generate_plan.`;
 
-      return respond({ ok: true, openings, skipped_existing: skipped }, { summary, next });
+      return respond(
+        { ok: true, openings, skipped_existing: skipped },
+        { summary, economy: withUserEconomy(auth.userId, 'scout'), next },
+      );
     },
   );
 }

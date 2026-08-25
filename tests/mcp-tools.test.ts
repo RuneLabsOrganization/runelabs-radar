@@ -130,8 +130,10 @@ describe('mcp server', () => {
     expect(names).toEqual(
       [
         'add_to_batch',
+        'ask_radar',
         'create_batch',
         'debate_idea',
+        'decide',
         'generate_plan',
         'get_accuracy',
         'get_agent_stack_for',
@@ -148,12 +150,16 @@ describe('mcp server', () => {
         'get_launches',
         'get_market_models',
         'get_metric_series',
+        'get_my_usage',
         'get_opportunities',
         'get_opportunity',
         'get_pain_points',
         'get_patterns',
         'get_plan',
+        'get_profile',
         'get_server_guide',
+        'get_session',
+        'get_since',
         'get_stack_for',
         'get_story',
         'get_top_signals',
@@ -164,9 +170,15 @@ describe('mcp server', () => {
         'list_batches',
         'list_metrics',
         'list_stacks',
+        'list_watches',
         'run_batch',
         'scout_opportunities',
         'search_stories',
+        'set_profile',
+        'set_session',
+        'unwatch',
+        'watch',
+        'whats_relevant',
       ].sort(),
     );
   });
@@ -180,7 +192,15 @@ describe('mcp server', () => {
     expect(board.structuredContent).toMatchObject({ count: 0 });
 
     const series = await call(client, 'get_metric_series', { source: 'aa', entity: 'x', metric: 'y' });
-    expect(series.structuredContent).toMatchObject({ found: false, points: [] });
+    expect(series.structuredContent).toMatchObject({ found: false, point_count: 0 });
+    expect(series.structuredContent!.economy).toMatchObject({
+      returned: expect.any(Number),
+      saved_vs_full: expect.any(Number),
+      saved_vs_diy: expect.any(Number),
+    });
+    // content is summary-only, not a JSON clone
+    expect(series.content?.[0]?.text).not.toContain('"point_count"');
+    expect(series.content?.[0]?.text).toContain('Source:');
 
     const brief = await call(client, 'get_daily_brief', {});
     expect(brief.content?.[0]?.text).toContain('No brief found');
@@ -272,11 +292,11 @@ describe('mcp server', () => {
 
     const progress: { progress: number; total?: number; message?: string }[] = [];
     const gen = (await client.callTool(
-      { name: 'generate_plan', arguments: { opportunity: 'bulk-bg-removal-api' } },
+      { name: 'generate_plan', arguments: { opportunity: 'bulk-bg-removal-api', format: 'json' } },
       undefined,
       { onprogress: (p) => progress.push({ progress: p.progress, total: p.total, message: p.message }) },
     )) as { structuredContent?: Record<string, unknown> };
-    expect(gen.structuredContent).toMatchObject({ ok: true, cached: false });
+    expect(gen.structuredContent).toMatchObject({ ok: true, cached: false, format: 'json' });
     // 7 progress events: brief, frame, 5 phases
     expect(progress.map((p) => p.message)).toEqual([
       'launch brief',
@@ -294,7 +314,8 @@ describe('mcp server', () => {
     };
     expect(plan.opportunity).toBe('bulk-bg-removal-api');
     expect(plan.phases.map((p) => p.phase)).toEqual(['validation', 'build', 'launch', 'gtm', 'revenue']);
-    expect(gen.structuredContent!.markdown).toContain('# Bulk background-removal API');
+    expect(gen.structuredContent!.markdown).toBeUndefined();
+    expect(gen.structuredContent!.economy).toBeDefined();
     expect(calls.sort()).toEqual(
       ['brief', 'frame', 'phase:build', 'phase:gtm', 'phase:launch', 'phase:revenue', 'phase:validation'].sort(),
     );

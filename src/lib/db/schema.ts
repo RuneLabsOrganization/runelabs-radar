@@ -488,6 +488,57 @@ export const userProfiles = sqliteTable('user_profiles', {
 });
 
 /**
+ * Per-user MCP token-savings aggregates for the current billing cycle.
+ * ROI proof for the subscription — not a billing unit (artifact pricing stays).
+ */
+export const mcpEconomy = sqliteTable(
+  'mcp_economy',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    userId: integer('user_id')
+      .notNull()
+      .references(() => users.id),
+    cycleKey: text('cycle_key').notNull(), // YYYY-MM-DD of cycleStart
+    calls: integer('calls').notNull().default(0),
+    tokensReturned: integer('tokens_returned').notNull().default(0),
+    tokensSavedVsFull: integer('tokens_saved_vs_full').notNull().default(0),
+    tokensSavedVsDiy: integer('tokens_saved_vs_diy').notNull().default(0),
+    updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
+  },
+  (t) => [uniqueIndex('mcp_economy_user_cycle').on(t.userId, t.cycleKey)],
+);
+
+/**
+ * Watchlist — agents subscribe to entities/sectors/opportunities/topics and
+ * pull only deltas via get_since instead of re-dumping the catalog.
+ */
+export const userWatches = sqliteTable(
+  'user_watches',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    userId: integer('user_id')
+      .notNull()
+      .references(() => users.id),
+    kind: text('kind', { enum: ['entity', 'sector', 'opportunity', 'topic'] }).notNull(),
+    key: text('key').notNull(),
+    createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+  },
+  (t) => [uniqueIndex('user_watches_user_kind_key').on(t.userId, t.kind, t.key)],
+);
+
+/**
+ * Thin agent session memory — last project/opportunity/topics so ask_radar and
+ * get_opportunities can filter without the user repeating themselves.
+ */
+export const agentSessions = sqliteTable('agent_sessions', {
+  userId: integer('user_id').primaryKey().references(() => users.id),
+  lastProject: text('last_project'),
+  lastOpportunity: text('last_opportunity'),
+  watchTopics: text('watch_topics').notNull().default('[]'), // JSON string[]
+  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
+});
+
+/**
  * Batches — named working sets (workspace) or weekly Radar drops (kind='drop').
  * Bulk runs apply debate / generate_plan / scout across every item.
  */

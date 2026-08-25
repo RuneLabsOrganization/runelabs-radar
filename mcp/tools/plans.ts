@@ -6,10 +6,11 @@ import { opportunities } from '../../src/lib/db/schema';
 import { generatePlan, readPlan } from '../../src/lib/plans/generate';
 import { planToWire, type ExecutionPlan } from '../../src/lib/plans/schema';
 import { renderPlanMarkdown } from '../../src/lib/plans/markdown';
-import { envelopeSchema, iso, respond } from '../lib/payload';
+import { envelopeSchema, iso, respond, withUserEconomy } from '../lib/payload';
 import { marketVisible, type AuthContext } from '../lib/auth';
 import { can } from '../../src/lib/entitlements';
 import { quotaFor, type Tier } from '../../src/lib/billing';
+import { estimateTokens } from '../../src/lib/mcp-economy';
 
 // --- plan-generation quotas (§8a): anonymous callers keep the flat per-caller
 // daily cap (plans cost 6-7 LLM calls each, and the global MiniMax cap is
@@ -91,21 +92,26 @@ export function registerPlanTools(server: McpServer, auth: AuthContext): void {
     'generate_plan',
     {
       description:
-        'THE FLAGSHIP: turn a detected opportunity into a full-lifecycle execution plan (validation → build → launch → GTM → revenue) — a granular task graph with dependencies, files to touch, acceptance criteria, verification steps, time estimates and rollback notes, grounded in the platform\'s live data. Returns the plan as JSON plus a markdown document. Cached per opportunity; force=true regenerates with the latest data. Generation takes ~30-100s (6-7 LLM calls) and emits progress notifications when the client sends a progressToken.',
+        'THE FLAGSHIP: turn a detected opportunity into a full-lifecycle execution plan (validation → build → launch → GTM → revenue) — a granular task graph with dependencies, files to touch, acceptance criteria, verification steps, time estimates and rollback notes, grounded in the platform\'s live data. Returns ONE format (default markdown for local execution). Cached per opportunity; force=true regenerates with the latest data. Generation takes ~30-100s (6-7 LLM calls) and emits progress notifications when the client sends a progressToken.',
       inputSchema: {
         opportunity: z.string().describe('opportunity slug (from get_opportunities) or numeric id'),
         force: z.boolean().default(false).describe('regenerate even when a cached plan exists'),
+        format: z
+          .enum(['markdown', 'json'])
+          .default('markdown')
+          .describe('return markdown (default, for PLAN.md) or json task graph — never both'),
       },
       outputSchema: {
         ...envelopeSchema,
         ok: z.boolean(),
         error: z.string().optional(),
         cached: z.boolean().optional(),
+        format: z.enum(['markdown', 'json']).optional(),
         plan: planSchema.optional(),
         markdown: z.string().optional(),
       },
     },
-    async ({ opportunity, force }, extra) => {
+    async ({ opportunity, force, format }, extra) => {
       if (!auth.scopes.has('plans')) {
         return respond(
           { ok: false, error: "this token lacks the 'plans' scope" },
@@ -209,21 +215,32 @@ export function registerPlanTools(server: McpServer, auth: AuthContext): void {
         // only the anonymous flat cap needs the in-memory tally
         if (!result.cached && auth.userId == null) recordPlanGeneration(auth.rateKey);
         const p = result.plan;
+        const wire = planToWire(p);
+        const md = renderPlanMarkdown(p);
+        const dualTokens = estimateTokens(JSON.stringify({ plan: wire, markdown: md }, null, 2));
+        const outFormat = format ?? 'markdown';
         return respond(
           {
             ok: true,
             cached: result.cached,
-            plan: planToWire(p),
-            markdown: renderPlanMarkdown(p),
+            format: outFormat,
+            ...(outFormat === 'json' ? { plan: wire } : { markdown: md }),
           },
           {
-            summary: `${result.cached ? 'Cached' : 'New'} plan "${p.title}" — ${p.phases.length} phases, ${p.phases.reduce((n, x) => n + x.tasks.length, 0)} tasks${p.totalEstimateHours !== null ? `, ~${p.totalEstimateHours}h total` : ''}.`,
+            summary: `${result.cached ? 'Cached' : 'New'} plan "${p.title}" — ${p.phases.length} phases, ${p.phases.reduce((n, x) => n + x.tasks.length, 0)} tasks${p.totalEstimateHours !== null ? `, ~${p.totalEstimateHours}h total` : ''} (${outFormat}).`,
+            economy: withUserEconomy(auth.userId, 'plan', { fullTokens: dualTokens }),
             next: [
-              {
-                tool: 'get_plan',
-                arguments: { opportunity: p.opportunity, format: 'markdown' },
-                reason: 'the document rendering to save as PLAN.md and execute',
-              },
+              outFormat === 'markdown'
+                ? {
+                    tool: 'get_plan',
+                    arguments: { opportunity: p.opportunity, format: 'json' },
+                    reason: 'the task graph JSON if you need machine-readable dependencies',
+                  }
+                : {
+                    tool: 'get_plan',
+                    arguments: { opportunity: p.opportunity, format: 'markdown' },
+                    reason: 'the document rendering to save as PLAN.md and execute',
+                  },
             ],
           },
         );

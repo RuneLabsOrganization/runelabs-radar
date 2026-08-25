@@ -5,6 +5,7 @@ import { flushSync } from 'react-dom';
 import { Check, CornerDownRight, FileCode2, Loader2, Pause, Play, RotateCcw, Terminal } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { DEMO_TABS, type DemoStep, type DemoTab } from './script';
+import { PUBLISHED_SAVINGS, fmtTokens } from '@/lib/mcp-savings-copy';
 import { cn } from '@/lib/utils';
 
 /* ── reveal timing ─────────────────────────────────────────────────────── */
@@ -588,7 +589,7 @@ function Session({
       </div>
 
       <div className="mono flex items-center gap-3 border-t border-grat bg-scope-1 px-3 py-2 text-[10px] uppercase tracking-[0.08em] text-ink-4">
-        <span className="hidden sm:inline">38 tools · 10 resources · 6 prompts</span>
+        <span className="hidden sm:inline">compact · ~{fmtTokens(PUBLISHED_SAVINGS.compactAvgSavedVsDiy)} DIY tokens saved / lookup</span>
         <button
           type="button"
           onClick={onToggle}
@@ -614,16 +615,16 @@ function Session({
 
 const PROPERTIES = [
   {
-    title: 'Every payload chains',
-    body: 'Each result carries a one-line summary plus prefilled next calls, so your agent moves from signal to plan without guessing tool names or argument shapes.',
+    title: 'Radar researches, you code',
+    body: `ask_radar and compact specialists return a brief plus next calls. Your model does not fetch four tools and re-read the evidence — typical compact lookup: ~${PUBLISHED_SAVINGS.compactAvgReturned} tokens in, ~${fmtTokens(PUBLISHED_SAVINGS.compactAvgSavedVsDiy)} DIY tokens kept out of context.`,
   },
   {
     title: 'No API keys',
     body: 'Streamable HTTP with OAuth 2.1. Point your client at the URL, approve the scopes you want — read, plans, batches — and the connection is live.',
   },
   {
-    title: 'Reads are free',
-    body: 'Browsing signals, the board, stacks and opportunities costs nothing. Only generative work — debates, plans, batch runs — is metered.',
+    title: 'A receipt, not a token bill',
+    body: 'Every structured reply carries economy: tokens returned, saved vs a full dump, saved vs DIY research. Compact reads stay free. Plans, debates, and asks are the paid artifacts.',
   },
 ];
 
@@ -656,8 +657,9 @@ export function McpDemo() {
         <div className="readout">See it work</div>
         <h2 className="type-h1 mt-2">Your agent, holding the radar</h2>
         <p className="mt-3 max-w-2xl text-[14px] leading-relaxed text-ink-2">
-          This is the real tool surface — the same names, arguments and response shapes your client will see
-          once you connect. Pick a job and watch the round trip.
+          Same tools your client will call — compact by default, with a savings receipt. Prefer ask_radar over four
+          fetches; a typical lookup keeps ~{fmtTokens(PUBLISHED_SAVINGS.compactAvgSavedVsDiy)} DIY tokens out of your
+          context.
         </p>
 
         <div ref={stageRef} className="mt-8">

@@ -37,14 +37,17 @@ ${domain ? `\nNote: I'm especially interested in the ${domain} angle — weigh t
 
   server.registerPrompt(
     'whats_new_today',
-    { description: 'A catch-up digest: the daily brief, top signals, anomalies, and fresh launches — synthesized, not dumped.', argsSchema: {} },
+    { description: 'A catch-up digest: prefer ask_radar synthesis, or the daily brief — do not fetch four tools.', argsSchema: {} },
     () =>
-      userMessage(`Give me a sharp "what happened in AI" digest. Do this:
-1. Call get_daily_brief for the editorial version.
-2. Call get_top_signals (limit 10, hours 48) for anything the brief missed.
-3. Call get_patterns (days 2) for anomalies the machine flagged.
-4. Call get_launches (days 3, limit 10) for what shipped.
-Synthesize into one briefing: 3-5 things that actually matter (with why), 1-2 anomalies worth watching, and a quick launch scan. Skip noise. End with one sentence on what you'd pay attention to tomorrow and why.`),
+      userMessage(`Give me a sharp "what happened in AI" digest.
+
+Prefer ONE call: ask_radar with question "What mattered in AI for builders in the last 48 hours?" — Radar synthesizes server-side.
+
+Fallback if ask_radar is unavailable or quota-blocked:
+1. Call get_daily_brief once.
+2. Optionally get_patterns (days 2) for anomalies only if the brief is thin.
+
+Synthesize into one briefing: 3-5 things that matter (with why), and one sentence on what to watch tomorrow. Do NOT call get_top_signals + get_launches + get_patterns + get_daily_brief together.`),
   );
 
   server.registerPrompt(
@@ -59,11 +62,8 @@ Synthesize into one briefing: 3-5 things that actually matter (with why), 1-2 an
     ({ task, domain }) =>
       userMessage(`I need to pick a model/tool for this task: "${task}".
 If this is about which coding IDE, agent harness, or vibe-coding stack to run (Cursor vs Claude Code vs Codex vs Copilot), call list_agent_stacks then get_agent_stack_for for the persona that matches me, and stop there.
-Otherwise:
-1. Call get_best_right_now${domain ? ` with domain="${domain}"` : ''} and find the row(s) matching my task — read best_overall, best_value, cheapest_viable, the cost note and the verdict.
-2. Call get_market_models (sort "value") to sanity-check those picks against current prices and intelligence scores.
-3. If the board row looks stale versus the market data (a clearly better value exists), say so explicitly.
-4. Give me a recommendation in three tiers (best overall / best value / cheapest viable), each with the current price and one line of reasoning, plus the cost note verbatim.`),
+Otherwise call decide once${domain ? ` with domain="${domain}"` : ''} — it returns board + market in one shot. Do NOT separately call get_best_right_now and get_market_models.
+Give me a recommendation in three tiers (best overall / best value / cheapest viable) from the decide result.`),
   );
 
   server.registerPrompt(

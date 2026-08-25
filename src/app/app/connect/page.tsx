@@ -1,5 +1,6 @@
 import { config } from '@/lib/config';
 import { requireViewer } from '@/lib/auth/user';
+import { PUBLISHED_SAVINGS, fmtTokens } from '@/lib/mcp-savings-copy';
 import PageHeader from '@/components/PageHeader';
 import CopyButton from '@/components/CopyButton';
 import ConnectHealth from '@/components/ConnectHealth';
@@ -9,7 +10,7 @@ import { SectionHeader } from '@/components/ui/section-header';
 export const metadata = {
   title: 'Connect your agent — MCP',
   description:
-    'Point any MCP-compatible AI agent at this Radar instance: 26 intelligence tools, workflow prompts, and the opportunity→plan flagship flow.',
+    `Point any MCP-compatible AI agent at this Radar instance: ask_radar synthesis, compact reads (~${fmtTokens(PUBLISHED_SAVINGS.compactAvgSavedVsDiy)} DIY tokens saved per lookup), and the opportunity→plan flow — with a token-savings receipt on every call.`,
 };
 
 function Snippet({ title, note, code }: { title: string; note?: string; code: string }) {
@@ -39,7 +40,7 @@ export default async function ConnectPage() {
       <PageHeader
         kicker="MCP SERVER"
         title="Connect your agent"
-        description="Every intelligence surface on this Radar — briefs, signals, board, stacks, opportunities, pains, market prices, forecasts, and batches — is callable by your AI agent, plus the flagship generate_plan flow."
+        description={`Radar does the research so your coding agent does not. Start with ask_radar / whats_relevant / decide (~${fmtTokens(PUBLISHED_SAVINGS.compactAvgSavedVsDiy)} DIY tokens saved per compact lookup). Flagship: opportunity → generate_plan.`}
       />
 
       <Card>
@@ -101,9 +102,9 @@ export default async function ConnectPage() {
             </li>
             <li>
               <span className="mono text-phosphor">2.</span>{' '}
-              <strong className="text-ink-2">Pick an opening</strong> — ask your agent for{' '}
-              <span className="mono">get_opportunities</span>. You get ranked opportunities back, each with a{' '}
-              <span className="mono">slug</span>; choose one worth building.
+              <strong className="text-ink-2">Ask, don&apos;t fetch</strong> — prefer{' '}
+              <span className="mono">ask_radar</span> or <span className="mono">get_opportunities</span>. You get
+              ranked openings with a <span className="mono">slug</span>; choose one worth building.
             </li>
             <li>
               <span className="mono text-phosphor">3.</span>{' '}
@@ -137,20 +138,27 @@ export default async function ConnectPage() {
         <CardContent className="pt-4">
           <ul className="space-y-1.5 text-[12.5px] leading-relaxed text-ink-3">
             <li>
+              <strong className="text-ink-2">Jobs:</strong> ask_radar, whats_relevant, decide, get_my_usage
+            </li>
+            <li>
               <strong className="text-ink-2">News:</strong> get_daily_brief, get_top_signals, search_stories,
-              get_story, get_domain_digest, get_daily_insights
+              get_story, get_domain_digest, get_daily_insights, get_weekly_report
             </li>
             <li>
               <strong className="text-ink-2">Decisions:</strong> get_best_right_now, get_board_changes,
               get_market_models, list_stacks, get_stack_for, list_agent_stacks, get_agent_stack_for
             </li>
             <li>
-              <strong className="text-ink-2">Ideas:</strong> get_opportunities, get_opportunity, get_pain_points,
-              get_comps, get_launches, get_patterns, get_topic_map
+              <strong className="text-ink-2">Ideas:</strong> get_opportunities, get_opportunity, scout_opportunities,
+              debate_idea, get_pain_points, get_comps, get_launches, get_patterns, get_topic_map
             </li>
             <li>
               <strong className="text-ink-2">Execution:</strong> generate_plan, get_plan, list_batches, create_batch,
               add_to_batch, run_batch, get_batch_run
+            </li>
+            <li>
+              <strong className="text-ink-2">Workspace:</strong> watch, unwatch, list_watches, get_since, get_profile,
+              set_profile, get_session, set_session
             </li>
             <li>
               <strong className="text-ink-2">Data:</strong> list_metrics, get_metric_series, get_forecasts,
@@ -162,9 +170,9 @@ export default async function ConnectPage() {
             </li>
           </ul>
           <p className="mt-3 text-[12px] text-ink-4">
-            Every response carries a one-line <span className="mono">summary</span> and suggested{' '}
-            <span className="mono">next</span> calls — agents chain workflows without guessing. Call{' '}
-            <span className="mono">get_server_guide</span> from your agent for the live tour.
+            Every response carries a one-line <span className="mono">summary</span>, suggested{' '}
+            <span className="mono">next</span> calls, and an <span className="mono">economy</span> receipt of tokens
+            saved. Call <span className="mono">get_server_guide</span> from your agent for the live tour.
           </p>
         </CardContent>
       </Card>

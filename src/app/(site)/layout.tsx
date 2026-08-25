@@ -41,10 +41,10 @@ export default function SiteLayout({ children }: { children: React.ReactNode }) 
           <div>
             <div className="mono text-[11px] font-semibold tracking-[0.16em]">{name.toUpperCase()}</div>
             <p className="mt-1 max-w-md text-[12.5px] text-ink-3">
-              Intelligence for people building with AI — what changed, what to use, what to build. MCP-ready.
+              Intelligence for people building with AI — Radar researches so your coding agent does not.
             </p>
             <p className="mt-2 max-w-md text-[12px] text-ink-4">
-              Free to read without an account. Sign in to run debates, plans, and batches.
+              Compact reads are free. Sign in for ask_radar, debates, plans, and a token-savings receipt.
             </p>
           </div>
           <div className="mono flex flex-wrap gap-x-5 gap-y-2 text-[10.5px] uppercase tracking-[0.08em] text-ink-4">

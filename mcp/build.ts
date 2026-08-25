@@ -21,6 +21,10 @@ import { registerDebateTools } from './tools/debate';
 import { registerScoutTools } from './tools/scout';
 import { registerWeeklyTools } from './tools/weekly';
 import { registerBatchTools } from './tools/batches';
+import { registerAskTools } from './tools/ask';
+import { registerJobTools } from './tools/jobs';
+import { registerProfileTools } from './tools/profile';
+import { registerWatchTools } from './tools/watch';
 import { registerResources } from './resources';
 import { registerPrompts } from './prompts';
 
@@ -32,7 +36,7 @@ import { registerPrompts } from './prompts';
 export function buildServer(auth: AuthContext): McpServer {
   const server = new McpServer({
     name: 'runelabs-radar',
-    version: '0.3.0',
+    version: '0.4.0',
   });
   registerSignalTools(server);
   registerLaunchTools(server);
@@ -55,6 +59,10 @@ export function buildServer(auth: AuthContext): McpServer {
   registerScoutTools(server, auth);
   registerWeeklyTools(server, auth);
   registerBatchTools(server, auth);
+  registerAskTools(server, auth);
+  registerJobTools(server, auth);
+  registerProfileTools(server, auth);
+  registerWatchTools(server, auth);
   registerResources(server, auth);
   registerPrompts(server);
   return server;

@@ -40,9 +40,9 @@ export function AnonBanner() {
     <div className="border-b border-grat bg-phosphor-dim">
       <div className="mx-auto flex max-w-[1200px] items-center gap-3 px-4 py-1.5 sm:px-6">
         <p className="text-[12.5px] text-ink-2">
-          <span className="text-ink">Free to read.</span>
-          <span className="hidden sm:inline"> Sign in only when you want to run debates, plans, and batches.</span>
-          <span className="sm:hidden"> Sign in to run debates and plans.</span>
+          <span className="text-ink">Compact reads are free.</span>
+          <span className="hidden sm:inline"> Sign in for ask_radar, debates, and plans — Radar spends the research tokens.</span>
+          <span className="sm:hidden"> Sign in for plans and asks.</span>
         </p>
         <Link
           href={`${paths.login}?next=${encodeURIComponent(pathname)}`}

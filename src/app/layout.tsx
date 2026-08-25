@@ -33,7 +33,7 @@ export const metadata: Metadata = {
     template: `%s · ${identity.productName}`,
   },
   description:
-    'Radar fetches the best tech, stacks, and opportunities for creators building with AI. MCP-ready intelligence: what changed, what to use, what to build.',
+    'Radar does the research so your coding agent does not. Compact MCP lookups, ask_radar synthesis, and a receipt of tokens saved — what changed, what to use, what to build.',
   alternates: {
     types: {
       'application/rss+xml': [

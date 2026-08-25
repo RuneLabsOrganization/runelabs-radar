@@ -35,4 +35,21 @@ describe('entitlements.can', () => {
       .run();
     expect(can(u, 'batch_run').ok).toBe(true);
   });
+
+  it('gates ask_radar with a free-tier quota and unlimited on factory', () => {
+    const db = useTestDb();
+    const u = db
+      .insert(users)
+      .values({ name: 'asker1', passwordHash: 'x', role: 'member' })
+      .returning()
+      .get();
+    const free = can(u, 'ask');
+    expect(free.ok).toBe(true);
+    expect(free.quota).toBe(10);
+    db.insert(planEntitlements)
+      .values({ userId: u.id, tier: 'factory', plansPerMonth: 100, resetDay: 1 })
+      .run();
+    expect(can(u, 'ask').ok).toBe(true);
+    expect(can(u, 'ask').quota).toBeUndefined();
+  });
 });

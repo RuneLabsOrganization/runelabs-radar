@@ -3,7 +3,10 @@ import { getDb } from './db';
 import { batchItems, batchRunItems, batchRuns, batches, debates, opportunities } from './db/schema';
 import { can } from './entitlements';
 import { runDebate } from './opportunities/critic';
+import { proposeOpportunities, type ScoutConstraints } from './opportunities/engine';
+import { persistScoutDrafts } from './opportunities/persist-scout';
 import { generatePlan } from './plans/generate';
+import { getProfile } from './personalization';
 
 function slugify(s: string): string {
   return s
@@ -110,6 +113,10 @@ export async function runBatchOp(batchId: number, op: 'debate' | 'plan' | 'scout
     const dg = can({ id: userId }, 'debate');
     if (!dg.ok) throw new Error(dg.reason ?? 'Debate quota reached');
   }
+  if (op === 'scout') {
+    const sg = can({ id: userId }, 'scout');
+    if (!sg.ok) throw new Error(sg.reason ?? 'Scout quota reached');
+  }
 
   const db = getDb();
   const items = getBatchItems(batchId);
@@ -152,7 +159,19 @@ export async function runBatchOp(batchId: number, op: 'debate' | 'plan' | 'scout
         if (!res.ok) throw new Error(res.error);
         resultRef = String(oppId);
       } else {
-        resultRef = 'scout-queued';
+        // scout: run proposer with profile/item constraints and persist openings
+        const profile = getProfile(userId);
+        const constraints: ScoutConstraints = {};
+        if (profile?.skills.length) constraints.skills = profile.skills.join(', ');
+        if (profile?.interests[0]) constraints.sector = profile.interests[0];
+        if (profile?.capitalBand) constraints.capital = profile.capitalBand;
+        if (item.ideaText) constraints.skills = (constraints.skills ? constraints.skills + '; ' : '') + item.ideaText;
+        if (item.refType === 'opportunity' && item.refKey) constraints.sector = item.refKey;
+        const { drafts } = await proposeOpportunities(
+          Object.keys(constraints).length ? constraints : undefined,
+        );
+        const { persisted } = persistScoutDrafts(drafts);
+        resultRef = persisted.map((p) => p.slug).join(',') || 'scout-empty';
       }
       db.update(batchRunItems)
         .set({ status: 'ok', resultRef, finishedAt: new Date() })

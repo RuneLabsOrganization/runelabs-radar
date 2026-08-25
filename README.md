@@ -12,14 +12,14 @@ Design: [docs/superpowers/specs/2026-07-10-runelabs-radar-design.md](docs/superp
 
 - **worker** (node-cron): ingests ~19 sources every 30 min (RSS, Hacker News, Reddit, arXiv, Hugging Face, GitHub trending), clusters + scores stories hourly with MiniMax, drafts weekly board proposals (Artificial Analysis API + benchmark snapshots), writes a daily brief at 07:00.
 - **web** (Next.js): the hub — Today feed with "since your last visit", per-domain tabs, board with editable Runelabs verdicts, brief archive, admin (sources health, job runs, proposal review). Public surfaces: `/changelog.xml` + `/brief.xml` RSS feeds, `/embed/board` iframe widget, `/story/[id]` + `/entity/[name]` SEO pages. It is also the OAuth 2.1 authorization server for MCP clients.
-- **mcp** (`npm run mcp`, port 3122): the agent-facing product surface — every intelligence surface as MCP tools (signals, launches, board, stacks, opportunities, pains, patterns, topic map, market prices, forecasts, accuracy, entities, comps), `radar://` resources, guided workflow prompts, and the flagship `generate_plan`: opportunity → full-lifecycle execution plan (validation → build → launch → GTM → revenue) a local coding agent can execute.
+- **mcp** (`npm run mcp`, port 3122): the agent-facing product — compact job tools (`ask_radar`, `whats_relevant`, `decide`) plus specialists, `radar://` resources, and `generate_plan`. Radar researches so the coding agent does not; every structured reply includes an `economy` savings receipt.
 - **SQLite** (WAL) shared by both, one file under `data/`.
 
 Stories are never blackholed: if MiniMax is down or the daily call cap is hit, items still appear in the raw feed.
 
 ## Connect your agent (MCP)
 
-The MCP server exposes the whole intelligence database to AI agents — 26 tools, `radar://` resources, and guided prompts — and can turn any detected opportunity into a granular, full-lifecycle execution plan (`generate_plan`) that a coding agent executes on your machine.
+The MCP server is research-as-a-service for agents: compact lookups (~300 tokens in, ~8k DIY tokens kept out of context vs local research), `ask_radar` synthesis, and `generate_plan` (markdown or JSON, not both). Every structured reply carries an `economy` receipt.
 
 Point any MCP client at the endpoint (streamable HTTP) — or open **`/connect`** on the hub for guided, per-client instructions:
 
@@ -32,7 +32,7 @@ https://<your-host>/mcp          # behind your reverse proxy, or http://127.0.0.
 
 **Auth.** Default (self-host) is anonymous + IP rate-limited — nothing to do. For a shared/hosted deployment set `MCP_AUTH_REQUIRED=true`: clients then run the OAuth 2.1 flow automatically (PKCE + dynamic client registration, no keys to copy) — the hub shows a consent screen at `/oauth/authorize` and issues tokens. Scopes: `read` (all intelligence) and `plans` (plan generation, which spends LLM budget).
 
-**The flagship workflow** (also available as the `find_and_plan` prompt): `get_opportunities` → pick by flip/hold score → `get_opportunity` for the dossier → `generate_plan` → receive a task graph with dependencies, files to touch, acceptance criteria, verification steps, time estimates and rollback notes, plus a markdown rendering to save as `PLAN.md` and execute.
+**The flagship workflow** (also available as the `find_and_plan` prompt): `ask_radar` or `get_opportunities` → `get_opportunity` (`detail=compact`) → `generate_plan` (`format=markdown`) → save as `PLAN.md` and execute. Call `get_my_usage` for quota + this-cycle tokens saved.
 
 Other prompts: `whats_new_today`, `what_should_i_use`, `validate_idea`, `builder_weekly_review`. Call `get_server_guide` from any agent for the live tour.
 

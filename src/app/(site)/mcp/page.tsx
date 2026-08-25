@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { paths } from '@/lib/urls';
 import { config } from '@/lib/config';
+import { PUBLISHED_SAVINGS, fmtTokens } from '@/lib/mcp-savings-copy';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { SectionHeader } from '@/components/ui/section-header';
@@ -8,14 +9,16 @@ import CopyButton from '@/components/CopyButton';
 
 export const metadata = {
   title: 'MCP — connect your agent',
-  description: 'Streamable HTTP MCP endpoint, OAuth 2.1, 30+ tools. Connect Cursor, Claude, or any MCP client in under a minute.',
+  description:
+    'Radar does the research so your coding agent does not. Compact MCP lookups (~8k tokens saved vs DIY), ask_radar synthesis, plans, and a savings receipt on every call.',
 };
 
 const TOOL_GROUPS = [
-  { title: 'News', tools: ['get_daily_brief', 'get_top_signals', 'search_stories', 'get_story'] },
-  { title: 'Decisions', tools: ['get_best_right_now', 'list_stacks', 'list_agent_stacks', 'get_market_models'] },
+  { title: 'Jobs', tools: ['ask_radar', 'whats_relevant', 'decide', 'get_my_usage'] },
+  { title: 'News', tools: ['get_daily_brief', 'get_top_signals', 'search_stories', 'get_weekly_report'] },
   { title: 'Ideas', tools: ['get_opportunities', 'scout_opportunities', 'debate_idea', 'get_pain_points'] },
   { title: 'Execution', tools: ['generate_plan', 'get_plan', 'list_batches', 'run_batch'] },
+  { title: 'Workspace', tools: ['watch', 'get_since', 'set_profile', 'get_session'] },
 ];
 
 export default function McpMarketingPage() {
@@ -29,11 +32,35 @@ export default function McpMarketingPage() {
   return (
     <div className="mx-auto max-w-[860px] px-4 py-12 sm:px-6">
       <div className="readout text-phosphor">Agent surface</div>
-      <h1 className="type-h1 mt-2">Connect your agent in 60 seconds</h1>
+      <h1 className="type-h1 mt-2">Radar researches. Your agent codes.</h1>
       <p className="mt-3 max-w-xl text-[14px] leading-relaxed text-ink-2">
-        Radar is MCP-first. Drop the endpoint into Cursor, Claude Desktop, or any Streamable HTTP client — OAuth
-        handles the rest. Reads are free; plans and debates use your membership quota.
+        Connect in 60 seconds. Prefer <span className="mono text-ink">ask_radar</span> over fetching four tools: a
+        typical compact lookup returns ~{PUBLISHED_SAVINGS.compactAvgReturned} tokens and keeps ~
+        {fmtTokens(PUBLISHED_SAVINGS.compactAvgSavedVsDiy)} out of your context vs doing the research locally. Reads
+        stay compact and free; plans, debates, and asks use membership quota. Every response includes an{' '}
+        <span className="mono text-ink">economy</span> receipt.
       </p>
+
+      <div className="mt-8 grid gap-3 sm:grid-cols-3">
+        <Card>
+          <CardHeader>
+            <CardTitle className="font-mono text-[12px]">~{fmtTokens(PUBLISHED_SAVINGS.compactAvgSavedVsDiy)}</CardTitle>
+            <CardDescription>DIY tokens kept out of your agent per compact lookup</CardDescription>
+          </CardHeader>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle className="font-mono text-[12px]">~{PUBLISHED_SAVINGS.weeklyFullVsCompact}×</CardTitle>
+            <CardDescription>smaller weekly brief vs dumping the full issue</CardDescription>
+          </CardHeader>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle className="font-mono text-[12px]">~{fmtTokens(PUBLISHED_SAVINGS.sessionDiySaved)}</CardTitle>
+            <CardDescription>saved in one ask → dossier → plan session</CardDescription>
+          </CardHeader>
+        </Card>
+      </div>
 
       <SectionHeader label="1 · add the server" />
       <Card>
@@ -64,10 +91,10 @@ export default function McpMarketingPage() {
         <CardContent className="space-y-2 p-4 text-[13px] text-ink-2">
           <p>Ask your agent:</p>
           <blockquote className="border-l-2 border-phosphor pl-3 text-ink italic">
-            &ldquo;Use Radar to find a pursue-grade opportunity and generate an execution plan.&rdquo;
+            &ldquo;Use ask_radar to find a pursue-grade opportunity, then generate_plan.&rdquo;
           </blockquote>
           <p className="text-ink-3">
-            Flow: <span className="mono text-ink-2">get_opportunities</span> →{' '}
+            Flow: <span className="mono text-ink-2">ask_radar</span> →{' '}
             <span className="mono text-ink-2">get_opportunity</span> →{' '}
             <span className="mono text-ink-2">generate_plan</span>
           </p>

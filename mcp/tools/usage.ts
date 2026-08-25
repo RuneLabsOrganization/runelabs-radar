@@ -4,7 +4,10 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { getDb } from '../../src/lib/db';
 import { users } from '../../src/lib/db/schema';
 import { usageReport } from '../../src/lib/usage';
-import { envelopeSchema, respond } from '../lib/payload';
+import { can, TIER_CAPS } from '../../src/lib/entitlements';
+import { entitlementFor, usageThisCycle } from '../../src/lib/billing';
+import { economyThisCycle, economyLifetimeSaved } from '../../src/lib/mcp-economy';
+import { envelopeSchema, respond, withUserEconomy } from '../lib/payload';
 import type { AuthContext } from '../lib/auth';
 
 /** Round to 6 decimals — costs are tiny (a plan call ≈ $0.0001); keeps the payload clean. */
@@ -147,6 +150,91 @@ export function registerUsageTools(server: McpServer, auth: AuthContext): void {
                 ? `; avg plan ≈ $${r6(report.planCost.avgCostPerPlanUsd)}, builder margin ≈ ${Math.round(builder.marginPct)}%.`
                 : '.'),
       });
+    },
+  );
+
+  server.registerTool(
+    'get_my_usage',
+    {
+      description:
+        'Your membership quota and token-savings receipt for this billing cycle: plans/debates/asks remaining, plus how many tokens Radar kept out of your coding agent\'s context. Not admin — any authenticated caller.',
+      inputSchema: {},
+      outputSchema: {
+        ...envelopeSchema,
+        ok: z.boolean(),
+        error: z.string().optional(),
+        tier: z.string().optional(),
+        cycle_key: z.string().optional(),
+        plans: z.object({ used: z.number(), quota: z.number() }).optional(),
+        debates: z.object({ used: z.number().nullable(), quota: z.number().nullable() }).optional(),
+        asks: z.object({ used: z.number().nullable(), quota: z.number().nullable() }).optional(),
+        scouts: z.object({ used: z.number().nullable(), quota: z.number().nullable() }).optional(),
+        savings: z
+          .object({
+            calls: z.number(),
+            tokens_returned: z.number(),
+            tokens_saved_vs_full: z.number(),
+            tokens_saved_vs_diy: z.number(),
+            lifetime_saved_vs_diy: z.number(),
+          })
+          .optional(),
+      },
+    },
+    async () => {
+      if (auth.userId == null) {
+        return respond(
+          { ok: false, error: 'sign in required — get_my_usage needs an authenticated MCP session' },
+          {
+            summary: 'Sign in to see your quota and token-savings receipt.',
+            economy: withUserEconomy(null, 'read'),
+          },
+        );
+      }
+      const user = { id: auth.userId };
+      const ent = entitlementFor(auth.userId);
+      const caps = TIER_CAPS[ent.tier];
+      const planGate = can(user, 'plan');
+      const debateGate = can(user, 'debate');
+      const askGate = can(user, 'ask');
+      const scoutGate = can(user, 'scout');
+      const eco = economyThisCycle(auth.userId);
+      const lifetime = economyLifetimeSaved(auth.userId);
+      const plansUsed = usageThisCycle(auth.userId);
+      return respond(
+        {
+          ok: true,
+          tier: ent.tier,
+          cycle_key: eco.cycle_key,
+          plans: { used: plansUsed, quota: ent.plansPerMonth || caps.plansPerMonth },
+          debates: {
+            used: debateGate.used ?? null,
+            quota: caps.debatesPerMonth < 0 ? null : (debateGate.quota ?? caps.debatesPerMonth),
+          },
+          asks: {
+            used: askGate.used ?? null,
+            quota: caps.asksPerMonth < 0 ? null : (askGate.quota ?? caps.asksPerMonth),
+          },
+          scouts: {
+            used: scoutGate.used ?? null,
+            quota: ent.tier === 'free' ? (scoutGate.quota ?? 3) : null,
+          },
+          savings: {
+            calls: eco.calls,
+            tokens_returned: eco.tokens_returned,
+            tokens_saved_vs_full: eco.tokens_saved_vs_full,
+            tokens_saved_vs_diy: eco.tokens_saved_vs_diy,
+            lifetime_saved_vs_diy: lifetime,
+          },
+        },
+        {
+          summary: `Tier ${ent.tier}: ${plansUsed}/${ent.plansPerMonth} plans this cycle; Radar saved ~${eco.tokens_saved_vs_diy.toLocaleString()} DIY tokens so far this cycle.`,
+          economy: withUserEconomy(auth.userId, 'read'),
+          next: [
+            { tool: 'ask_radar', arguments: { question: 'What should I build this week?' }, reason: 'spend Radar tokens, not yours' },
+            { tool: 'get_opportunities', arguments: { limit: 5 }, reason: 'browse openings (free)' },
+          ],
+        },
+      );
     },
   );
 }

@@ -4,19 +4,20 @@ import { getIdentity } from '@/lib/identity';
 import { paths } from '@/lib/urls';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { PUBLISHED_SAVINGS, fmtTokens } from '@/lib/mcp-savings-copy';
 import HeroScope from '@/components/hero/HeroScope';
 import { McpDemo } from '@/components/mcp-demo/McpDemo';
 
 export const metadata = {
   title: 'AI intelligence for builders',
   description:
-    'Radar fetches the best tech, stacks, and opportunities for creators building with AI. MCP-ready: what changed, what to use, what to build.',
+    'Radar does the research so your coding agent does not. Compact MCP lookups, ask_radar synthesis, and a receipt of tokens saved — what changed, what to use, what to build.',
 };
 
 const HERO_STATS = [
-  { value: '38', label: 'MCP tools' },
+  { value: `~${fmtTokens(PUBLISHED_SAVINGS.compactAvgSavedVsDiy)}`, label: 'tokens saved / lookup' },
+  { value: '50', label: 'MCP tools' },
   { value: '6', label: 'domains watched' },
-  { value: '24/7', label: 'ingest + curation' },
   { value: 'OAuth 2.1', label: 'no API keys' },
 ];
 
@@ -39,7 +40,7 @@ const WORKSPACES = [
     icon: Sparkles,
     title: 'Build',
     verb: 'What to build',
-    body: 'Monetizable openings, multi-role debates, and Batches that turn ideas into execution plans your agent can run.',
+    body: 'Monetizable openings, multi-role debates, and Batches that turn ideas into execution plans your agent can run — Radar spends the research tokens, not you.',
     href: paths.build,
   },
 ];
@@ -68,14 +69,16 @@ export default function LandingPage() {
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-phosphor opacity-60" />
               <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-phosphor" />
             </span>
-            MCP-ready · for creators building with AI
+            MCP-first · research so your agent does not
           </div>
           <h1 className="type-display mt-4 max-w-3xl text-balance text-ink">
-            The best tech, stacks, and opportunities — always on your radar.
+            Radar does the research. Your agent keeps coding.
           </h1>
           <p className="mt-5 max-w-xl text-[16px] leading-relaxed text-ink-2">
-            {name} watches the whole AI field and turns it into three answers: what changed, what to use, what to
-            build. Then it hands the answer to your agent over MCP.
+            {name} watches the AI field and answers what changed, what to use, what to build — as compact briefs,
+            not page dumps. A typical lookup returns ~{PUBLISHED_SAVINGS.compactAvgReturned} tokens and keeps ~
+            {fmtTokens(PUBLISHED_SAVINGS.compactAvgSavedVsDiy)} out of your coding agent&apos;s context vs doing the
+            research locally.
           </p>
           <div className="mt-8 flex flex-wrap gap-3">
             <Button asChild size="lg">
@@ -101,7 +104,8 @@ export default function LandingPage() {
             ))}
           </dl>
           <p className="mt-6 text-[12.5px] text-ink-4">
-            Free to browse. Plans, debates, and batches for members.
+            Compact reads are free. ask_radar, plans, and debates are for members — with a savings receipt on every
+            call.
           </p>
         </div>
       </section>
@@ -138,8 +142,9 @@ export default function LandingPage() {
             <div className="readout">Two lines to connect</div>
             <h2 className="type-h1 mt-2">Point your client at the URL</h2>
             <p className="mt-3 text-[14px] leading-relaxed text-ink-2">
-              Drop this into Cursor, Claude, Zed, or anything else that speaks MCP. OAuth 2.1 handles the rest —
-              approve the scopes you want and the tools appear.
+              Drop this into Cursor, Claude, Zed, or anything else that speaks MCP. Start with{' '}
+              <span className="mono text-ink">ask_radar</span> — Radar synthesizes server-side so your model does not
+              fetch four tools and re-read the evidence.
             </p>
             <Button asChild className="mt-6">
               <Link href={paths.mcp}>See the MCP surface</Link>
@@ -162,8 +167,9 @@ export default function LandingPage() {
       <section className="mx-auto max-w-[1100px] px-4 py-16 text-center sm:px-6">
         <h2 className="type-h1">Start free. Upgrade when you act.</h2>
         <p className="mx-auto mt-3 max-w-lg text-[14px] text-ink-3">
-          Every read is free and unlimited. Debates, plans, and Batches are for members — artifact pricing, not
-          tokens.
+          Compact reads are free. Members get synthesis, plans, and a private workspace. One research-to-plan session
+          keeps ~{fmtTokens(PUBLISHED_SAVINGS.sessionDiySaved)} tokens out of your agent — artifact pricing, not a
+          token bill.
         </p>
         <div className="mt-6 flex justify-center gap-3">
           <Button asChild size="lg">
