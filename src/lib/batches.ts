@@ -170,7 +170,7 @@ export async function runBatchOp(batchId: number, op: 'debate' | 'plan' | 'scout
         const { drafts } = await proposeOpportunities(
           Object.keys(constraints).length ? constraints : undefined,
         );
-        const { persisted } = persistScoutDrafts(drafts);
+        const { persisted } = persistScoutDrafts(drafts, userId);
         resultRef = persisted.map((p) => p.slug).join(',') || 'scout-empty';
       }
       db.update(batchRunItems)

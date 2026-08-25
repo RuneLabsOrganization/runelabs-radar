@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { getDb } from '../../src/lib/db';
@@ -48,15 +48,18 @@ const openingSchema = z.object({
   persisted: z.boolean().optional(),
 });
 
-/** Active opportunity slugs, normalized the way the daily engine keys them. */
-function activeSlugs(): Set<string> {
+/** Active opportunity slugs visible to this caller, normalized as the engine keys them. */
+function activeSlugs(userId: number | null): Set<string> {
   const db = getDb();
+  // Only the caller's own openings suppress a draft. Another builder having
+  // already been shown this idea is not a reason to withhold it — that is the
+  // bug that made scout return nothing once the shared pool saturated.
+  const where =
+    userId == null
+      ? and(eq(opportunities.status, 'active'), isNull(opportunities.ownerUserId))
+      : and(eq(opportunities.status, 'active'), eq(opportunities.ownerUserId, userId));
   return new Set(
-    db
-      .select({ slug: opportunities.slug })
-      .from(opportunities)
-      .where(eq(opportunities.status, 'active'))
-      .all()
+    db.select({ slug: opportunities.slug }).from(opportunities).where(where).all()
       .map((r) => normalizeSlug(r.slug)),
   );
 }
@@ -187,12 +190,12 @@ export function registerScoutTools(server: McpServer, auth: AuthContext): void {
 
       // anti-homogeneity: these must be FRESH personal openings — drop any
       // draft whose slug is already tracked as an active opportunity
-      const existing = activeSlugs();
+      const existing = activeSlugs(auth.userId);
       const fresh = drafts.filter((d) => !existing.has(normalizeSlug(d.slug)));
       const skipped = drafts.length - fresh.length;
 
       // Persist so generate_plan works immediately (no wait for daily engine)
-      const { persisted } = persistScoutDrafts(fresh);
+      const { persisted } = persistScoutDrafts(fresh, auth.userId);
       const persistedSlugs = new Set(persisted.map((p) => p.slug));
 
       const openings = fresh.map((d) => ({
@@ -210,18 +213,18 @@ export function registerScoutTools(server: McpServer, auth: AuthContext): void {
       const top = openings[0];
       const next: NextAction[] = [];
       if (top) {
-        next.push(
-          {
-            tool: 'debate_idea',
-            arguments: { idea: `${top.title} — ${top.thesis}` },
-            reason: 'pressure-test the top opening in a multi-role debate before committing',
-          },
-          {
+        next.push({
+          tool: 'debate_idea',
+          arguments: { idea: `${top.title} — ${top.thesis}` },
+          reason: 'pressure-test the top opening in a multi-role debate before committing',
+        });
+        if (persisted.length > 0) {
+          next.push({
             tool: 'generate_plan',
             arguments: { opportunity: top.slug },
             reason: 'execution plan — openings from this scout are persisted and plan-ready',
-          },
-        );
+          });
+        }
       } else if (skipped > 0) {
         next.push({
           tool: 'get_opportunities',

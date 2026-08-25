@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, lt, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, isNull, lt, sql } from 'drizzle-orm';
 import { aaModels, latestPatterns, topEntities } from '../analytics';
 import { getDb } from '../db';
 import { launches, opportunities, painPoints, stories } from '../db/schema';
@@ -319,7 +319,7 @@ export async function proposeOpportunities(constraints?: ScoutConstraints): Prom
   const existing = db
     .select()
     .from(opportunities)
-    .where(eq(opportunities.status, 'active'))
+    .where(and(eq(opportunities.status, 'active'), isNull(opportunities.ownerUserId)))
     .orderBy(desc(opportunities.lastSeenAt))
     .limit(20)
     .all();
@@ -407,7 +407,8 @@ export async function runOpportunities(): Promise<{
   const createdRows: { id: number; verdict: string; flipScore: number }[] = [];
   // keyed by re-normalized slug — heals any legacy rows stored pre-idempotency-fix
   const bySlug = new Map(
-    db.select().from(opportunities).all().map((o) => [normalizeSlug(o.slug), o]),
+    db.select().from(opportunities).where(isNull(opportunities.ownerUserId)).all()
+      .map((o) => [normalizeSlug(o.slug), o]),
   );
   for (const d of drafts) {
     const critic = critiques?.get(d.slug) ?? unverifiedCritic(d.slug);
@@ -476,6 +477,7 @@ export async function runOpportunities(): Promise<{
     .where(
       and(
         eq(opportunities.status, 'active'),
+        isNull(opportunities.ownerUserId),
         lt(opportunities.lastSeenAt, new Date(Date.now() - ARCHIVE_AFTER_DAYS * 864e5)),
       ),
     )

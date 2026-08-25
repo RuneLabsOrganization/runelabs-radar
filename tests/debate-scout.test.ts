@@ -290,14 +290,12 @@ describe('scout_opportunities', () => {
     expect(bodies[0]!.user).toContain('hours per week: 10');
     expect(bodies[0]!.user).toContain('risk appetite: medium');
 
-    // next: debate_idea + generate_plan (scout openings are persisted for generate_plan)
+    // anonymous callers get drafts back but nothing is persisted — generate_plan
+    // is only offered when a row actually landed for the caller
     const next = res.structuredContent!.next as { tool: string; reason: string }[];
     expect(next[0]!.tool).toBe('debate_idea');
-    const plan = next.find((n) => n.tool === 'generate_plan');
-    expect(plan).toBeDefined();
-    expect(plan!.reason).toContain('persisted');
-    expect(plan!.reason).toContain('plan-ready');
-    expect(openings).toEqual(expect.arrayContaining([expect.objectContaining({ persisted: true })]));
+    expect(next.find((n) => n.tool === 'generate_plan')).toBeUndefined();
+    expect(openings).toEqual(expect.arrayContaining([expect.objectContaining({ persisted: false })]));
   });
 
   it('politely refuses with ok:false when the scope is too thin (no LLM call)', async () => {
