@@ -232,7 +232,8 @@ describe('get_weekly_report tool', () => {
     seedReport('2026-08-09', '# Older issue');
     seedReport('2026-08-16', '# Latest issue\n\nNewest words here.');
     const client = await wireWeekly();
-    const res = await callTool(client);
+    // markdown only ships at detail=full; compact (the default) returns excerpt
+    const res = await callTool(client, { detail: 'full' });
     expect(res.structuredContent?.found).toBe(true);
     expect(res.structuredContent?.date).toBe('2026-08-16');
     expect(res.structuredContent?.markdown).toContain('Latest issue');
@@ -243,7 +244,7 @@ describe('get_weekly_report tool', () => {
     seedReport('2026-08-09', '# Older issue');
     seedReport('2026-08-16', '# Latest issue');
     const client = await wireWeekly();
-    const res = await callTool(client, { date: '2026-08-09' });
+    const res = await callTool(client, { date: '2026-08-09', detail: 'full' });
     expect(res.structuredContent?.found).toBe(true);
     expect(res.structuredContent?.date).toBe('2026-08-09');
     expect(res.structuredContent?.markdown).toContain('Older issue');

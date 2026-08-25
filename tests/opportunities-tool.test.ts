@@ -5,7 +5,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { registerOpportunityTools } from '../mcp/tools/opportunities';
 import type { AuthContext } from '../mcp/lib/auth';
 import { opportunities } from '@/lib/db/schema';
-import { useTestDb } from './helpers/db';
+import { seedUser, useTestDb } from './helpers/db';
 
 let db: ReturnType<typeof useTestDb>;
 
@@ -69,6 +69,9 @@ function slugsOf(res: { structuredContent?: Record<string, unknown> }): string[]
 describe('get_opportunities anti-homogeneity (9d/9e)', () => {
   beforeEach(() => {
     db = useTestDb();
+    // authFor() drives the tools as userId 1; respond() records economy
+    // against mcp_economy, which FKs to users.id
+    seedUser(db, 1);
   });
 
   it('caps sectors at 2 and reserves the last slot for an absent sector', async () => {
