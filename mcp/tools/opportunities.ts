@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, like, or } from 'drizzle-orm';
+import { and, desc, eq, gte, isNull, like, or } from 'drizzle-orm';
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { getDb } from '../../src/lib/db';
@@ -75,15 +75,31 @@ function dossierSummary(row: OppRow) {
   };
 }
 
+/**
+ * Rows this caller may see: the canonical public radar (owner NULL) plus
+ * their own private openings. Anonymous callers get the public radar only —
+ * their Rung-0 leads live in the `leads` table, not here.
+ */
+function visibleTo(userId: number | null) {
+  return userId == null
+    ? isNull(opportunities.ownerUserId)
+    : or(isNull(opportunities.ownerUserId), eq(opportunities.ownerUserId, userId));
+}
+
 /** Up to 3 slugs that fuzzily match a missed ref — turns a typo into a suggestion. */
-function closestSlugs(ref: string): string[] {
+function closestSlugs(ref: string, userId: number | null): string[] {
   const db = getDb();
   const needle = `%${ref.toLowerCase().replace(/[%_]/g, '').slice(0, 40)}%`;
   if (needle === '%%') return [];
   return db
     .select({ slug: opportunities.slug })
     .from(opportunities)
-    .where(or(like(opportunities.slug, needle), like(opportunities.title, needle)))
+    .where(
+      and(
+        or(like(opportunities.slug, needle), like(opportunities.title, needle)),
+        visibleTo(userId),
+      ),
+    )
     .limit(3)
     .all()
     .map((r) => r.slug);
@@ -148,10 +164,17 @@ export function registerOpportunityTools(server: McpServer, auth: AuthContext): 
         sector: z.string().optional().describe('sector slug filter, e.g. devtools, ai-coding'),
         verdict: z.enum(['pursue', 'watch', 'reject']).optional(),
         min_flip: z.number().int().min(0).max(100).optional().describe('minimum flip score'),
+        cursor: z
+          .number()
+          .int()
+          .min(0)
+          .default(0)
+          .describe('offset into the ranked list — pass next_cursor from a prior call for more'),
       },
       outputSchema: {
         ...envelopeSchema,
         count: z.number(),
+        next_cursor: z.number().nullable(),
         opportunities: z.array(
           z.object({
             slug: z.string(),
@@ -172,19 +195,23 @@ export function registerOpportunityTools(server: McpServer, auth: AuthContext): 
         ),
       },
     },
-    async ({ limit, sector, verdict, min_flip }) => {
+    async ({ limit, sector, verdict, min_flip, cursor }) => {
       const db = getDb();
-      const conds = [eq(opportunities.status, 'active')];
+      const conds = [eq(opportunities.status, 'active'), visibleTo(auth.userId)];
       if (sector) conds.push(eq(opportunities.sector, sector));
       if (verdict) conds.push(eq(opportunities.verdict, verdict));
       if (min_flip !== undefined) conds.push(gte(opportunities.flipScore, min_flip));
-      // no SQL limit — the quota walk and exploration slot below choose from
-      // the full filtered list (opportunities are a small curated table)
+      // Bounded scan. This table was once a small curated set, but private
+      // Rung-1 rows now live here too, so an unbounded .all() would scan every
+      // opening ever refined by this user. RANK_WINDOW is the widest slice the
+      // quota walk can meaningfully reorder.
+      const RANK_WINDOW = 200;
       const rows = db
         .select()
         .from(opportunities)
         .where(and(...conds))
         .orderBy(desc(opportunities.flipScore))
+        .limit(RANK_WINDOW)
         .all();
       const personalize =
         auth.userId != null && can({ id: auth.userId }, 'personalize').ok
@@ -198,6 +225,8 @@ export function registerOpportunityTools(server: McpServer, auth: AuthContext): 
           slug: o.slug,
         });
       const ranked = rankRows(rows, auth.rateKey, fitFor);
+      const offset = cursor ?? 0;
+      const page = ranked.slice(offset);
 
       // sector-quota walk over the salted ranking: at most SECTOR_QUOTA per
       // sector, filling limit-1 slots; overflow is dropped, not deferred
@@ -205,7 +234,7 @@ export function registerOpportunityTools(server: McpServer, auth: AuthContext): 
       const rest: OppRow[] = [];
       const buckets = new Map<string | null, number>();
       const normalSlots = Math.max(limit - 1, 0);
-      for (const row of ranked) {
+      for (const row of page) {
         const sec = row.sector ?? null;
         if (picked.length < normalSlots && (buckets.get(sec) ?? 0) < SECTOR_QUOTA) {
           picked.push(row);
@@ -225,12 +254,16 @@ export function registerOpportunityTools(server: McpServer, auth: AuthContext): 
         rest.find((o) => (buckets.get(o.sector ?? null) ?? 0) < SECTOR_QUOTA);
       if (last && picked.length < limit) picked.push(last);
 
+      // Only advertise more when there is genuinely more to serve.
+      const consumed = offset + picked.length;
+      const nextCursor = consumed < ranked.length ? consumed : null;
+
       const top = picked[0];
       const filters = [sector && `sector=${sector}`, verdict && `verdict=${verdict}`, min_flip && `flip≥${min_flip}`]
         .filter(Boolean)
         .join(', ');
       return respond(
-        { count: picked.length, opportunities: picked.map(summary) },
+        { count: picked.length, opportunities: picked.map(summary), next_cursor: nextCursor },
         {
           summary:
             picked.length === 0
@@ -251,6 +284,15 @@ export function registerOpportunityTools(server: McpServer, auth: AuthContext): 
                     arguments: { opportunity: top!.slug },
                     reason: 'turn it into an executable full-lifecycle plan',
                   },
+                  ...(nextCursor !== null
+                    ? [
+                        {
+                          tool: 'get_opportunities',
+                          arguments: { limit, cursor: nextCursor },
+                          reason: 'next page of openings — the list continues',
+                        },
+                      ]
+                    : []),
                 ],
         },
       );
@@ -279,10 +321,18 @@ export function registerOpportunityTools(server: McpServer, auth: AuthContext): 
       const db = getDb();
       const asId = /^\d+$/.test(opportunity) ? Number(opportunity) : null;
       const row = asId
-        ? db.select().from(opportunities).where(eq(opportunities.id, asId)).get()
-        : db.select().from(opportunities).where(eq(opportunities.slug, opportunity)).get();
+        ? db
+            .select()
+            .from(opportunities)
+            .where(and(eq(opportunities.id, asId), visibleTo(auth.userId)))
+            .get()
+        : db
+            .select()
+            .from(opportunities)
+            .where(and(eq(opportunities.slug, opportunity), visibleTo(auth.userId)))
+            .get();
       if (!row) {
-        const suggestions = closestSlugs(opportunity);
+        const suggestions = closestSlugs(opportunity, auth.userId);
         const next: NextAction[] = suggestions[0]
           ? [{ tool: 'get_opportunity', arguments: { opportunity: suggestions[0] }, reason: 'closest match' }]
           : [{ tool: 'get_opportunities', arguments: { limit: 10 }, reason: 'list valid slugs' }];
