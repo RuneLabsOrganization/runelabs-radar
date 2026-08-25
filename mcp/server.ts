@@ -112,7 +112,15 @@ const httpServer = createServer(async (req: IncomingMessage, res: ServerResponse
     return;
   }
 
-  if (rateLimited(auth.rateKey)) {
+  let limited = false;
+  try {
+    limited = rateLimited(auth.rateKey);
+  } catch {
+    res.writeHead(503, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ error: 'rate limiter unavailable' }));
+    return;
+  }
+  if (limited) {
     res.writeHead(429, { 'content-type': 'application/json' });
     res.end(JSON.stringify({ error: 'rate limit exceeded', limit_per_hour: rateLimitPerHour() }));
     return;

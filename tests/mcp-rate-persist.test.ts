@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { bump, peek } from '@/lib/usage/counters';
-import { rateLimited, _resetRateLimitForTest } from '../mcp/lib/rate';
+import { rateLimited, rateLimitPerHour, _resetRateLimitForTest } from '../mcp/lib/rate';
 import { useTestDb } from './helpers/db';
 
 describe('mcp rate limiting is durable', () => {
@@ -35,5 +35,20 @@ describe('mcp rate limiting is durable', () => {
 
     const t2 = new Date('2026-08-25T11:00:00Z');
     expect(rateLimited('ip:7.7.7.7', t2)).toBe(false);
+  });
+
+  it('picks up MCP_RATE_LIMIT set after module import (loadDotEnv order)', () => {
+    const now = new Date('2026-08-25T10:00:00Z');
+    const prev = process.env.MCP_RATE_LIMIT;
+    _resetRateLimitForTest(); // clear override, read env
+    process.env.MCP_RATE_LIMIT = '1';
+    try {
+      expect(rateLimitPerHour()).toBe(1);
+      expect(rateLimited('ip:8.8.8.8', now)).toBe(false); // 1 — at limit, not over
+      expect(rateLimited('ip:8.8.8.8', now)).toBe(true);  // 2 — over
+    } finally {
+      if (prev === undefined) delete process.env.MCP_RATE_LIMIT;
+      else process.env.MCP_RATE_LIMIT = prev;
+    }
   });
 });

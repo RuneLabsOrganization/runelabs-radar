@@ -8,18 +8,18 @@
  */
 import { bump } from '../../src/lib/usage/counters';
 
-let limitPerHour = Number(process.env.MCP_RATE_LIMIT ?? 300);
+let override: number | undefined;
+
+export function rateLimitPerHour(): number {
+  return override ?? Number(process.env.MCP_RATE_LIMIT ?? 300);
+}
 
 /** True when this bucket has exceeded its hourly allowance. */
 export function rateLimited(bucket: string, now: Date = new Date()): boolean {
-  return bump(bucket, 'rate', 'hour', now) > limitPerHour;
+  return bump(bucket, 'rate', 'hour', now) > rateLimitPerHour();
 }
 
-export function rateLimitPerHour(): number {
-  return limitPerHour;
-}
-
-/** Test seam: re-read the env limit (or force one) without reimporting. */
+/** Test seam: force a limit, or pass nothing to clear the override and re-read env. */
 export function _resetRateLimitForTest(limit?: number): void {
-  limitPerHour = limit ?? Number(process.env.MCP_RATE_LIMIT ?? 300);
+  override = limit;
 }
