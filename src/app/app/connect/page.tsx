@@ -75,22 +75,18 @@ export default async function ConnectPage() {
           </CardHeader>
           <CardContent className="space-y-2 pt-3 text-[12.5px] leading-relaxed text-ink-3">
             <p>
-              After you click <strong className="text-ink-2">Allow</strong>, your editor starts a tiny local server
-              (for example <span className="mono">http://127.0.0.1:60653/callback</span>) to receive the authorization
-              code. If the browser shows <strong className="text-ink-2">connection refused</strong>:
+              After you click <strong className="text-ink-2">Allow</strong>, Radar shows a completion page with your
+              callback URL. Your editor also starts a tiny local server (for example{' '}
+              <span className="mono">http://localhost:60653/callback</span>) to receive the code automatically.
             </p>
             <ul className="list-disc space-y-1 pl-5">
               <li>
-                Retry the connect flow from VS Code / Kimi — keep the editor window open until the browser finishes.
+                If the browser shows <strong className="text-ink-2">connection refused</strong>, copy the callback URL
+                from Radar&apos;s completion page (or from the browser address bar) and paste it into Kimi Code / VS
+                Code when prompted.
               </li>
-              <li>
-                If the address bar still shows <span className="mono">127.0.0.1</span>, change it to{' '}
-                <span className="mono">localhost</span> (same port and path) and reload.
-              </li>
-              <li>
-                Check nothing else is blocking that port (VPN, firewall, or a stale MCP auth session — disconnect and
-                reconnect the server).
-              </li>
+              <li>Retry the connect flow from the editor — keep the window open until you finish.</li>
+              <li>Check nothing else is blocking that port (VPN, firewall, or a stale MCP auth session).</li>
             </ul>
           </CardContent>
         </Card>

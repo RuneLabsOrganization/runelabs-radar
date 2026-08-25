@@ -6,6 +6,15 @@
  * Redirecting the browser to `localhost` keeps token exchange on the registered
  * redirect_uri while letting the client actually receive the callback.
  */
+export function isLoopbackRedirectUri(redirectUri: string): boolean {
+  try {
+    const url = new URL(redirectUri);
+    return url.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname);
+  } catch {
+    return false;
+  }
+}
+
 export function browserLoopbackRedirect(redirectUri: string): string {
   try {
     const url = new URL(redirectUri);

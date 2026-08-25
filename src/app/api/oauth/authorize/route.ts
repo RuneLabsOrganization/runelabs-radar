@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth/user';
-import { browserLoopbackRedirect } from '@/lib/oauth-loopback';
+import { browserLoopbackRedirect, isLoopbackRedirectUri } from '@/lib/oauth-loopback';
 import { createCode, getClient, sanitizeScopes } from '@/lib/oauth';
 
 async function parseBody(req: Request): Promise<Record<string, string>> {
@@ -71,11 +71,14 @@ export async function POST(req: Request) {
   url.searchParams.set('code', code);
   if (typeof state === 'string' && state) url.searchParams.set('state', state);
   const browserRedirect = browserLoopbackRedirect(url.toString());
+  const landing = isLoopbackRedirectUri(redirect_uri)
+    ? new URL(`/oauth/complete?to=${encodeURIComponent(browserRedirect)}`, req.url).toString()
+    : browserRedirect;
   if (formPost) {
-    return NextResponse.redirect(browserRedirect, 302);
+    return NextResponse.redirect(landing, 302);
   }
   return NextResponse.json(
-    { redirect: browserRedirect },
+    { redirect: landing },
     { headers: { 'cache-control': 'no-store', pragma: 'no-cache' } },
   );
 }

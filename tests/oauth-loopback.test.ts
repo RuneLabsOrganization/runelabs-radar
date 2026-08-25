@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { browserLoopbackRedirect } from '@/lib/oauth-loopback';
+import { browserLoopbackRedirect, isLoopbackRedirectUri } from '@/lib/oauth-loopback';
 
 describe('browserLoopbackRedirect', () => {
+  it('detects loopback redirect URIs', () => {
+    expect(isLoopbackRedirectUri('http://127.0.0.1:60653/callback')).toBe(true);
+    expect(isLoopbackRedirectUri('http://localhost:9877/callback')).toBe(true);
+    expect(isLoopbackRedirectUri('https://claude.ai/api/mcp/auth_callback')).toBe(false);
+  });
+
   it('rewrites 127.0.0.1 loopback to localhost for browser navigation', () => {
     expect(browserLoopbackRedirect('http://127.0.0.1:60653/callback')).toBe('http://localhost:60653/callback');
     expect(browserLoopbackRedirect('http://127.0.0.1:60653/callback?code=abc&state=x')).toBe(
