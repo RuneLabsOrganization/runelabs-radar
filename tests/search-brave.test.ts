@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { braveSearch, braveSearchBatch, BraveSearchError } from '@/lib/search/brave';
+import { braveSearch, braveSearchBatch, BraveSearchError, resetBraveQuotaGate } from '@/lib/search/brave';
 
 function fixture(name: string): string {
   return readFileSync(fileURLToPath(new URL(`./fixtures/${name}`, import.meta.url)), 'utf8');
@@ -18,6 +18,7 @@ function stubFetch(body: string, status = 200) {
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.unstubAllEnvs();
+  resetBraveQuotaGate();
 });
 
 describe('braveSearch', () => {
@@ -48,6 +49,31 @@ describe('braveSearch', () => {
   it('throws without BRAVE_API_KEY', async () => {
     vi.stubEnv('BRAVE_API_KEY', '');
     await expect(braveSearch({ query: 'AI' })).rejects.toBeInstanceOf(BraveSearchError);
+  });
+
+  it('surfaces Brave 402 USAGE_LIMIT_EXCEEDED as a quota error, once', async () => {
+    const body = JSON.stringify({
+      type: 'ErrorResponse',
+      error: {
+        status: 402,
+        detail: 'Usage limit exceeded.',
+        meta: { plan: 'Search', current_spend: 5, usage_limit: 5, usage_limit_type: 'monthly' },
+        code: 'USAGE_LIMIT_EXCEEDED',
+      },
+    });
+    const fn = vi.fn(async () => {
+      return new Response(body, {
+        status: 402,
+        headers: { 'x-ratelimit-reset': '1, 3600' },
+      });
+    });
+    vi.stubGlobal('fetch', fn);
+
+    await expect(braveSearch({ query: 'AI' })).rejects.toThrow(/USAGE_LIMIT_EXCEEDED.*\$5\/\$5/i);
+    expect(fn).toHaveBeenCalledTimes(1);
+
+    await expect(braveSearch({ query: 'AI' })).rejects.toThrow(/quota exhausted/i);
+    expect(fn).toHaveBeenCalledTimes(1);
   });
 });
 

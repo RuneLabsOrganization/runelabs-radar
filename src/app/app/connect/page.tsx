@@ -66,6 +66,36 @@ export default async function ConnectPage() {
 
       <ConnectHealth />
 
+      {authRequired && (
+        <Card>
+          <CardHeader className="pb-0">
+            <CardTitle className="readout font-medium normal-case tracking-[0.12em] text-ink-2">
+              OAuth troubleshooting
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2 pt-3 text-[12.5px] leading-relaxed text-ink-3">
+            <p>
+              After you click <strong className="text-ink-2">Allow</strong>, your editor starts a tiny local server
+              (for example <span className="mono">http://127.0.0.1:60653/callback</span>) to receive the authorization
+              code. If the browser shows <strong className="text-ink-2">connection refused</strong>:
+            </p>
+            <ul className="list-disc space-y-1 pl-5">
+              <li>
+                Retry the connect flow from VS Code / Kimi — keep the editor window open until the browser finishes.
+              </li>
+              <li>
+                If the address bar still shows <span className="mono">127.0.0.1</span>, change it to{' '}
+                <span className="mono">localhost</span> (same port and path) and reload.
+              </li>
+              <li>
+                Check nothing else is blocking that port (VPN, firewall, or a stale MCP auth session — disconnect and
+                reconnect the server).
+              </li>
+            </ul>
+          </CardContent>
+        </Card>
+      )}
+
       <SectionHeader label="Client setup" className="mt-0" />
       <div className="space-y-3">
         <Snippet title="Claude Code" code={`claude mcp add --transport http radar ${mcpUrl}`} />

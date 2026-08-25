@@ -1,6 +1,27 @@
 import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth/user';
+import { browserLoopbackRedirect } from '@/lib/oauth-loopback';
 import { createCode, getClient, sanitizeScopes } from '@/lib/oauth';
+
+async function parseBody(req: Request): Promise<Record<string, string>> {
+  const ct = req.headers.get('content-type') ?? '';
+  if (ct.includes('application/x-www-form-urlencoded')) {
+    const text = await req.text();
+    const out: Record<string, string> = {};
+    for (const [k, v] of new URLSearchParams(text)) out[k] = v;
+    return out;
+  }
+  try {
+    const json = (await req.json()) as Record<string, unknown>;
+    const out: Record<string, string> = {};
+    for (const [k, v] of Object.entries(json)) {
+      if (typeof v === 'string') out[k] = v;
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
 
 /**
  * Consent confirmation (called by the authorize page's Allow button):
@@ -17,13 +38,14 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'cross-site request rejected' }, { status: 403 });
   }
 
-  let body: Record<string, unknown>;
+  let body: Record<string, string>;
   try {
-    body = (await req.json()) as Record<string, unknown>;
+    body = await parseBody(req);
   } catch {
-    return NextResponse.json({ error: 'bad json' }, { status: 400 });
+    return NextResponse.json({ error: 'bad request body' }, { status: 400 });
   }
   const { client_id, redirect_uri, code_challenge, code_challenge_method, scope, state } = body;
+  const formPost = (req.headers.get('content-type') ?? '').includes('application/x-www-form-urlencoded');
 
   const client = typeof client_id === 'string' ? getClient(client_id) : null;
   if (!client) return NextResponse.json({ error: 'unknown client' }, { status: 400 });
@@ -48,8 +70,12 @@ export async function POST(req: Request) {
   const url = new URL(redirect_uri);
   url.searchParams.set('code', code);
   if (typeof state === 'string' && state) url.searchParams.set('state', state);
+  const browserRedirect = browserLoopbackRedirect(url.toString());
+  if (formPost) {
+    return NextResponse.redirect(browserRedirect, 302);
+  }
   return NextResponse.json(
-    { redirect: url.toString() },
+    { redirect: browserRedirect },
     { headers: { 'cache-control': 'no-store', pragma: 'no-cache' } },
   );
 }

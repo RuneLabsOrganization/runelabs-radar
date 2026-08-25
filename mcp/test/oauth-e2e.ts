@@ -136,7 +136,7 @@ async function main() {
   check('consent lists both scopes', consentText.includes('read') && consentText.includes('plans'));
 
   await page.click('text=Allow');
-  await page.waitForURL(/127\.0\.0\.1:9877/, { timeout: 10000 });
+  await page.waitForURL(/localhost:9877|127\.0\.0\.1:9877/, { timeout: 10000 });
   const cb1 = callbacks.at(-1);
   const code = cb1?.searchParams.get('code') ?? '';
   check('redirect carries code + state', code.length > 20 && cb1?.searchParams.get('state') === 'e2e-state-123');
@@ -205,7 +205,7 @@ async function main() {
     { waitUntil: 'domcontentloaded' },
   );
   await page.click('text=Allow');
-  await page.waitForURL(/127\.0\.0\.1:9877/, { timeout: 10000 });
+  await page.waitForURL(/localhost:9877|127\.0\.0\.1:9877/, { timeout: 10000 });
   const code2 = callbacks.at(-1)?.searchParams.get('code') ?? '';
   const grant2Res = await tokenRequest({
     grant_type: 'authorization_code',
@@ -234,7 +234,7 @@ async function main() {
     { waitUntil: 'domcontentloaded' },
   );
   await page.click('text=Deny');
-  await page.waitForURL(/127\.0\.0\.1:9877/, { timeout: 10000 });
+  await page.waitForURL(/localhost:9877|127\.0\.0\.1:9877/, { timeout: 10000 });
   const cbDeny = callbacks.at(-1);
   check(
     'deny redirects with access_denied + state',

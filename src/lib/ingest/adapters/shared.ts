@@ -8,6 +8,33 @@ export const DEFAULT_UA = 'RunelabsRadar/1.0 (+https://radar.runelabs.org)';
 
 const RETRYABLE_STATUSES = new Set([429, 500, 502, 503, 504]);
 const MAX_ATTEMPTS = 3;
+const ERROR_BODY_MAX = 2000;
+
+/** Non-2xx fetch with the response body attached so callers can parse API errors. */
+export class HttpFetchError extends Error {
+  readonly status: number;
+  readonly body: string;
+  readonly resetSeconds: number | null;
+
+  constructor(status: number, url: string, body: string, resetSeconds: number | null = null) {
+    super(`HTTP ${status} fetching ${url}`);
+    this.name = 'HttpFetchError';
+    this.status = status;
+    this.body = body;
+    this.resetSeconds = resetSeconds;
+  }
+}
+
+/** Longest window from `x-ratelimit-reset: "1, 522166"` or a Retry-After header. */
+export function parseResetSeconds(res: Response): number | null {
+  const raw = res.headers.get('x-ratelimit-reset') ?? res.headers.get('retry-after');
+  if (!raw) return null;
+  const parts = raw
+    .split(',')
+    .map((s) => Number(s.trim()))
+    .filter((n) => Number.isFinite(n) && n >= 0);
+  return parts.length > 0 ? Math.max(...parts) : null;
+}
 
 /** Jittered backoff: 500ms after the first failure, ~2s after the second. */
 function backoffMs(attempt: number): number {
@@ -34,11 +61,19 @@ export async function fetchWithTimeout(url: string, init: RequestInit = {}): Pro
         continue;
       }
       if (!res.ok && res.status !== 304) {
-        throw new Error(`HTTP ${res.status} fetching ${url}`);
+        const body = await res.text().catch(() => '');
+        throw new HttpFetchError(
+          res.status,
+          url,
+          body.slice(0, ERROR_BODY_MAX),
+          parseResetSeconds(res),
+        );
       }
       return res;
     } catch (e) {
       lastError = e;
+      // 402/401/4xx must not burn the jittered retry budget — only 429/5xx/network do.
+      if (e instanceof HttpFetchError && !RETRYABLE_STATUSES.has(e.status)) throw e;
       if (attempt === MAX_ATTEMPTS) throw e;
     } finally {
       clearTimeout(timer);
