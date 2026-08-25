@@ -23,9 +23,10 @@ import { registerScoutTools } from '../mcp/tools/scout';
 import { registerPrompts } from '../mcp/prompts';
 import { runDebate, type DebateResult } from '@/lib/opportunities/critic';
 import { _setFetch } from '@/lib/llm/minimax';
-import { SUB_KEYS } from '@/lib/opportunities/engine';
+import { SUB_KEYS, type OppDraft } from '@/lib/opportunities/engine';
+import { persistScoutDrafts } from '@/lib/opportunities/persist-scout';
 import { comps, launches, opportunities, painPoints, stories } from '@/lib/db/schema';
-import { useTestDb } from './helpers/db';
+import { seedUser, useTestDb } from './helpers/db';
 
 const debateMock = vi.mocked(runDebate);
 
@@ -47,16 +48,32 @@ function authFor(rateKey: string): AuthContext {
   return { authed: false, userId: null, scopes: new Set(['read', 'plans']), rateKey };
 }
 
+function authForUser(userId: number): AuthContext {
+  return {
+    authed: true,
+    userId,
+    scopes: new Set(['read', 'plans']),
+    rateKey: `user:${userId}`,
+  };
+}
+
 /** Minimal server with ONLY the two tools under test (never buildServer). */
-async function wire(rateKey: string): Promise<Client> {
+async function wireWith(auth: AuthContext): Promise<Client> {
   const server = new McpServer({ name: 'debate-scout-test', version: '0.0.1' });
-  const auth = authFor(rateKey);
   registerDebateTools(server, auth);
   registerScoutTools(server, auth);
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   const client = new Client({ name: 'mcp-test', version: '0.0.1' });
   await Promise.all([client.connect(clientTransport), server.connect(serverTransport)]);
   return client;
+}
+
+async function wire(rateKey: string): Promise<Client> {
+  return wireWith(authFor(rateKey));
+}
+
+async function wireUser(userId: number): Promise<Client> {
+  return wireWith(authForUser(userId));
 }
 
 async function call(client: Client, name: string, args: Record<string, unknown> = {}) {
@@ -223,6 +240,29 @@ const draft = (slug: string) => ({
   evidenceRefs: ['P1'],
 });
 
+function persistDraft(slug: string): OppDraft {
+  return {
+    slug,
+    title: `Title for ${slug}`,
+    thesis: 'A sufficiently long thesis to satisfy the sanitizer and the gate.',
+    sector: 'devtools',
+    window: '6 months',
+    windowMonths: 6,
+    sub: Object.fromEntries(SUB_KEYS.map((k) => [k, 12])) as OppDraft['sub'],
+    kpis: {
+      initialCostUsd: 100,
+      monthlyCostUsd: 50,
+      priceUsd: 30,
+      timeToMvpDays: 14,
+      breakEvenCustomers: 5,
+      competitorCount: 3,
+      competitionNote: null,
+      regulatoryNote: null,
+    },
+    evidenceRefs: ['P1'],
+  };
+}
+
 /** Mock MiniMax: proposer returns the given drafts; captures request bodies. */
 function mockProposer(drafts: unknown[]): { bodies: { system: string; user: string }[] } {
   const bodies: { system: string; user: string }[] = [];
@@ -317,6 +357,23 @@ describe('scout_opportunities', () => {
     expect(second.structuredContent).toMatchObject({ ok: false, openings: [] });
     expect(second.structuredContent!.error as string).toContain('daily scout cap reached (1)');
     expect(bodies).toHaveLength(1); // the refusal never reaches the LLM
+  });
+
+  it('does not starve a second owner when another caller already holds the slug', async () => {
+    seedUser(db, 1);
+    seedUser(db, 2);
+    seedSignals();
+    persistScoutDrafts([persistDraft('shared-idea')], 1);
+    mockProposer([draft('shared-idea')]);
+
+    const client = await wireUser(2);
+    const res = await call(client, 'scout_opportunities', {});
+    expect(res.structuredContent).toMatchObject({ ok: true, skipped_existing: 0 });
+    const openings = res.structuredContent!.openings as { slug: string; persisted?: boolean }[];
+    expect(openings.map((o) => o.slug)).toContain('shared-idea');
+    expect(openings).toEqual(
+      expect.arrayContaining([expect.objectContaining({ slug: 'shared-idea', persisted: true })]),
+    );
   });
 });
 

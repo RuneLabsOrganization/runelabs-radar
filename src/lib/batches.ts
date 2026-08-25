@@ -1,4 +1,4 @@
-import { and, asc, desc, eq } from 'drizzle-orm';
+import { and, asc, desc, eq, isNull, or } from 'drizzle-orm';
 import { getDb } from './db';
 import { batchItems, batchRunItems, batchRuns, batches, debates, opportunities } from './db/schema';
 import { can } from './entitlements';
@@ -152,7 +152,18 @@ export async function runBatchOp(batchId: number, op: 'debate' | 'plan' | 'scout
       } else if (op === 'plan') {
         let oppId: number | null = item.refId ?? null;
         if (!oppId && item.refKey) {
-          oppId = db.select().from(opportunities).where(eq(opportunities.slug, item.refKey)).get()?.id ?? null;
+          oppId =
+            db
+              .select()
+              .from(opportunities)
+              .where(
+                and(
+                  eq(opportunities.slug, item.refKey),
+                  or(isNull(opportunities.ownerUserId), eq(opportunities.ownerUserId, userId)),
+                ),
+              )
+              .orderBy(desc(opportunities.ownerUserId))
+              .get()?.id ?? null;
         }
         if (!oppId) throw new Error('Plan requires an opportunity');
         const res = await generatePlan(oppId, { userId });
@@ -216,7 +227,13 @@ export async function createWeeklyRadarDrop(): Promise<{ slug: string; count: nu
   const tops = db
     .select()
     .from(opportunities)
-    .where(and(eq(opportunities.status, 'active'), eq(opportunities.verdict, 'pursue')))
+    .where(
+      and(
+        eq(opportunities.status, 'active'),
+        eq(opportunities.verdict, 'pursue'),
+        isNull(opportunities.ownerUserId),
+      ),
+    )
     .orderBy(desc(opportunities.flipScore))
     .limit(10)
     .all();

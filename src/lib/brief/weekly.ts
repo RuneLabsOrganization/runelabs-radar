@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, isNull, sql } from 'drizzle-orm';
 import { getDb } from '../db';
 import {
   boardHistory,
@@ -76,7 +76,13 @@ export async function runWeeklyReport(): Promise<{
   const pursue = db
     .select()
     .from(opportunities)
-    .where(and(eq(opportunities.verdict, 'pursue'), eq(opportunities.status, 'active')))
+    .where(
+      and(
+        eq(opportunities.verdict, 'pursue'),
+        eq(opportunities.status, 'active'),
+        isNull(opportunities.ownerUserId),
+      ),
+    )
     .orderBy(desc(opportunities.flipScore))
     .limit(8)
     .all();

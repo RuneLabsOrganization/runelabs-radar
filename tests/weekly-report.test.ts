@@ -191,6 +191,34 @@ describe('runWeeklyReport', () => {
     expect(user).not.toContain('aa-only-model');
   });
 
+  it('does not leak private pursue openings into the public weekly prompt', async () => {
+    seedWeek();
+    const now = new Date();
+    db.insert(opportunities)
+      .values({
+        slug: 'alice-secret-opening',
+        ownerUserId: 1,
+        title: 'SECRET PRIVATE OPENING THAT MUST NOT LEAK',
+        thesis: 'A private opening fitted to one builder and never meant for the public radar.',
+        sector: 'devtools',
+        status: 'active',
+        flipScore: 99,
+        holdScore: 80,
+        scores: '{}',
+        evidence: '[]',
+        verdict: 'pursue',
+        confidence: 80,
+        firstSeenAt: now,
+        lastSeenAt: now,
+      })
+      .run();
+    const capture: { user?: string } = {};
+    mockCompletion('# State of the Builder Market\n\nA tight weekly issue with several words.', capture);
+    await runWeeklyReport();
+    expect(capture.user).toContain('Bulk background-removal API');
+    expect(capture.user).not.toContain('SECRET PRIVATE OPENING THAT MUST NOT LEAK');
+  });
+
   it('re-running the same Sunday upserts — one row, updated markdown', async () => {
     seedWeek();
     mockCompletion('# State of the Builder Market\n\nFirst edition.');
