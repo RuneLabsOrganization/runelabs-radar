@@ -1,4 +1,5 @@
 import { blob, index, real, sqliteTable, text, integer, primaryKey, uniqueIndex } from 'drizzle-orm/sqlite-core';
+import { sql } from 'drizzle-orm';
 
 export const users = sqliteTable('users', {
   id: integer('id').primaryKey({ autoIncrement: true }),
@@ -269,47 +270,64 @@ export const topicClusters = sqliteTable('topic_clusters', {
 });
 
 /** The Opportunity Engine's output: scored monetizable openings. */
-export const opportunities = sqliteTable('opportunities', {
-  id: integer('id').primaryKey({ autoIncrement: true }),
-  // stable kebab identity — re-detection across days upserts by slug
-  slug: text('slug').notNull().unique(),
-  title: text('title').notNull(),
-  thesis: text('thesis').notNull(),
-  sector: text('sector'),
-  status: text('status', { enum: ['active', 'archived'] }).notNull().default('active'),
-  flipScore: integer('flip_score').notNull(),
-  holdScore: integer('hold_score').notNull(),
-  // JSON sub-scores, each 0-20: demand, buildability, margin, competition,
-  // timing, moat, regClear, platformSafe, distribution, qualityBar
-  scores: text('scores').notNull(),
-  // JSON hard estimates {initialCostUsd, monthlyCostUsd, priceUsd,
-  // timeToMvpDays, breakEvenCustomers, competitorCount, competitionNote, regulatoryNote}
-  kpis: text('kpis'),
-  // JSON [{type: 'pain'|'pattern'|'story'|'entity'|'market', label}]
-  evidence: text('evidence').notNull().default('[]'),
-  window: text('window'),
-  // structured window for the scoring gate (the text above is for humans)
-  windowMonths: integer('window_months'),
-  // layered review outcome: adversarial critic verdict + deterministic gate caps,
-  // full trail in `review` (JSON {killRisks, adjustments, flags, capsApplied,
-  // criticVerdict, rawFlip, rawHold, criticUnavailable?})
-  verdict: text('verdict', { enum: ['pursue', 'watch', 'reject'] }).notNull().default('watch'),
-  confidence: integer('confidence').notNull().default(40),
-  review: text('review'),
-  reviewedAt: integer('reviewed_at', { mode: 'timestamp' }),
-  // JSON launchable brief — generated on first expand, cached
-  brief: text('brief'),
-  briefGeneratedAt: integer('brief_generated_at', { mode: 'timestamp' }),
-  // JSON execution plan (full task graph) — generated on first MCP request, cached
-  plan: text('plan'),
-  planGeneratedAt: integer('plan_generated_at', { mode: 'timestamp' }),
-  // crowdedness signal (Phase 9e): successful plan generations for this
-  // opportunity — "N builders exploring this", with a ranking penalty above
-  // the threshold in the get_opportunities tool
-  planRuns: integer('plan_runs').notNull().default(0),
-  firstSeenAt: integer('first_seen_at', { mode: 'timestamp' }).notNull(),
-  lastSeenAt: integer('last_seen_at', { mode: 'timestamp' }).notNull(),
-});
+export const opportunities = sqliteTable(
+  'opportunities',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    // stable kebab identity — re-detection across days upserts by (owner, slug)
+    slug: text('slug').notNull(),
+    /**
+     * NULL = the canonical public radar, written only by the daily engine.
+     * Non-null = a private opening owned by one user (Rung 1/2 output).
+     * Every read must scope with: owner_user_id IS NULL OR owner_user_id = :me
+     */
+    ownerUserId: integer('owner_user_id'),
+    title: text('title').notNull(),
+    thesis: text('thesis').notNull(),
+    sector: text('sector'),
+    status: text('status', { enum: ['active', 'archived'] }).notNull().default('active'),
+    flipScore: integer('flip_score').notNull(),
+    holdScore: integer('hold_score').notNull(),
+    // JSON sub-scores, each 0-20: demand, buildability, margin, competition,
+    // timing, moat, regClear, platformSafe, distribution, qualityBar
+    scores: text('scores').notNull(),
+    // JSON hard estimates {initialCostUsd, monthlyCostUsd, priceUsd,
+    // timeToMvpDays, breakEvenCustomers, competitorCount, competitionNote, regulatoryNote}
+    kpis: text('kpis'),
+    // JSON [{type: 'pain'|'pattern'|'story'|'entity'|'market', label}]
+    evidence: text('evidence').notNull().default('[]'),
+    window: text('window'),
+    // structured window for the scoring gate (the text above is for humans)
+    windowMonths: integer('window_months'),
+    // layered review outcome: adversarial critic verdict + deterministic gate caps,
+    // full trail in `review` (JSON {killRisks, adjustments, flags, capsApplied,
+    // criticVerdict, rawFlip, rawHold, criticUnavailable?})
+    verdict: text('verdict', { enum: ['pursue', 'watch', 'reject'] }).notNull().default('watch'),
+    confidence: integer('confidence').notNull().default(40),
+    review: text('review'),
+    reviewedAt: integer('reviewed_at', { mode: 'timestamp' }),
+    // JSON launchable brief — generated on first expand, cached
+    brief: text('brief'),
+    briefGeneratedAt: integer('brief_generated_at', { mode: 'timestamp' }),
+    // JSON execution plan (full task graph) — generated on first MCP request, cached
+    plan: text('plan'),
+    planGeneratedAt: integer('plan_generated_at', { mode: 'timestamp' }),
+    // crowdedness signal (Phase 9e): successful plan generations for this
+    // opportunity — "N builders exploring this", with a ranking penalty above
+    // the threshold in the get_opportunities tool
+    planRuns: integer('plan_runs').notNull().default(0),
+    firstSeenAt: integer('first_seen_at', { mode: 'timestamp' }).notNull(),
+    lastSeenAt: integer('last_seen_at', { mode: 'timestamp' }).notNull(),
+  },
+  (t) => [
+    // Two users may legitimately compose the same slug, so uniqueness is
+    // per-owner. SQLite treats NULLs as DISTINCT in unique indexes, so this
+    // index does NOT constrain public rows — the partial index below does.
+    uniqueIndex('opportunities_owner_slug').on(t.ownerUserId, t.slug),
+    uniqueIndex('opportunities_public_slug').on(t.slug).where(sql`${t.ownerUserId} is null`),
+    index('opportunities_owner_status').on(t.ownerUserId, t.status),
+  ],
+);
 
 /** "The machine noticed" — daily anomaly detections, narrated. */
 export const patterns = sqliteTable(

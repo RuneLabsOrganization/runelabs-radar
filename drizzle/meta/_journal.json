@@ -211,6 +211,13 @@
       "when": 1787696149707,
       "tag": "0029_acoustic_screwball",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "6",
+      "when": 1787700000000,
+      "tag": "0030_opportunity_owner",
+      "breakpoints": true
     }
   ]
 }
