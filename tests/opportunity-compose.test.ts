@@ -1,11 +1,37 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { composeLeads } from '@/lib/opportunities/compose';
 import { loadWedges, seedWedges, wedgeCompatible, wedgeAt } from '@/lib/opportunities/wedges';
-import type { Primitive } from '@/lib/opportunities/primitives';
+import type { WedgeAxis, WedgeSpace, WedgeValue } from '@/lib/opportunities/wedges';
+import type { Primitive, PrimitiveType } from '@/lib/opportunities/primitives';
 import { useTestDb } from './helpers/db';
 
-function prim(ref: string, label: string, tags: string[], intensity = 50): Primitive {
-  return { ref, type: 'pain', label, sector: null, tags, intensity };
+function prim(
+  ref: string,
+  label: string,
+  tags: string[],
+  intensity = 50,
+  type: PrimitiveType = 'pain',
+): Primitive {
+  return { ref, type, label, sector: null, tags, intensity };
+}
+
+/** One-value-per-axis space with no tag rules — both primitives share the wedge. */
+function openWedgeSpace(): WedgeSpace {
+  const val = (axis: WedgeAxis, id: number): WedgeValue => ({
+    id,
+    axis,
+    slug: `open-${axis}`,
+    label: `Open ${axis}`,
+    requiresTags: [],
+    excludesTags: [],
+    weight: 10,
+  });
+  return {
+    business_model: [val('business_model', 1)],
+    delivery_form: [val('delivery_form', 2)],
+    buyer: [val('buyer', 3)],
+    moat_play: [val('moat_play', 4)],
+  };
 }
 
 const PRIMITIVES: Primitive[] = [
@@ -122,5 +148,66 @@ describe('composeLeads', () => {
       expect(lead.heuristicScore).toBeGreaterThanOrEqual(0);
       expect(lead.heuristicScore).toBeLessThanOrEqual(100);
     }
+  });
+
+  it('frames a pain thesis as a buyer being hit by the need', () => {
+    const res = composeLeads({
+      primitives: [prim('P1', 'Code review backlogs block small teams', ['devtools'])],
+      space: loadWedges(),
+      ownerKey: 'user:1',
+      day: '2026-08-25',
+      cursor: 0,
+      limit: 1,
+    });
+    expect(res.leads).toHaveLength(1);
+    expect(res.leads[0].thesisSkeleton).toContain('are hit by');
+  });
+
+  it('frames a story thesis as something that just became available, not a pain', () => {
+    const res = composeLeads({
+      primitives: [prim('S1', 'A new open-source model dropped', ['devtools'], 50, 'story')],
+      space: loadWedges(),
+      ownerKey: 'user:1',
+      day: '2026-08-25',
+      cursor: 0,
+      limit: 1,
+    });
+    expect(res.leads).toHaveLength(1);
+    expect(res.leads[0].thesisSkeleton).toContain('just became available or cheap');
+    expect(res.leads[0].thesisSkeleton).not.toContain('are hit by');
+  });
+
+  it('frames a pattern thesis as a signal, not a pain', () => {
+    const res = composeLeads({
+      primitives: [prim('A1', 'Weekly MCP server launches keep climbing', ['devtools'], 50, 'pattern')],
+      space: loadWedges(),
+      ownerKey: 'user:1',
+      day: '2026-08-25',
+      cursor: 0,
+      limit: 1,
+    });
+    expect(res.leads).toHaveLength(1);
+    expect(res.leads[0].thesisSkeleton).toContain('Signal:');
+    expect(res.leads[0].thesisSkeleton).not.toContain('are hit by');
+  });
+
+  it('scores a pain strictly above a same-intensity story on the same wedge', () => {
+    const space = openWedgeSpace();
+    const pain = prim('P1', 'Code review backlogs block small teams', ['devtools'], 80);
+    const story = prim('S1', 'A new open-source model dropped', ['devtools'], 80, 'story');
+    const res = composeLeads({
+      primitives: [pain, story],
+      space,
+      ownerKey: 'user:1',
+      day: '2026-08-25',
+      cursor: 0,
+      limit: 2,
+    });
+    expect(res.leads).toHaveLength(2);
+    const painLead = res.leads.find((l) => l.primitiveRefs.includes('P1'));
+    const storyLead = res.leads.find((l) => l.primitiveRefs.includes('S1'));
+    expect(painLead).toBeDefined();
+    expect(storyLead).toBeDefined();
+    expect(painLead!.heuristicScore).toBeGreaterThan(storyLead!.heuristicScore);
   });
 });
