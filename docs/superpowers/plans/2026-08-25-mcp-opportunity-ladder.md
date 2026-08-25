@@ -61,6 +61,7 @@ The MCP server registers ~25 tool modules from `mcp/tools/*.ts` through `mcp/bui
 - **Every MCP tool** returns via `respond(data, { summary, next, economy })` from [`mcp/lib/payload.ts`](../../../mcp/lib/payload.ts). `summary` is a one-sentence natural-language result; `next` is prefilled follow-up calls; `economy` comes from `withUserEconomy(auth.userId, kind)`. Spread `...envelopeSchema` into every `outputSchema`.
 - **Migrations:** edit `src/lib/db/schema.ts`, then run `npm run db:generate`. Some steps below require hand-written SQL — those say so explicitly.
 - **Tests:** Vitest. `useTestDb()` from [`tests/helpers/db.ts`](../../../tests/helpers/db.ts) installs a migrated in-memory DB as the process singleton. Wire MCP tools with `InMemoryTransport` and register **only the tools under test** — never `buildServer`. Copy the pattern in [`tests/debate-scout.test.ts`](../../../tests/debate-scout.test.ts).
+- **Any test that drives an MCP tool with a non-null `userId` MUST call `seedUser(db, id)` first.** `openDb` sets `PRAGMA foreign_keys = ON`, and `respond()` records economy into `mcp_economy`, whose `user_id` references `users.id`. Without a matching row every tool call throws `FOREIGN KEY constraint failed` and returns no `structuredContent` at all — which reads like a schema bug and is not one. `plan_entitlements`, `user_profiles` and `agent_sessions` have the same constraint; `llm_calls.user_id` does not. This bug already cost this repo seven red tests before the plan started; the snippets below seed users where needed.
 - **Never call a real LLM in a test.** Either `vi.mock('@/lib/opportunities/critic', ...)` or inject a fake fetch with `_setFetch` from `@/lib/llm/minimax`.
 - **Commit after every task.** Conventional commits (`feat:`, `fix:`, `refactor:`, `test:`).
 
@@ -72,7 +73,9 @@ Before starting, confirm the suite is green so later failures are attributable t
 npm test
 ```
 
-Expected: all tests pass. If anything is already red, note which and tell the user before proceeding.
+Expected: **65 files, 554 tests, all passing.** If anything is red, stop and tell the user before proceeding.
+
+This baseline was itself repaired in commit `dba8ce6` (Task 0), before Task 1: `tests/opportunities-tool.test.ts` had seven failures from the missing-`users`-row foreign key described above, and `tests/weekly-report.test.ts` had two from asserting `markdown` while calling with the default `detail=compact`. That commit also made `recordEconomy` best-effort in `mcp/lib/payload.ts`, so a metering failure can no longer cost an agent its payload. If you are on a branch that does not contain `dba8ce6`, get it before starting.
 
 ---
 
@@ -690,7 +693,7 @@ import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import type { AuthContext } from '../mcp/lib/auth';
 import { registerOpportunityTools } from '../mcp/tools/opportunities';
 import { opportunities } from '@/lib/db/schema';
-import { useTestDb } from './helpers/db';
+import { seedUser, useTestDb } from './helpers/db';
 import type { Db } from '@/lib/db';
 
 function seedOpp(db: Db, slug: string, ownerUserId: number | null, flip = 60) {
@@ -741,6 +744,9 @@ describe('opportunity read scoping', () => {
   let db: Db;
   beforeEach(() => {
     db = useTestDb();
+    // MCP tools record economy against mcp_economy, which FKs to users.id
+    seedUser(db, 1);
+    seedUser(db, 2);
     seedOpp(db, 'public-one', null, 90);
     seedOpp(db, 'public-two', null, 80);
     seedOpp(db, 'alice-private', 1, 95);
@@ -2793,7 +2799,7 @@ import type { AuthContext } from '../mcp/lib/auth';
 import { registerLeadTools } from '../mcp/tools/leads';
 import { seedWedges } from '@/lib/opportunities/wedges';
 import { painPoints } from '@/lib/db/schema';
-import { useTestDb } from './helpers/db';
+import { seedUser, useTestDb } from './helpers/db';
 import type { Db } from '@/lib/db';
 
 function authFor(userId: number | null, rateKey: string): AuthContext {
@@ -2844,6 +2850,8 @@ describe('get_leads', () => {
   let db: Db;
   beforeEach(() => {
     db = useTestDb();
+    seedUser(db, 1);
+    seedUser(db, 2);
     seedWedges();
     seedPains(db, 6);
   });
@@ -2892,7 +2900,8 @@ describe('get_leads', () => {
   });
 
   it('explains itself when the stream is too thin', async () => {
-    useTestDb();
+    const fresh = useTestDb();
+    seedUser(fresh, 1);
     seedWedges();
     const client = await wire(authFor(1, 'user:1'));
     const p = (await client.callTool({ name: 'get_leads', arguments: { limit: 5 } }))
@@ -3392,7 +3401,7 @@ import type { LeadDraft } from '@/lib/opportunities/compose';
 import { SUB_KEYS } from '@/lib/opportunities/engine';
 import { opportunities } from '@/lib/db/schema';
 import { _setFetch } from '@/lib/llm/minimax';
-import { useTestDb } from './helpers/db';
+import { seedUser, useTestDb } from './helpers/db';
 import type { Db } from '@/lib/db';
 
 function draft(slug: string): LeadDraft {
@@ -3449,6 +3458,8 @@ describe('refine_lead', () => {
   let db: Db;
   beforeEach(() => {
     db = useTestDb();
+    seedUser(db, 1);
+    seedUser(db, 2);
     vi.stubEnv('MINIMAX_API_KEY', 'test-key');
   });
 
@@ -3729,7 +3740,7 @@ Create `tests/entitlements-ladder.test.ts`:
 import { beforeEach, describe, expect, it } from 'vitest';
 import { can } from '@/lib/entitlements';
 import { llmCalls, planEntitlements } from '@/lib/db/schema';
-import { useTestDb } from './helpers/db';
+import { seedUser, useTestDb } from './helpers/db';
 import type { Db } from '@/lib/db';
 
 function setTier(db: Db, userId: number, tier: 'free' | 'builder' | 'factory') {
@@ -3753,6 +3764,8 @@ describe('ladder entitlements', () => {
   let db: Db;
   beforeEach(() => {
     db = useTestDb();
+    // plan_entitlements FKs to users.id
+    for (const id of [1, 2, 3, 4]) seedUser(db, id);
   });
 
   it('gives free tier a small refine quota', () => {
@@ -4273,7 +4286,7 @@ import type { AuthContext } from '../mcp/lib/auth';
 import { registerForgeTools } from '../mcp/tools/forge';
 import { forgeOpportunity } from '@/lib/opportunities/forge';
 import { opportunities, planEntitlements } from '@/lib/db/schema';
-import { useTestDb } from './helpers/db';
+import { seedUser, useTestDb } from './helpers/db';
 import type { Db } from '@/lib/db';
 
 const forgeMock = vi.mocked(forgeOpportunity);
@@ -4310,6 +4323,8 @@ describe('forge_opportunity', () => {
   let db: Db;
   beforeEach(() => {
     db = useTestDb();
+    seedUser(db, 1);
+    seedUser(db, 9);
     forgeMock.mockReset();
     forgeMock.mockResolvedValue({
       ok: true, flipScore: 62, holdScore: 48, verdict: 'watch', confidence: 55,
@@ -4548,7 +4563,7 @@ import { insertLeads, listLeads } from '@/lib/opportunities/leads';
 import type { LeadDraft } from '@/lib/opportunities/compose';
 import { getProfile, setProfile } from '@/lib/personalization';
 import { planEntitlements } from '@/lib/db/schema';
-import { useTestDb } from './helpers/db';
+import { seedUser, useTestDb } from './helpers/db';
 import type { Db } from '@/lib/db';
 
 function draft(slug: string, sector: string): LeadDraft {
@@ -4583,6 +4598,7 @@ describe('dismiss_opportunity', () => {
   let db: Db;
   beforeEach(() => {
     db = useTestDb();
+    seedUser(db, 1);
     db.insert(planEntitlements)
       .values({ userId: 1, tier: 'builder', plansPerMonth: 30, resetDay: 1 })
       .run();
