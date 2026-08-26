@@ -9,6 +9,7 @@ import {
   parseMediaTable,
   runMediaPricingSync,
 } from '@/lib/ingest/media-pricing';
+import { matchPricedEntity } from '@/lib/kits/match-price';
 import type { Db } from '@/lib/db';
 
 const HTML = readFileSync(join(__dirname, 'fixtures/media-pricing/generic-table.html'), 'utf8');
@@ -59,5 +60,25 @@ describe('media pricing', () => {
         expect(['per_image', 'per_second', 'per_month', 'per_1k_chars']).toContain(p.unit);
       }
     }
+  });
+
+  // Real production kit_picks names, verified against the fallback table so a
+  // fallback entry can never silently drift out of stripQualifier-reachable
+  // form again (the Wan 2.7 (Alibaba) mistake this test exists to catch).
+  describe('fallback entries resolve against real production pick names', () => {
+    const entities = Object.values(MANUAL_MEDIA_FALLBACK).flatMap((prices) => prices.map((p) => p.tool));
+
+    it.each([
+      ['Ideogram 4', 'Ideogram 4'],
+      ['Veo 3.1 Preview (Google)', 'Veo 3.1 Preview'],
+      ['Wan 2.7 (Alibaba)', 'Wan 2.7'],
+    ])('%s -> %s', (pickName, expected) => {
+      expect(matchPricedEntity(pickName, entities)).toBe(expected);
+    });
+
+    // The exact hazard this whole fallback was added to guard against.
+    it('does not price the self-hosted Ideogram variant off the hosted entry', () => {
+      expect(matchPricedEntity('Ideogram 4 (INT8 via ComfyUI)', entities)).toBeNull();
+    });
   });
 });

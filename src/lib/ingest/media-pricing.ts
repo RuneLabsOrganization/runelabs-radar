@@ -107,9 +107,20 @@ export const MEDIA_PROVIDERS: readonly MediaProviderSpec[] = [
   { key: 'midjourney', url: 'https://docs.midjourney.com/docs/plans', tools: ['Midjourney Standard', 'Midjourney V8.1'] },
   { key: 'runway', url: 'https://runwayml.com/pricing', tools: ['Runway Gen-4.5'] },
   { key: 'heygen', url: 'https://www.heygen.com/pricing', tools: ['HeyGen'] },
+  { key: 'ideogram', url: 'https://ideogram.ai/pricing', tools: ['Ideogram 4'] },
+  { key: 'veo', url: 'https://ai.google.dev/gemini-api/docs/pricing', tools: ['Veo 3.1 Preview'] },
+  { key: 'wan', url: 'https://www.alibabacloud.com/help/en/model-studio/wanx-video-generation-api', tools: ['Wan 2.7'] },
 ];
 
-/** last manual review: 2026-08-26 — verify against the URLs above each quarter. */
+/**
+ * last manual review: 2026-08-26 — verify against the URLs above each quarter.
+ *
+ * Tool names match kit_picks.pick_name EXACTLY, including qualifiers that
+ * describe the deployment rather than an effort tier (e.g. "(Alibaba)"),
+ * because matchPricedEntity refuses to strip a "(... via ...)" runtime
+ * qualifier — a self-hosted variant of the same base name must never
+ * silently inherit a hosted API price.
+ */
 export const MANUAL_MEDIA_FALLBACK: Record<string, MediaPrice[]> = {
   kling: [{ tool: 'Kling 3.0', unit: 'per_second', amountUsd: 0.1 }],
   seedream: [
@@ -122,6 +133,22 @@ export const MANUAL_MEDIA_FALLBACK: Record<string, MediaPrice[]> = {
   ],
   runway: [{ tool: 'Runway Gen-4.5', unit: 'per_second', amountUsd: 0.12 }],
   heygen: [{ tool: 'HeyGen', unit: 'per_month', amountUsd: 29 }],
+  // Ideogram publishes three tiers (Turbo $0.03 / Default $0.06 / Quality
+  // $0.10 per image, verified 2026-08-26); the pick name carries no tier
+  // qualifier, so Default is the defensible middle rather than a guess at
+  // which one Radar meant.
+  ideogram: [{ tool: 'Ideogram 4', unit: 'per_image', amountUsd: 0.06 }],
+  // Google publishes $0.05-0.15/sec for Lite/Fast and $0.40/sec for
+  // Standard/Quality (verified 2026-08-26, multiple corroborating sources;
+  // one outlier reseller reports $0.75/sec — not used, unconfirmed against
+  // Google's own docs). Standard is used since Radar's board optimizes for
+  // "best overall", not the budget tier.
+  veo: [{ tool: 'Veo 3.1 Preview', unit: 'per_second', amountUsd: 0.4 }],
+  // $0.10/sec corroborated by OpenRouter and Atlas Cloud (verified 2026-08-26).
+  // Stored bare (no "(Alibaba)") — matchPricedEntity compares against the
+  // STRIPPED pick name, so the priced entity must already be in stripped
+  // form or it will never match.
+  wan: [{ tool: 'Wan 2.7', unit: 'per_second', amountUsd: 0.1 }],
 };
 
 function toMetricPoints(prices: MediaPrice[]): MetricInput[] {

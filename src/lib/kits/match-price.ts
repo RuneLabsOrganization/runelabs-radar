@@ -16,19 +16,29 @@
  * Asserting a wrong price is worse than showing none, so after the qualifier
  * is stripped the comparison is EXACT on the canonical key. Everything else
  * stays unpriced and renders honestly as "price unknown".
+ *
+ * One qualifier is deliberately NEVER stripped: one containing "via", which
+ * marks a different runtime/deployment rather than an effort tier —
+ * "Ideogram 4 (INT8 via ComfyUI)" is a free local run, not the hosted API
+ * product "Ideogram 4", and must not inherit its price. Same reasoning as
+ * the bare "X via Y" suffix strip below, just inside parens instead of after.
  */
 import { canonicalEntityKey } from '../entity';
 
 /**
- * Drop one trailing parenthetical qualifier, plus "via <runtime>" suffixes.
- * Only the tail is removed — a parenthetical in the middle of a name is left
- * alone, because it is part of the name rather than a qualifier.
+ * Drop one trailing parenthetical qualifier, plus a bare "via <runtime>"
+ * suffix. Sequential, not chained regexes: a trailing parenthetical is
+ * resolved fully (stripped, or left untouched if it names a runtime) before
+ * the bare "via" check ever runs, so a "via" sitting inside the parenthetical
+ * can't leak out and get matched by the second step.
  */
 export function stripQualifier(pickName: string): string {
-  return pickName
-    .replace(/\s*\([^()]*\)\s*$/, '')
-    .replace(/\s+via\s+.+$/i, '')
-    .trim();
+  const trailingParen = pickName.match(/^(.*?)\s*(\([^()]*\))\s*$/);
+  if (trailingParen) {
+    const [, base, paren] = trailingParen;
+    return /\bvia\b/i.test(paren) ? pickName.trim() : base.trim();
+  }
+  return pickName.replace(/\s+via\s+.+$/i, '').trim();
 }
 
 /**
