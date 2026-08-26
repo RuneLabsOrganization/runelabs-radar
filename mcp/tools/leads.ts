@@ -4,6 +4,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { getDb } from '../../src/lib/db';
 import { opportunities } from '../../src/lib/db/schema';
 import { composeLeads } from '../../src/lib/opportunities/compose';
+import type { PrimitiveType } from '../../src/lib/opportunities/primitives';
 import { getLead, insertLeads, markRefined, type Owner } from '../../src/lib/opportunities/leads';
 import { persistScoutDrafts } from '../../src/lib/opportunities/persist-scout';
 import { loadPrimitives } from '../../src/lib/opportunities/primitives';
@@ -104,8 +105,19 @@ export function registerLeadTools(server: McpServer, auth: AuthContext): void {
         );
       }
 
+      // Type is the primary key so a maximally-strong story cannot outrank a
+      // maximally-weak pain. Same relative order as TYPE_BONUS in compose.ts.
+      const TYPE_RANK: Record<PrimitiveType, number> = {
+        pain: 0,
+        pattern: 1,
+        entity: 2,
+        story: 3,
+      };
       composed.leads.sort(
-        (a, b) => b.heuristicScore - a.heuristicScore || a.slug.localeCompare(b.slug),
+        (a, b) =>
+          TYPE_RANK[a.primitiveType] - TYPE_RANK[b.primitiveType] ||
+          b.heuristicScore - a.heuristicScore ||
+          a.slug.localeCompare(b.slug),
       );
 
       // persist so refine_lead can find them by slug later

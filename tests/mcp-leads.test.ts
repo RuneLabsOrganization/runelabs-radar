@@ -5,7 +5,7 @@ import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import type { AuthContext } from '../mcp/lib/auth';
 import { registerLeadTools } from '../mcp/tools/leads';
 import { seedWedges } from '@/lib/opportunities/wedges';
-import { painPoints } from '@/lib/db/schema';
+import { painPoints, stories } from '@/lib/db/schema';
 import { seedUser, useTestDb } from './helpers/db';
 import type { Db } from '@/lib/db';
 
@@ -24,7 +24,13 @@ async function wire(auth: AuthContext): Promise<Client> {
 
 interface LeadsPayload {
   count: number;
-  leads: { slug: string; title: string; heuristic_score: number; stage: string }[];
+  leads: {
+    slug: string;
+    title: string;
+    heuristic_score: number;
+    stage: string;
+    evidence_refs: string[];
+  }[];
   next_cursor: number | null;
   space_size: number;
   summary: string;
@@ -116,6 +122,43 @@ describe('get_leads', () => {
     const p = (await client.callTool({ name: 'get_leads', arguments: { limit: 3 } }))
       .structuredContent as unknown as LeadsPayload;
     expect(p.count).toBe(3);
+  });
+
+  it('places every pain-derived lead before every story-derived lead even when the story scores higher', async () => {
+    // Tagged stories so loadPrimitives admits them; high topScore so a story's
+    // own heuristic can beat a weak pain after the intensity/wedge swing.
+    for (const score of [15, 90, 40, 75, 20, 60, 55, 80]) {
+      db.insert(stories)
+        .values({
+          title: `MCP agent code review tools scoring ${score}`,
+          tldr: null,
+          status: 'curated',
+          topScore: score,
+          createdAt: new Date(),
+        })
+        .run();
+    }
+
+    const client = await wire(authFor(1, 'user:1'));
+    const p = (await client.callTool({ name: 'get_leads', arguments: { limit: 25 } }))
+      .structuredContent as unknown as LeadsPayload;
+
+    const isPain = (l: LeadsPayload['leads'][number]) =>
+      l.evidence_refs.some((r) => r.startsWith('P'));
+    const isStory = (l: LeadsPayload['leads'][number]) =>
+      l.evidence_refs.some((r) => r.startsWith('S'));
+    const pains = p.leads.filter(isPain);
+    const storyLeads = p.leads.filter(isStory);
+    expect(pains.length).toBeGreaterThan(0);
+    expect(storyLeads.length).toBeGreaterThan(0);
+    expect(Math.max(...storyLeads.map((l) => l.heuristic_score))).toBeGreaterThan(
+      Math.min(...pains.map((l) => l.heuristic_score)),
+    );
+
+    const lastPainIdx = p.leads.reduce((last, l, i) => (isPain(l) ? i : last), -1);
+    const firstStoryIdx = p.leads.findIndex(isStory);
+    expect(lastPainIdx).toBeGreaterThanOrEqual(0);
+    expect(firstStoryIdx).toBeGreaterThan(lastPainIdx);
   });
 
   it('explains itself when the stream is too thin', async () => {

@@ -21,6 +21,8 @@ export interface LeadDraft {
   thesisSkeleton: string;
   sector: string | null;
   primitiveRefs: string[];
+  /** Source primitive type — sort key for get_leads, not part of the score. */
+  primitiveType: PrimitiveType;
   /** axis → wedge value slug */
   wedge: Record<WedgeAxis, string>;
   /** 0..100 heuristic only. Deliberately NOT called a flip score. */
@@ -168,6 +170,7 @@ export function composeLeads(opts: ComposeOptions): ComposeResult {
         thesisSkeleton: thesisSkeleton(primitive.type, primitive.label, wedge),
         sector: primitive.sector,
         primitiveRefs: [primitive.ref],
+        primitiveType: primitive.type,
         wedge: {
           business_model: wedge.business_model.slug,
           delivery_form: wedge.delivery_form.slug,
