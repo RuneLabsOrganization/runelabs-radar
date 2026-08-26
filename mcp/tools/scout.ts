@@ -3,7 +3,7 @@ import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { getDb } from '../../src/lib/db';
 import { opportunities } from '../../src/lib/db/schema';
-import { normalizeSlug, type ScoutConstraints } from '../../src/lib/opportunities/engine';
+import { normalizeSlug, type OppDraft, type ScoutConstraints } from '../../src/lib/opportunities/engine';
 import { composeLeads } from '../../src/lib/opportunities/compose';
 import { dismissedSlugs, insertLeads } from '../../src/lib/opportunities/leads';
 import { persistScoutDrafts } from '../../src/lib/opportunities/persist-scout';
@@ -160,8 +160,8 @@ export function registerScoutTools(server: McpServer, auth: AuthContext): void {
       };
       const hasConstraints = Object.keys(constraints).length > 0;
 
-      let drafts;
-      let signalCount;
+      let drafts: OppDraft[];
+      let signalCount: number;
       try {
         const primitives = loadPrimitives();
         signalCount = primitives.length;

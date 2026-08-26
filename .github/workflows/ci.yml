@@ -17,3 +17,8 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run build
+        env:
+          # next build sets NODE_ENV=production; config requires SESSION_SECRET
+          # then (page-data collection imports auth config). Runtime uses the
+          # real secret from .env — same pattern as the Dockerfile build stage.
+          SESSION_SECRET: build-time-placeholder
