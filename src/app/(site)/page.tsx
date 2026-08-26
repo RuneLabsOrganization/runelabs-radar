@@ -136,9 +136,13 @@ const TRUST = [
 export default function LandingPage() {
   const name = getIdentity().productName;
   const facts = heroFacts();
+  // "picks", not "verdicts": the board has its own Runelabs verdict column
+  // (the written why, one per job) and calling the 51 tier picks "verdicts"
+  // collided with it — the hero promised 51 verdicts next to a verdict column
+  // showing 17. Two different things, so two different words.
   const stats = [
     { value: String(facts.sourcesOn), label: 'sources read daily' },
-    { value: String(facts.verdicts), label: 'verdicts on the board' },
+    { value: String(facts.verdicts), label: 'picks on the board' },
     { value: facts.graded.toLocaleString('en-US'), label: 'predictions graded' },
     { value: '$0', label: 'vendor money taken' },
   ];
@@ -190,7 +194,7 @@ export default function LandingPage() {
           <div className="mt-8 flex flex-wrap gap-3">
             <Button asChild size="lg">
               <Link href={paths.tools}>
-                See the {facts.verdicts} verdicts <ArrowRight className="h-4 w-4" />
+                See all {facts.verdicts} picks <ArrowRight className="h-4 w-4" />
               </Link>
             </Button>
           </div>
