@@ -218,7 +218,7 @@ export function registerLeadTools(server: McpServer, auth: AuthContext): void {
         );
       }
 
-      const drafts = await refineLeads({
+      const { drafts } = await refineLeads({
         leads: [row],
         primitives: loadPrimitives(),
         userId: auth.userId,

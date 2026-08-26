@@ -69,7 +69,7 @@ describe('refineLeads', () => {
 
   it('turns a lead into a scored draft', async () => {
     stubLlm(modelReply('review-queue-triage'));
-    const drafts = await refineLeads({
+    const { drafts } = await refineLeads({
       leads: [lead('review-queue-triage')], primitives: PRIMITIVES, userId: 1,
     });
     expect(drafts).toHaveLength(1);
@@ -82,7 +82,7 @@ describe('refineLeads', () => {
     const bad = modelReply('bogus-refs');
     bad.openings[0].evidenceRefs = ['Z99'];
     stubLlm(bad);
-    const drafts = await refineLeads({
+    const { drafts } = await refineLeads({
       leads: [lead('bogus-refs')], primitives: PRIMITIVES, userId: 1,
     });
     expect(drafts[0]?.evidenceRefs ?? []).not.toContain('Z99');
@@ -90,7 +90,7 @@ describe('refineLeads', () => {
 
   it('returns nothing rather than throwing when the model returns junk', async () => {
     stubLlm({ openings: 'not an array' });
-    const drafts = await refineLeads({
+    const { drafts } = await refineLeads({
       leads: [lead('junk')], primitives: PRIMITIVES, userId: 1,
     });
     expect(drafts).toEqual([]);
@@ -102,8 +102,40 @@ describe('refineLeads', () => {
       called = true;
       return new Response('{}', { status: 200 });
     });
-    const drafts = await refineLeads({ leads: [], primitives: PRIMITIVES, userId: 1 });
+    const { drafts } = await refineLeads({ leads: [], primitives: PRIMITIVES, userId: 1 });
     expect(drafts).toEqual([]);
     expect(called).toBe(false);
+  });
+
+  it('records a reject naming the missing sub-score key', async () => {
+    const reply = modelReply('missing-quality-bar');
+    const { qualityBar: _, ...rest } = reply.openings[0].subScores as Record<string, number>;
+    reply.openings[0].subScores = rest;
+    stubLlm(reply);
+    const { drafts, rejects } = await refineLeads({
+      leads: [lead('missing-quality-bar')], primitives: PRIMITIVES, userId: 1,
+    });
+    expect(drafts).toHaveLength(0);
+    expect(rejects.some((r) => r.reason === 'missing-or-invalid-sub-score:qualityBar')).toBe(true);
+  });
+
+  it('records a thesis-too-short reject for a 20-character thesis', async () => {
+    const reply = modelReply('short-thesis-lead');
+    reply.openings[0].thesis = '12345678901234567890';
+    stubLlm(reply);
+    const { drafts, rejects } = await refineLeads({
+      leads: [lead('short-thesis-lead')], primitives: PRIMITIVES, userId: 1,
+    });
+    expect(drafts).toHaveLength(0);
+    expect(rejects.some((r) => r.reason === 'thesis-too-short')).toBe(true);
+  });
+
+  it('yields no rejects for a fully valid reply', async () => {
+    stubLlm(modelReply('review-queue-triage'));
+    const { drafts, rejects } = await refineLeads({
+      leads: [lead('review-queue-triage')], primitives: PRIMITIVES, userId: 1,
+    });
+    expect(drafts).toHaveLength(1);
+    expect(rejects).toEqual([]);
   });
 });

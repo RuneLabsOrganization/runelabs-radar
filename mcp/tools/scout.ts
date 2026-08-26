@@ -175,12 +175,12 @@ export function registerScoutTools(server: McpServer, auth: AuthContext): void {
             limit: 8,
           });
           const stored = insertLeads({ ownerKey: auth.rateKey, userId: auth.userId }, composed.leads);
-          drafts = await refineLeads({
+          ({ drafts } = await refineLeads({
             leads: stored,
             primitives,
             ...(hasConstraints ? { constraints } : {}),
             userId: auth.userId,
-          });
+          }));
         } else {
           drafts = [];
         }

@@ -70,20 +70,53 @@ const MAX_PROPOSALS = 6;
 // shared daily cap, so K stays small.
 const TOP_K_DEBATES = 2;
 
+export interface SanitizeReject {
+  slug: string;
+  reason: string;
+}
+
 /** Validates the LLM's opportunity proposals. Exported for tests. */
-export function sanitizeOpportunities(v: unknown, validRefs: Set<string>): OppDraft[] {
+export function sanitizeOpportunities(
+  v: unknown,
+  validRefs: Set<string>,
+  rejects?: SanitizeReject[],
+): OppDraft[] {
   if (!Array.isArray(v)) return [];
   const out: OppDraft[] = [];
   const seenSlugs = new Set<string>();
   for (const raw of v) {
     if (out.length >= MAX_PROPOSALS) break;
-    if (typeof raw !== 'object' || raw === null) continue;
+    if (typeof raw !== 'object' || raw === null) {
+      rejects?.push({ slug: '', reason: 'not-an-object' });
+      continue;
+    }
     const rec = raw as Record<string, unknown>;
-    if (typeof rec.slug !== 'string' || typeof rec.title !== 'string' || typeof rec.thesis !== 'string') continue;
+    if (typeof rec.slug !== 'string' || typeof rec.title !== 'string' || typeof rec.thesis !== 'string') {
+      rejects?.push({
+        slug: typeof rec.slug === 'string' ? rec.slug : '',
+        reason: 'missing-slug-title-or-thesis',
+      });
+      continue;
+    }
     const slug = normalizeSlug(rec.slug);
     const title = promptLine(rec.title, 90);
     const thesis = promptLine(rec.thesis, 400);
-    if (!slug || slug.length < 3 || seenSlugs.has(slug) || title.length < 8 || thesis.length < 30) continue;
+    if (!slug || slug.length < 3) {
+      rejects?.push({ slug, reason: 'slug-too-short' });
+      continue;
+    }
+    if (seenSlugs.has(slug)) {
+      rejects?.push({ slug, reason: 'duplicate-slug' });
+      continue;
+    }
+    if (title.length < 8) {
+      rejects?.push({ slug, reason: 'title-too-short' });
+      continue;
+    }
+    if (thesis.length < 30) {
+      rejects?.push({ slug, reason: 'thesis-too-short' });
+      continue;
+    }
 
     const subRaw = (typeof rec.subScores === 'object' && rec.subScores !== null ? rec.subScores : {}) as Record<
       string,
@@ -94,6 +127,7 @@ export function sanitizeOpportunities(v: unknown, validRefs: Set<string>): OppDr
     for (const k of SUB_KEYS) {
       const val = subRaw[k];
       if (typeof val !== 'number' || !Number.isFinite(val)) {
+        rejects?.push({ slug, reason: `missing-or-invalid-sub-score:${k}` });
         subOk = false;
         break;
       }

@@ -39,9 +39,21 @@ function renderConstraints(c: ScoutConstraints): string {
   return lines.length ? `<builder-constraints>\n${lines.join('\n')}\n</builder-constraints>` : '';
 }
 
-export async function refineLeads(opts: RefineOptions): Promise<OppDraft[]> {
+function formatRejectSummary(rejects: { slug: string; reason: string }[]): string {
+  const counts = new Map<string, number>();
+  for (const r of rejects) {
+    counts.set(r.reason, (counts.get(r.reason) ?? 0) + 1);
+  }
+  return [...counts.entries()]
+    .map(([reason, n]) => (n > 1 ? `${reason} x${n}` : reason))
+    .join(', ');
+}
+
+export async function refineLeads(
+  opts: RefineOptions,
+): Promise<{ drafts: OppDraft[]; rejects: { slug: string; reason: string }[] }> {
   const { leads, primitives, constraints, userId } = opts;
-  if (leads.length === 0) return [];
+  if (leads.length === 0) return { drafts: [], rejects: [] };
 
   const validRefs = new Set(primitives.map((p) => p.ref));
   const evidence = primitives
@@ -86,8 +98,15 @@ export async function refineLeads(opts: RefineOptions): Promise<OppDraft[]> {
       maxTokens: 4000,
     });
   } catch {
-    return [];
+    return { drafts: [], rejects: [] };
   }
 
-  return sanitizeOpportunities(raw?.openings, validRefs);
+  const rejects: { slug: string; reason: string }[] = [];
+  const drafts = sanitizeOpportunities(raw?.openings, validRefs, rejects);
+  if (drafts.length === 0 && Array.isArray(raw.openings) && raw.openings.length > 0) {
+    console.warn(
+      `[refine] ${leads.length} candidates in, 0 out — ${formatRejectSummary(rejects)}`,
+    );
+  }
+  return { drafts, rejects };
 }
