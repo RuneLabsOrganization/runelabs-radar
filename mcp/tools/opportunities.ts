@@ -299,7 +299,13 @@ export function registerOpportunityTools(server: McpServer, auth: AuthContext): 
                     ? [
                         {
                           tool: 'get_opportunities',
-                          arguments: { limit, cursor: nextCursor },
+                          arguments: {
+                            limit,
+                            cursor: nextCursor,
+                            ...(sector ? { sector } : {}),
+                            ...(verdict ? { verdict } : {}),
+                            ...(min_flip !== undefined ? { min_flip } : {}),
+                          },
                           reason: 'next page of openings — the list continues',
                         },
                       ]

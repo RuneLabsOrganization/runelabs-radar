@@ -152,6 +152,26 @@ describe('opportunity read scoping', () => {
     }
   });
 
+  it('carries the current filters into the pagination next-action', async () => {
+    seedOpp(db, 'other-sector', null, 85, 'ai-media');
+    for (let i = 0; i < 10; i++) seedOpp(db, `filler-${i}`, null, 50 - i);
+    const client = await wire(1);
+    const first = await client.callTool({
+      name: 'get_opportunities',
+      arguments: { limit: 3, min_flip: 40, verdict: 'watch' },
+    });
+    const page = first.structuredContent as {
+      next_cursor: number | null;
+      next: { tool: string; arguments?: Record<string, unknown> }[];
+    };
+    expect(page.next_cursor).not.toBeNull();
+    const more = page.next.find((n) => n.tool === 'get_opportunities' && n.arguments?.cursor != null);
+    expect(more).toBeDefined();
+    expect(more!.arguments?.min_flip).toBe(40);
+    expect(more!.arguments?.verdict).toBe('watch');
+    expect(more!.arguments?.cursor).toBe(page.next_cursor);
+  });
+
   it('prefers the caller private dossier when a public row shares the slug', async () => {
     seedOpp(db, 'shared-slug', null, 70, 'devtools', 'Public shared title');
     seedOpp(db, 'shared-slug', 1, 70, 'devtools', 'Alice private shared title');
