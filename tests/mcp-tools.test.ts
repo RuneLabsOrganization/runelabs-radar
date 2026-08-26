@@ -187,6 +187,7 @@ describe('mcp server', () => {
         'set_session',
         'unwatch',
         'watch',
+        'whats_changed',
         'whats_relevant',
       ].sort(),
     );
