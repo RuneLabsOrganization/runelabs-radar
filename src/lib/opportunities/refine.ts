@@ -46,25 +46,31 @@ function buildEvidence(
   leads: LeadRow[],
   primitives: Primitive[],
 ): { evidence: string; validRefs: Set<string> } {
-  const snapshots = leads.map((l) => l.evidenceSnapshot ?? []);
-  if (leads.length > 0 && snapshots.every((s) => s.length > 0)) {
-    const seen = new Set<string>();
-    const lines: string[] = [];
-    const validRefs = new Set<string>();
-    for (const snap of snapshots) {
-      for (const e of snap) {
-        if (seen.has(e.ref)) continue;
-        seen.add(e.ref);
-        validRefs.add(e.ref);
-        lines.push(`[${e.ref}] (${e.type}) ${promptLine(e.label, 200)}`);
+  const byRef = new Map(primitives.map((p) => [p.ref, p] as const));
+  const seen = new Set<string>();
+  const lines: string[] = [];
+  const validRefs = new Set<string>();
+  const emit = (ref: string, type: string, label: string) => {
+    if (seen.has(ref)) return;
+    seen.add(ref);
+    validRefs.add(ref);
+    lines.push(`[${ref}] (${type}) ${promptLine(label, 200)}`);
+  };
+  for (const lead of leads) {
+    const snapshot = lead.evidenceSnapshot ?? [];
+    if (snapshot.length > 0) {
+      // pinned at compose time — never re-resolve against the live pool
+      for (const e of snapshot) emit(e.ref, e.type, e.label);
+    } else {
+      // legacy row predating the snapshot column — fall back to the live
+      // pool for THIS lead only, not the whole batch
+      for (const ref of lead.primitiveRefs) {
+        const p = byRef.get(ref);
+        if (p) emit(p.ref, p.type, p.label);
       }
     }
-    return { evidence: lines.join('\n'), validRefs };
   }
-  return {
-    evidence: primitives.map((p) => `[${p.ref}] (${p.type}) ${promptLine(p.label, 200)}`).join('\n'),
-    validRefs: new Set(primitives.map((p) => p.ref)),
-  };
+  return { evidence: lines.join('\n'), validRefs };
 }
 
 export async function refineLeads(

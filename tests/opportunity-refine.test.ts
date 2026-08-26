@@ -328,4 +328,44 @@ describe('refineLeads', () => {
     expect(rows.some((r) => r.feature === 'lead_refine')).toBe(true);
     expect(rows.some((r) => r.feature === 'scout')).toBe(false);
   });
+
+  it('keeps a snapshot-backed lead pinned when a sibling legacy row has no snapshot', async () => {
+    const pinned = lead('snap-lead', 1);
+    pinned.evidenceSnapshot = [
+      { ref: 'P1', type: 'pain', label: 'SNAPSHOT_PINNED_LABEL unique compose-time text' },
+    ];
+    const legacy = lead('legacy-lead', 2);
+    legacy.primitiveRefs = ['P2'];
+    legacy.evidenceSnapshot = [];
+
+    const prims: Primitive[] = [
+      {
+        ref: 'P1', type: 'pain', label: 'LIVE_POOL_LABEL_FOR_P1 would steal the snapshot',
+        sector: 'devtools', tags: ['devtools'], intensity: 70,
+      },
+      {
+        ref: 'P2', type: 'pain', label: 'LIVE_POOL_LABEL_FOR_P2 legacy fallback',
+        sector: 'devtools', tags: ['devtools'], intensity: 40,
+      },
+    ];
+
+    const bodies: string[] = [];
+    _setFetch(async (_url: unknown, init?: RequestInit) => {
+      const parsed = JSON.parse(String(init?.body)) as { messages: { content: string }[] };
+      bodies.push(parsed.messages.map((m) => m.content).join('\n'));
+      return new Response(
+        JSON.stringify({
+          choices: [{ message: { content: JSON.stringify({ openings: [] }) } }],
+          usage: { prompt_tokens: 10, completion_tokens: 10 },
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      );
+    });
+
+    await refineLeads({ leads: [pinned, legacy], primitives: prims, userId: 1 });
+    const prompt = bodies.join('\n');
+    expect(prompt).toContain('SNAPSHOT_PINNED_LABEL');
+    expect(prompt).not.toContain('LIVE_POOL_LABEL_FOR_P1');
+    expect(prompt).toContain('LIVE_POOL_LABEL_FOR_P2');
+  });
 });
