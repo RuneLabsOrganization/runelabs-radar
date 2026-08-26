@@ -82,6 +82,10 @@ describe('get_leads', () => {
     expect(p.leads[0]).not.toHaveProperty('verdict');
     expect(p.leads[0]).not.toHaveProperty('flip_score');
     expect(p.space_size).toBeGreaterThan(1000);
+    // Text-only MCP clients (Cursor) never see structuredContent — the summary
+    // is the only way an agent learns the slug and pagination cursor.
+    expect(p.summary).toContain(p.leads[0].slug);
+    expect(p.summary).toContain(`next_cursor=${p.next_cursor}`);
   });
 
   it('gives two callers different leads', async () => {
@@ -203,6 +207,18 @@ describe('get_leads', () => {
     expect(page).toBeDefined();
     expect(page!.arguments?.sector).toBe('devtools');
     expect(page!.arguments?.cursor).toBe(p.next_cursor);
+    expect(p.summary).toContain('sector=devtools');
+  });
+
+  it('does not blame an empty wedge taxonomy when the sector filter matched nothing', async () => {
+    const client = await wire(authFor(1, 'user:1'));
+    const p = (await client.callTool({
+      name: 'get_leads',
+      arguments: { limit: 5, sector: 'no-such-sector' },
+    })).structuredContent as unknown as LeadsPayload;
+    expect(p.count).toBe(0);
+    expect(p.summary).not.toMatch(/wedge taxonomy is empty/i);
+    expect(p.summary).toMatch(/no-such-sector/);
   });
 
   it('holds the primitive pool for the rest of the day so a new pain cannot shift an issued cursor', async () => {
@@ -251,8 +267,10 @@ describe('get_leads', () => {
     for (const l of scanned.leads) dismissLead(owner, l.slug, 'skip');
 
     const client = await wire(authFor(1, 'user:1'));
-    const p = (await client.callTool({ name: 'get_leads', arguments: { limit: 5, cursor: 0 } }))
-      .structuredContent as unknown as LeadsPayload;
+    const p = (await client.callTool({
+      name: 'get_leads',
+      arguments: { limit: 5, cursor: 0, sector: 'devtools' },
+    })).structuredContent as unknown as LeadsPayload;
     expect(p.count).toBe(0);
     expect(p.next_cursor).not.toBeNull();
     expect(p.space_size).toBeGreaterThan(4000);
@@ -261,5 +279,6 @@ describe('get_leads', () => {
     const more = p.next.find((n) => n.tool === 'get_leads');
     expect(more).toBeDefined();
     expect(more!.arguments?.cursor).toBe(p.next_cursor);
+    expect(more!.arguments?.sector).toBe('devtools');
   });
 });

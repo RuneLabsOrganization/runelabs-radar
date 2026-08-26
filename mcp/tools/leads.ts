@@ -9,6 +9,7 @@ import { getLead, insertLeads, markRefined, dismissLead, dismissedSlugs, type Ow
 import { persistScoutDrafts } from '../../src/lib/opportunities/persist-scout';
 import { getStablePool } from '../../src/lib/opportunities/pool';
 import { loadPrimitives } from '../../src/lib/opportunities/primitives';
+import { wedgeSpaceSize } from '../../src/lib/opportunities/wedges';
 import { refineLeads } from '../../src/lib/opportunities/refine';
 import { dayKey } from '../../src/lib/opportunities/seed';
 import { publicOnly } from '../../src/lib/opportunities/scope';
@@ -89,11 +90,13 @@ export function registerLeadTools(server: McpServer, auth: AuthContext): void {
         const reason =
           primitives.length === 0
             ? 'no demand signal in the last 21 days — pains come from Reddit/HN discussion, so check that those sources are ingesting'
-            : composed.spaceSize === 0
-              ? 'the wedge taxonomy is empty — run the seed script'
-              : exhausted
-                ? 'you have reached the end of your combination space for today'
-                : 'nothing matched in this scan window — your filters or dismissals rejected every candidate scanned so far, but more of your space is unexplored';
+            : filtered.length === 0
+              ? `no primitives matched sector "${sector}" — omit the filter or pick a sector that has demand`
+              : wedgeSpaceSize(space) === 0
+                ? 'the wedge taxonomy is empty — run the seed script'
+                : exhausted
+                  ? 'you have reached the end of your combination space for today'
+                  : 'nothing matched in this scan window — your filters or dismissals rejected every candidate scanned so far, but more of your space is unexplored';
         return respond(
           { count: 0, leads: [], next_cursor: composed.nextCursor, space_size: composed.spaceSize },
           {
@@ -104,7 +107,7 @@ export function registerLeadTools(server: McpServer, auth: AuthContext): void {
                 ? [
                     {
                       tool: 'get_leads',
-                      arguments: { limit, cursor: composed.nextCursor },
+                      arguments: { limit, cursor: composed.nextCursor, ...(sector ? { sector } : {}) },
                       reason: 'keep scanning — your space is not exhausted',
                     },
                   ]
@@ -170,7 +173,7 @@ export function registerLeadTools(server: McpServer, auth: AuthContext): void {
           space_size: composed.spaceSize,
         },
         {
-          summary: `${composed.leads.length} unvalidated leads composed for you (of ${composed.spaceSize.toLocaleString()} combinations) — strongest: "${top.title}" (heuristic ${top.heuristicScore}). Refine one to get real scores.`,
+          summary: `${composed.leads.length} unvalidated leads composed for you (of ${composed.spaceSize.toLocaleString()} combinations) — strongest: "${top.title}" [${top.slug}] (heuristic ${top.heuristicScore}); next_cursor=${composed.nextCursor ?? 'null'}${sector ? ` sector=${sector}` : ''}. Refine one to get real scores.`,
           economy: withUserEconomy(auth.userId, 'read'),
           next,
         },
