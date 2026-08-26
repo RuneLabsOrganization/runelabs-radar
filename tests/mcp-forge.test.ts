@@ -30,16 +30,17 @@ async function wire(userId: number | null): Promise<Client> {
   return client;
 }
 
-function seedOpp(db: Db, slug: string, ownerUserId: number | null) {
+function seedOpp(db: Db, slug: string, ownerUserId: number | null): number {
   const now = new Date();
-  db.insert(opportunities)
+  return db.insert(opportunities)
     .values({
       slug, ownerUserId, title: `Title for ${slug}`,
       thesis: 'A sufficiently long thesis for the forge tool to reference.',
       sector: 'devtools', status: 'active', flipScore: 70, holdScore: 50,
       scores: '{}', evidence: '[]', firstSeenAt: now, lastSeenAt: now,
     })
-    .run();
+    .returning({ id: opportunities.id })
+    .get()!.id;
 }
 
 describe('forge_opportunity', () => {
@@ -91,5 +92,18 @@ describe('forge_opportunity', () => {
       .callTool({ name: 'forge_opportunity', arguments: { opportunity: 'nope' } });
     expect((res.structuredContent as { ok: boolean }).ok).toBe(false);
     expect(forgeMock).not.toHaveBeenCalled();
+  });
+
+  it('prefers the caller private row when a public opening shares the slug', async () => {
+    const publicId = seedOpp(db, 'shared-forge', null);
+    const privateId = seedOpp(db, 'shared-forge', 1);
+    expect(publicId).not.toBe(privateId);
+
+    const res = await (await wire(1))
+      .callTool({ name: 'forge_opportunity', arguments: { opportunity: 'shared-forge' } });
+    expect((res.structuredContent as { ok: boolean }).ok).toBe(true);
+    expect(forgeMock).toHaveBeenCalledTimes(1);
+    expect(forgeMock.mock.calls[0]![0]).toBe(privateId);
+    expect(forgeMock.mock.calls[0]![0]).not.toBe(publicId);
   });
 });

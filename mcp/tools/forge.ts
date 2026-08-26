@@ -1,4 +1,4 @@
-import { and, eq } from 'drizzle-orm';
+import { and, desc, eq } from 'drizzle-orm';
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { getDb } from '../../src/lib/db';
@@ -74,6 +74,7 @@ export function registerForgeTools(server: McpServer, auth: AuthContext): void {
             ? and(eq(opportunities.id, asId), scope)
             : and(eq(opportunities.slug, opportunity), scope),
         )
+        .orderBy(desc(opportunities.ownerUserId))
         .get();
       if (!row) {
         return respond(
