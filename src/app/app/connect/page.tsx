@@ -129,8 +129,10 @@ export default async function ConnectPage() {
             <li>
               <span className="mono text-phosphor">2.</span>{' '}
               <strong className="text-ink-2">Ask, don&apos;t fetch</strong> — prefer{' '}
-              <span className="mono">ask_radar</span> or <span className="mono">get_opportunities</span>. You get
-              ranked openings with a <span className="mono">slug</span>; choose one worth building.
+              <span className="mono">ask_radar</span> or <span className="mono">get_opportunities</span> for the
+              curated radar, or <span className="mono">get_leads</span> for unlimited unvalidated hypotheses (then{' '}
+              <span className="mono">refine_lead</span>). You get a <span className="mono">slug</span>; choose one
+              worth building.
             </li>
             <li>
               <span className="mono text-phosphor">3.</span>{' '}
@@ -175,8 +177,9 @@ export default async function ConnectPage() {
               get_market_models, list_stacks, get_stack_for, list_agent_stacks, get_agent_stack_for
             </li>
             <li>
-              <strong className="text-ink-2">Ideas:</strong> get_opportunities, get_opportunity, scout_opportunities,
-              debate_idea, get_pain_points, get_comps, get_launches, get_patterns, get_topic_map
+              <strong className="text-ink-2">Ideas:</strong> get_opportunities, get_opportunity, get_leads, refine_lead,
+              forge_opportunity, dismiss_opportunity, scout_opportunities, debate_idea, get_pain_points, get_comps,
+              get_launches, get_patterns, get_topic_map
             </li>
             <li>
               <strong className="text-ink-2">Execution:</strong> generate_plan, get_plan, list_batches, create_batch,
@@ -191,8 +194,8 @@ export default async function ConnectPage() {
               get_accuracy, get_entity
             </li>
             <li>
-              <strong className="text-ink-2">Prompts:</strong> find_and_plan, whats_new_today, what_should_i_use,
-              which_agent_stack, validate_idea, builder_weekly_review
+              <strong className="text-ink-2">Prompts:</strong> find_and_plan, explore_unlimited, whats_new_today,
+              what_should_i_use, which_agent_stack, validate_idea, builder_weekly_review
             </li>
           </ul>
           <p className="mt-3 text-[12px] text-ink-4">

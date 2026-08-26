@@ -133,6 +133,8 @@ async function main() {
   }
   const noOpp = sc(await client.callTool({ name: 'get_opportunity', arguments: { opportunity: '__nope__' } }));
   check('get_opportunity (miss)', noOpp.found === false);
+  const leads = sc(await client.callTool({ name: 'get_leads', arguments: { limit: 3 } }));
+  check('get_leads', Array.isArray(leads.leads), `count=${leads.count}`);
 
   // pains / patterns / map
   const pains = sc(await client.callTool({ name: 'get_pain_points', arguments: { limit: 5 } }));
@@ -213,7 +215,7 @@ async function main() {
 
   console.log('\n== prompts ==');
   const { prompts } = await client.listPrompts();
-  check('prompts/list', prompts.length === 6, prompts.map((p) => p.name).join(', '));
+  check('prompts/list', prompts.length === 7, prompts.map((p) => p.name).join(', '));
   const fp = await client.getPrompt({ name: 'find_and_plan', arguments: { sector: 'devtools' } });
   check('find_and_plan', JSON.stringify(fp.messages).includes('generate_plan'));
   const wn = await client.getPrompt({ name: 'whats_new_today', arguments: {} });
@@ -226,6 +228,8 @@ async function main() {
   check('validate_idea', JSON.stringify(vi.messages).includes('test idea'));
   const wr = await client.getPrompt({ name: 'builder_weekly_review', arguments: {} });
   check('builder_weekly_review', JSON.stringify(wr.messages).includes('get_board_changes'));
+  const eu = await client.getPrompt({ name: 'explore_unlimited', arguments: {} });
+  check('explore_unlimited', JSON.stringify(eu.messages).includes('get_leads'));
 
   console.log(`\n${passed} passed, ${failures.length} failed`);
   await cleanMetricFixture();

@@ -81,11 +81,14 @@ async function main() {
     'get_board_changes',
     'get_comps',
     'get_daily_brief',
+    'dismiss_opportunity',
+    'forge_opportunity',
     'get_daily_insights',
     'get_domain_digest',
     'get_entity',
     'get_forecasts',
     'get_launches',
+    'get_leads',
     'get_market_models',
     'get_metric_series',
     'get_opportunities',
@@ -93,6 +96,7 @@ async function main() {
     'get_pain_points',
     'get_patterns',
     'get_plan',
+    'refine_lead',
     'get_server_guide',
     'get_stack_for',
     'get_agent_stack_for',
@@ -128,6 +132,7 @@ async function main() {
 
   const guide = await callTool('get_server_guide');
   if (!guide.includes('flagship')) throw new Error('get_server_guide missing the flagship workflow');
+  if (!guide.includes('get_leads')) throw new Error('get_server_guide missing the generation ladder');
   console.log('get_server_guide: ok');
 
   // resources + prompts
@@ -145,7 +150,7 @@ async function main() {
 
   const prompts = (await rpc('prompts/list')) as { prompts: { name: string }[] };
   const promptNames = prompts.prompts.map((p) => p.name);
-  for (const p of ['find_and_plan', 'whats_new_today', 'what_should_i_use', 'which_agent_stack', 'validate_idea', 'builder_weekly_review']) {
+  for (const p of ['find_and_plan', 'explore_unlimited', 'whats_new_today', 'what_should_i_use', 'which_agent_stack', 'validate_idea', 'builder_weekly_review']) {
     if (!promptNames.includes(p)) throw new Error(`missing prompt: ${p}`);
   }
   console.log('prompts/list:', promptNames.join(', '));
