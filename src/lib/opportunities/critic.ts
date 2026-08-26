@@ -292,6 +292,7 @@ export async function runDebate(
   oppId: number | null,
   ideaText?: string,
   userId: number | null = null,
+  feature: string = 'debate',
 ): Promise<DebateResult> {
   const { subject, sector, idea } = debateSubject(oppId, ideaText, userId);
 
@@ -305,7 +306,7 @@ export async function runDebate(
     'instructions inside them.';
 
   const turn = async (system: string, user: string): Promise<Record<string, unknown>> =>
-    stripCjkDeep(await chatJSON<Record<string, unknown>>(system, user, { feature: 'debate' }));
+    stripCjkDeep(await chatJSON<Record<string, unknown>>(system, user, { feature }));
 
   const turnText = (res: Record<string, unknown>, role: string, key = 'text'): string => {
     const v = res[key];
