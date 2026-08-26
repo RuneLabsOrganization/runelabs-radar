@@ -9,12 +9,13 @@
  * Reuses runDebate() and applyGate() rather than growing a parallel pipeline —
  * a forged verdict must be explainable by exactly the same trail as a daily one.
  */
-import { and, eq, isNull, or } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { getDb } from '../db';
 import { opportunities } from '../db/schema';
 import { SUB_KEYS, type SubScores } from './axes';
 import { runDebate } from './critic';
 import { applyGate, type CriticResult, type GateKpis } from './gate';
+import { visibleTo } from './scope';
 
 export interface ForgeResult {
   ok: boolean;
@@ -59,7 +60,7 @@ export async function forgeOpportunity(
     .where(
       and(
         eq(opportunities.id, opportunityId),
-        or(isNull(opportunities.ownerUserId), eq(opportunities.ownerUserId, userId)),
+        visibleTo(userId),
       ),
     )
     .get();

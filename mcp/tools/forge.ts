@@ -1,9 +1,10 @@
-import { and, eq, isNull, or } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { getDb } from '../../src/lib/db';
 import { opportunities } from '../../src/lib/db/schema';
 import { forgeOpportunity } from '../../src/lib/opportunities/forge';
+import { visibleTo } from '../../src/lib/opportunities/scope';
 import { can } from '../../src/lib/entitlements';
 import { envelopeSchema, respond, withUserEconomy } from '../lib/payload';
 import type { AuthContext } from '../lib/auth';
@@ -64,7 +65,7 @@ export function registerForgeTools(server: McpServer, auth: AuthContext): void {
 
       const db = getDb();
       const asId = /^\d+$/.test(opportunity) ? Number(opportunity) : null;
-      const scope = or(isNull(opportunities.ownerUserId), eq(opportunities.ownerUserId, auth.userId));
+      const scope = visibleTo(auth.userId);
       const row = db
         .select({ id: opportunities.id, title: opportunities.title })
         .from(opportunities)
