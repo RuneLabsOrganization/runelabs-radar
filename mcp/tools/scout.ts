@@ -5,7 +5,7 @@ import { getDb } from '../../src/lib/db';
 import { opportunities } from '../../src/lib/db/schema';
 import { normalizeSlug, type ScoutConstraints } from '../../src/lib/opportunities/engine';
 import { composeLeads } from '../../src/lib/opportunities/compose';
-import { insertLeads } from '../../src/lib/opportunities/leads';
+import { dismissedSlugs, insertLeads } from '../../src/lib/opportunities/leads';
 import { persistScoutDrafts } from '../../src/lib/opportunities/persist-scout';
 import { loadPrimitives } from '../../src/lib/opportunities/primitives';
 import { refineLeads } from '../../src/lib/opportunities/refine';
@@ -166,15 +166,17 @@ export function registerScoutTools(server: McpServer, auth: AuthContext): void {
         const primitives = loadPrimitives();
         signalCount = primitives.length;
         if (signalCount >= 5) {
+          const owner = { ownerKey: auth.rateKey, userId: auth.userId };
           const composed = composeLeads({
             primitives,
             space: loadWedges(),
-            ownerKey: auth.rateKey,
+            ownerKey: owner.ownerKey,
             day: dayKey(),
             cursor: 0,
             limit: 8,
+            excludeSlugs: dismissedSlugs(owner),
           });
-          const stored = insertLeads({ ownerKey: auth.rateKey, userId: auth.userId }, composed.leads);
+          const stored = insertLeads(owner, composed.leads);
           ({ drafts } = await refineLeads({
             leads: stored,
             primitives,

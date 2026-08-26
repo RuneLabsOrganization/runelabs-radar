@@ -29,6 +29,7 @@ vi.mock('@/lib/opportunities/refine', async (importOriginal) => {
   return { ...actual, refineLeads: vi.fn() };
 });
 
+import { eq } from 'drizzle-orm';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
@@ -41,8 +42,12 @@ import { refineLeads } from '@/lib/opportunities/refine';
 import { _setFetch } from '@/lib/llm/minimax';
 import { SUB_KEYS, type OppDraft } from '@/lib/opportunities/engine';
 import { persistScoutDrafts } from '@/lib/opportunities/persist-scout';
-import { seedWedges } from '@/lib/opportunities/wedges';
 import { can } from '@/lib/entitlements';
+import { composeLeads } from '@/lib/opportunities/compose';
+import { dismissLead, insertLeads } from '@/lib/opportunities/leads';
+import { loadPrimitives } from '@/lib/opportunities/primitives';
+import { dayKey } from '@/lib/opportunities/seed';
+import { loadWedges, seedWedges } from '@/lib/opportunities/wedges';
 import { comps, launches, llmCalls, opportunities, painPoints, stories } from '@/lib/db/schema';
 import { seedUser, useTestDb } from './helpers/db';
 
@@ -472,6 +477,41 @@ describe('scout_opportunities', () => {
     expect(res.structuredContent).toMatchObject({ ok: true });
     expect(can({ id: 7 }, 'scout').used).toBe(1);
     expect(can({ id: 7 }, 'lead_refine').used ?? 0).toBe(0);
+  });
+
+  it('does not propose, persist, or return a dismissed lead', async () => {
+    seedUser(db, 1);
+    seedSignals();
+    const owner = { ownerKey: 'user:1', userId: 1 };
+    const composed = composeLeads({
+      primitives: loadPrimitives(),
+      space: loadWedges(),
+      ownerKey: owner.ownerKey,
+      day: dayKey(),
+      cursor: 0,
+      limit: 8,
+    });
+    expect(composed.leads.length).toBeGreaterThan(0);
+    insertLeads(owner, composed.leads);
+    const dropped = composed.leads[0]!.slug;
+    dismissLead(owner, dropped, 'not for me');
+
+    refineLeadsMock.mockImplementation(async (opts) => ({
+      drafts: opts.leads.map((l) => asOppDraft(l.slug)),
+      rejects: [],
+    }));
+
+    const res = await call(await wireUser(1), 'scout_opportunities', {});
+    expect(refineLeadsMock).toHaveBeenCalled();
+    const proposed = (refineLeadsMock.mock.calls[0]![0] as { leads: { slug: string }[] }).leads
+      .map((l) => l.slug);
+    expect(proposed).not.toContain(dropped);
+
+    const openings = (res.structuredContent!.openings as { slug: string }[]).map((o) => o.slug);
+    expect(openings).not.toContain(dropped);
+    expect(
+      db.select().from(opportunities).where(eq(opportunities.slug, dropped)).all(),
+    ).toHaveLength(0);
   });
 });
 
