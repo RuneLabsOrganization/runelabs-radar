@@ -167,6 +167,16 @@ export function markRefined(leadId: number, opportunityId: number): void {
     .run();
 }
 
+/** This owner's dismissed slugs, for excluding them from fresh composition. */
+export function dismissedSlugs(owner: Owner): Set<string> {
+  const rows = getDb()
+    .select({ slug: leads.slug })
+    .from(leads)
+    .where(and(eq(leads.ownerKey, owner.ownerKey), isNotNull(leads.dismissedAt)))
+    .all();
+  return new Set(rows.map((r) => r.slug));
+}
+
 /** Sweep expired anonymous leads. Signed-in leads have a NULL expiry and survive. */
 export function expireLeads(now: Date = new Date()): number {
   const res = getDb()

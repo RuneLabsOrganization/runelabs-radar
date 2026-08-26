@@ -5,7 +5,7 @@ import { getDb } from '../../src/lib/db';
 import { opportunities } from '../../src/lib/db/schema';
 import { composeLeads } from '../../src/lib/opportunities/compose';
 import type { PrimitiveType } from '../../src/lib/opportunities/primitives';
-import { getLead, insertLeads, markRefined, dismissLead, type Owner } from '../../src/lib/opportunities/leads';
+import { getLead, insertLeads, markRefined, dismissLead, dismissedSlugs, type Owner } from '../../src/lib/opportunities/leads';
 import { persistScoutDrafts } from '../../src/lib/opportunities/persist-scout';
 import { loadPrimitives } from '../../src/lib/opportunities/primitives';
 import { refineLeads } from '../../src/lib/opportunities/refine';
@@ -73,6 +73,7 @@ export function registerLeadTools(server: McpServer, auth: AuthContext): void {
         ? primitives.filter((p) => (p.sector ?? '').toLowerCase() === sector.toLowerCase())
         : primitives;
 
+      const excludeSlugs = dismissedSlugs(owner);
       const composed = composeLeads({
         primitives: filtered,
         space,
@@ -81,6 +82,7 @@ export function registerLeadTools(server: McpServer, auth: AuthContext): void {
         cursor: cursor ?? 0,
         limit,
         avoidSectors,
+        excludeSlugs,
       });
 
       if (composed.leads.length === 0) {

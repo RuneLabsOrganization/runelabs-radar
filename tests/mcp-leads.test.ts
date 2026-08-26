@@ -172,4 +172,20 @@ describe('get_leads', () => {
     expect(p.summary).toMatch(/no demand signal in the last 21 days/i);
     expect(p.next.length).toBeGreaterThan(0);
   });
+
+  it('does not regenerate a dismissed lead on a later page at the same cursor', async () => {
+    const client = await wire(authFor(1, 'user:1'));
+    const first = (await client.callTool({ name: 'get_leads', arguments: { limit: 5 } }))
+      .structuredContent as unknown as LeadsPayload;
+    const dropped = first.leads[0]!.slug;
+    const dismissed = await client.callTool({
+      name: 'dismiss_opportunity',
+      arguments: { target: dropped, reason: 'not for me' },
+    });
+    expect((dismissed.structuredContent as { ok: boolean }).ok).toBe(true);
+
+    const again = (await client.callTool({ name: 'get_leads', arguments: { limit: 5, cursor: 0 } }))
+      .structuredContent as unknown as LeadsPayload;
+    expect(again.leads.map((l) => l.slug)).not.toContain(dropped);
+  });
 });
