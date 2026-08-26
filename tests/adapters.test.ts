@@ -320,6 +320,59 @@ describe('brave adapter', () => {
   });
 });
 
+describe('exa adapter', () => {
+  beforeEach(() => {
+    vi.stubEnv('EXA_API_KEY', 'test-exa-key');
+    vi.stubEnv('BRAVE_API_KEY', 'test-brave-key');
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('uses Exa when it succeeds — never calls Brave', async () => {
+    const fn = vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input).includes('api.exa.ai')) return new Response(fixture('exa-search.json'), { status: 200 });
+      throw new Error('Brave should not have been called');
+    });
+    vi.stubGlobal('fetch', fn);
+
+    const out = await adapters.exa.fetchItems(makeSource('exa', { query: 'AI coding assistant' }));
+    expect(out).toHaveLength(2);
+    expect(out[0]!.title).toContain('GPT-5.4');
+    expect(fn).toHaveBeenCalledTimes(1);
+  });
+
+  it('falls back to Brave with the same query when Exa errors', async () => {
+    const fn = vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input).includes('api.exa.ai')) return new Response('forbidden', { status: 403 });
+      if (String(input).includes('api.search.brave.com')) return new Response(fixture('brave-news.json'), { status: 200 });
+      throw new Error(`unexpected fetch: ${input}`);
+    });
+    vi.stubGlobal('fetch', fn);
+
+    const out = await adapters.exa.fetchItems(makeSource('exa', { query: 'AI coding assistant OR code model' }));
+    expect(out).toHaveLength(2);
+    expect(out[0]!.title).toContain('GPT-5.4');
+
+    const braveUrl = String(fn.mock.calls[1]![0]);
+    expect(braveUrl).toContain('q=AI+coding+assistant+OR+code+model');
+  });
+
+  it('throws Exa\'s error (not Brave\'s) when both fail', async () => {
+    const fn = vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input).includes('api.exa.ai')) return new Response('exa down', { status: 403 });
+      return new Response('brave also down', { status: 403 });
+    });
+    vi.stubGlobal('fetch', fn);
+
+    await expect(adapters.exa.fetchItems(makeSource('exa', { query: 'AI' }))).rejects.toThrow(/exa down|HTTP 403/);
+  });
+
+  it('throws without config.query so runIngest records the failure', async () => {
+    await expect(adapters.exa.fetchItems(makeSource('exa', {}))).rejects.toThrow(/missing config\.query/);
+  });
+});
+
 describe('runIngest', () => {
   beforeEach(() => {
     useTestDb();

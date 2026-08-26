@@ -1,6 +1,7 @@
 import type { Source, SourceAdapter } from '../types';
 import { arxivAdapter } from './arxiv';
 import { braveAdapter } from './brave';
+import { exaAdapter } from './exa';
 import { githubAdapter } from './github';
 import { hnAdapter } from './hn';
 import { huggingfaceAdapter } from './huggingface';
@@ -15,4 +16,5 @@ export const adapters: Record<Source['type'], SourceAdapter> = {
   huggingface: huggingfaceAdapter,
   github: githubAdapter,
   brave: braveAdapter,
+  exa: exaAdapter,
 };

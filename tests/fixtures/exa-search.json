@@ -1,0 +1,19 @@
+{
+  "requestId": "test-request-id",
+  "results": [
+    {
+      "title": "OpenAI ships GPT-5.4 with a persistent coding agent",
+      "url": "https://techcrunch.com/2026/08/12/openai-gpt-5-4-agentic-coding/",
+      "publishedDate": "2026-08-12T15:04:05.000Z",
+      "highlights": ["The new model keeps a coding agent running across sessions."]
+    },
+    {
+      "title": "Cursor raises $900M to scale AI code review",
+      "url": "https://www.theverge.com/2026/8/12/cursor-raise",
+      "text": "The round values the AI coding assistant maker at $9.9B."
+    },
+    {
+      "url": "https://example.com/no-title"
+    }
+  ]
+}

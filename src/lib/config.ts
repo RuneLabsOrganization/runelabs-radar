@@ -28,9 +28,13 @@ export const config = {
   get aaApiKey(): string {
     return process.env.AA_API_KEY ?? '';
   },
-  /** Brave Search API key — enables the brave news-search ingest adapter. */
+  /** Brave Search API key — enables the brave news-search ingest adapter (fallback, since Feb 2026 pricing). */
   get braveApiKey(): string {
     return process.env.BRAVE_API_KEY ?? '';
+  },
+  /** Exa API key — primary search adapter (20k free requests/month, no card required). */
+  get exaApiKey(): string {
+    return process.env.EXA_API_KEY ?? '';
   },
   /** PUBLIC_MODE=true lets anonymous visitors read the hub (no votes/verdicts/admin). */
   get publicMode(): boolean {
