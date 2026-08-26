@@ -13,8 +13,9 @@ let _db: Db | null = null;
 /**
  * Serialize migrate() across Next.js build workers that open the same file.
  * Without this, parallel `getDb()` during `next build` races CREATE TABLE.
+ * Exported for tests.
  */
-function withMigrateLock(dbPath: string, fn: () => void): void {
+export function withMigrateLock(dbPath: string, fn: () => void): void {
   if (dbPath === ':memory:') {
     fn();
     return;
@@ -37,7 +38,12 @@ function withMigrateLock(dbPath: string, fn: () => void): void {
       }
       return;
     } catch (err) {
-      if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err;
+      const code = (err as NodeJS.ErrnoException).code;
+      // EEXIST is the expected "lock already held" case. On Windows, a peer
+      // holding or mid-unlink of the same lock file can surface as EPERM or
+      // EACCES instead (more likely under antivirus/indexing) — treat those
+      // as retryable contention too, not a hard failure.
+      if (code !== 'EEXIST' && code !== 'EPERM' && code !== 'EACCES') throw err;
       if (Date.now() - start > 60_000) {
         throw new Error(`Timed out waiting for migrate lock at ${lockPath}`);
       }
