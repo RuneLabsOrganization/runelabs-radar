@@ -1,13 +1,13 @@
 import { z } from 'zod';
-import { and, desc, eq, gt } from 'drizzle-orm';
+import { and, desc, eq } from 'drizzle-orm';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { getDb } from '../../src/lib/db';
-import { kitEvidence, kitPicks, kitPickHistory, userProfiles } from '../../src/lib/db/schema';
+import { kitEvidence, kitPicks, userProfiles } from '../../src/lib/db/schema';
 import { KIT_PERSONAS, KIT_PERSONA_SLUGS, getKitPersona } from '../../src/lib/kits/personas';
 import { isKitCell, KIT_TIERS, type KitTier } from '../../src/lib/kits/grid';
-import { loadKit } from '../../src/lib/kits/repo';
+import { loadKit, loadKitPickHistory } from '../../src/lib/kits/repo';
 import type { Kit } from '../../src/lib/kits/compose';
-import { envelopeSchema, hoursAgo, iso, respond, withUserEconomy } from '../lib/payload';
+import { envelopeSchema, iso, respond, withUserEconomy } from '../lib/payload';
 import type { AuthContext } from '../lib/auth';
 
 const tierSchema = z.enum(KIT_TIERS);
@@ -406,18 +406,12 @@ export function registerKitTools(server: McpServer, auth: AuthContext): void {
       },
     },
     async ({ days, persona, limit }) => {
-      const db = getDb();
       const p = persona ? getKitPersona(persona) : null;
-      const allowed = p ? new Set(p.routes.map((r) => `${r.category}/${r.task}`)) : null;
-
-      const rows = db
-        .select()
-        .from(kitPickHistory)
-        .where(gt(kitPickHistory.changedAt, hoursAgo(days * 24)))
-        .orderBy(desc(kitPickHistory.changedAt))
-        .all()
-        .filter((r) => !allowed || allowed.has(`${r.category}/${r.task}`))
-        .slice(0, limit);
+      const rows = loadKitPickHistory({
+        days,
+        cells: p?.routes ?? null,
+        limit,
+      });
 
       return respond(
         {

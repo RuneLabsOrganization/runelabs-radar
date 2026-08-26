@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { useTestDb } from './helpers/db';
 import type { Db } from '@/lib/db';
-import { kitPicks } from '@/lib/db/schema';
+import { kitPicks, kitPickHistory } from '@/lib/db/schema';
 import { getKitPersona } from '@/lib/kits/personas';
-import { loadKit, loadPicks, getPickCell } from '@/lib/kits/repo';
+import { loadKit, loadPicks, getPickCell, loadKitPickHistory } from '@/lib/kits/repo';
 
 describe('kit_picks table', () => {
   let db: Db;
@@ -101,5 +101,62 @@ describe('kit repo', () => {
   it('returns a single cell or null', () => {
     expect(getPickCell('video', 'text-to-video', 'cheapest')?.pickName).toBe('VidThing');
     expect(getPickCell('video', 'avatar', 'cheapest')).toBeNull();
+  });
+});
+
+describe('loadKitPickHistory', () => {
+  let db: Db;
+  beforeEach(() => {
+    db = useTestDb();
+    const now = Date.now();
+    db.insert(kitPickHistory)
+      .values([
+        {
+          category: 'video',
+          task: 'text-to-video',
+          tier: 'best',
+          fromPick: 'Old',
+          toPick: 'New',
+          reason: 'board proposal approved',
+          changedAt: new Date(now - 2 * 864e5),
+        },
+        {
+          category: 'coding',
+          task: 'autocomplete',
+          tier: 'value',
+          fromPick: null,
+          toPick: 'First',
+          reason: 'board proposal approved',
+          changedAt: new Date(now - 60 * 864e5),
+        },
+      ])
+      .run();
+  });
+
+  it('returns changes inside the window, newest first', () => {
+    const rows = loadKitPickHistory({ days: 30 });
+    expect(rows).toHaveLength(1);
+    expect(rows[0].toPick).toBe('New');
+    expect(rows[0].fromPick).toBe('Old');
+    expect(rows[0].task).toBe('text-to-video');
+  });
+
+  it('filters to the given persona cells', () => {
+    const persona = getKitPersona('ugc-creator')!;
+    const rows = loadKitPickHistory({ days: 90, cells: persona.routes });
+    expect(rows).toHaveLength(1);
+    expect(rows[0].category).toBe('video');
+  });
+
+  it('keeps a first pick (fromPick null) when it is in the window', () => {
+    const rows = loadKitPickHistory({ days: 90 });
+    expect(rows).toHaveLength(2);
+    expect(rows[0].toPick).toBe('New');
+    expect(rows[1].fromPick).toBeNull();
+    expect(rows[1].toPick).toBe('First');
+  });
+
+  it('returns nothing when the window is empty', () => {
+    expect(loadKitPickHistory({ days: 1 })).toHaveLength(0);
   });
 });
