@@ -86,6 +86,15 @@ export function runKitGrade(now: Date = new Date()): { graded: number } {
     const verifiedAt = ev.reduce<Date>((max, e) => (e.observedAt > max ? e.observedAt : max), ev[0].observedAt);
     const confidence = gradeConfidence({ evidenceCount, distinctSources, verifiedAt, now });
 
+    if (
+      pick.evidenceCount === evidenceCount &&
+      pick.distinctSources === distinctSources &&
+      pick.verifiedAt?.getTime() === verifiedAt.getTime() &&
+      pick.confidence === confidence
+    ) {
+      continue; // already correct — keeps the job idempotent
+    }
+
     db.update(kitPicks)
       .set({ evidenceCount, distinctSources, verifiedAt, confidence, updatedAt: now })
       .where(eq(kitPicks.id, pick.id))

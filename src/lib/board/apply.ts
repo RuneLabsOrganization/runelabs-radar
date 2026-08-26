@@ -53,7 +53,15 @@ function mirrorToKitPicks(domain: string, task: string, proposed: ProposedFields
       )
       .get();
 
-    if (existing?.pickName === pickName) continue; // unchanged — no write, no history
+    const pickChanged = existing?.pickName !== pickName;
+    const noteRefresh = proposed.costNote !== null && proposed.costNote !== existing?.priceNote;
+    if (!pickChanged && !noteRefresh) continue;
+
+    // Board apply only writes non-null fields — a missing costNote must not
+    // wipe an existing kit priceNote the same way it would not wipe board costNote.
+    const set: { pickName?: string; priceNote?: string; updatedAt: Date } = { updatedAt: now };
+    if (pickChanged) set.pickName = pickName;
+    if (proposed.costNote !== null) set.priceNote = proposed.costNote;
 
     db.insert(kitPicks)
       .values({
@@ -67,9 +75,11 @@ function mirrorToKitPicks(domain: string, task: string, proposed: ProposedFields
       .onConflictDoUpdate({
         target: [kitPicks.category, kitPicks.task, kitPicks.tier],
         // deliberately NOT setting price/confidence/evidence — other feeders own those
-        set: { pickName, priceNote: proposed.costNote, updatedAt: now },
+        set,
       })
       .run();
+
+    if (!pickChanged) continue; // costNote-only refresh — no history row
 
     db.insert(kitPickHistory)
       .values({

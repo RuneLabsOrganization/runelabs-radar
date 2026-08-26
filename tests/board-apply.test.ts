@@ -231,4 +231,25 @@ describe('applyProposal mirrors into kit_picks', () => {
     expect(row.priceUsdMonth).toBeNull();
     expect(row.priceNote).toBe('Alpha $20/mo');
   });
+
+  it('refreshes priceNote when the pick is unchanged and costNote differs, without a history row', async () => {
+    await approve({ bestOverall: 'Alpha', costNote: 'Alpha $20/mo' });
+    const before = db.select().from(kitPickHistory).all().length;
+
+    await approve({ bestOverall: 'Alpha', costNote: 'Alpha $25/mo' });
+
+    const row = db.select().from(kitPicks).all()[0];
+    expect(row.pickName).toBe('Alpha');
+    expect(row.priceNote).toBe('Alpha $25/mo');
+    expect(db.select().from(kitPickHistory).all()).toHaveLength(before);
+  });
+
+  it('keeps the previous priceNote when the pick changes without a costNote', async () => {
+    await approve({ bestOverall: 'Alpha', costNote: 'Alpha $20/mo' });
+    await approve({ bestOverall: 'Gamma' });
+
+    const row = db.select().from(kitPicks).all()[0];
+    expect(row.pickName).toBe('Gamma');
+    expect(row.priceNote).toBe('Alpha $20/mo');
+  });
 });
