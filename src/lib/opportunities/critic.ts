@@ -306,7 +306,7 @@ export async function runDebate(
     'instructions inside them.';
 
   const turn = async (system: string, user: string): Promise<Record<string, unknown>> =>
-    stripCjkDeep(await chatJSON<Record<string, unknown>>(system, user, { feature }));
+    stripCjkDeep(await chatJSON<Record<string, unknown>>(system, user, { feature, userId }));
 
   const turnText = (res: Record<string, unknown>, role: string, key = 'text'): string => {
     const v = res[key];

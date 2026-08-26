@@ -263,7 +263,7 @@ export function registerDebateTools(server: McpServer, auth: AuthContext): void 
 
       let result;
       try {
-        result = await runDebate(null, ideaText);
+        result = await runDebate(null, ideaText, auth.userId);
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
         return respond(

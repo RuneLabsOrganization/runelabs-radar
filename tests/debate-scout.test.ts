@@ -7,12 +7,17 @@ vi.hoisted(() => {
   process.env.MCP_SCOUT_DAILY_CAP = '1';
 });
 
+const criticActual = vi.hoisted(() => ({
+  runDebate: undefined as typeof import('@/lib/opportunities/critic').runDebate | undefined,
+}));
+
 // self-contained: runDebate is pinned here while the real multi-role debate
 // pipeline is built concurrently in src/lib/opportunities/critic.ts
-vi.mock('@/lib/opportunities/critic', () => ({
-  runDebate: vi.fn(),
-  runCritique: vi.fn(),
-}));
+vi.mock('@/lib/opportunities/critic', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/opportunities/critic')>();
+  criticActual.runDebate = actual.runDebate;
+  return { ...actual, runDebate: vi.fn(), runCritique: vi.fn() };
+});
 
 vi.mock('@/lib/opportunities/refine', () => ({
   refineLeads: vi.fn(),
@@ -31,7 +36,7 @@ import { _setFetch } from '@/lib/llm/minimax';
 import { SUB_KEYS, type OppDraft } from '@/lib/opportunities/engine';
 import { persistScoutDrafts } from '@/lib/opportunities/persist-scout';
 import { seedWedges } from '@/lib/opportunities/wedges';
-import { comps, launches, opportunities, painPoints, stories } from '@/lib/db/schema';
+import { comps, launches, llmCalls, opportunities, painPoints, stories } from '@/lib/db/schema';
 import { seedUser, useTestDb } from './helpers/db';
 
 const debateMock = vi.mocked(runDebate);
@@ -215,6 +220,42 @@ describe('debate_idea', () => {
     expect(third.structuredContent).toMatchObject({ ok: false });
     expect(third.structuredContent!.error as string).toContain('daily debate cap reached (2)');
     expect(debateMock).toHaveBeenCalledTimes(2); // the refusal never reaches the LLM
+  });
+
+  it('writes llm_calls rows tagged debate for the signed-in user', async () => {
+    seedUser(db, 1);
+    debateMock.mockImplementation(criticActual.runDebate!);
+    const payloads = [
+      { text: 'The demand is proven: three recurring pains name this gap and prices fell this quarter so a focused API undercuts incumbents.' },
+      { text: 'An incumbent ships this inside two releases and the advocate overstates how long the window stays open for a newcomer.' },
+      { text: 'The comps show per-image tools exiting at 3-5x ARR, launch activity is up, and current model prices do support the stated margin.' },
+      {
+        verdict: 'watch',
+        confidence: 55,
+        reasoning: 'Demand evidence is real but platform risk is named and not yet mitigated by positioning.',
+        killRisks: ['Shopify ships this natively within two releases'],
+        conditionsToSucceed: ['own one niche distribution channel'],
+        strengthenedVariants: ['niche down to Shopify Plus sellers', 'usage-based API instead of a dashboard'],
+      },
+    ];
+    _setFetch((async () => {
+      const payload = payloads.shift();
+      if (payload === undefined) throw new Error('unexpected extra LLM call in test');
+      return {
+        ok: true,
+        json: async () => ({
+          choices: [{ message: { content: JSON.stringify(payload) } }],
+          usage: { prompt_tokens: 10, completion_tokens: 10 },
+        }),
+      } as Response;
+    }) as unknown as typeof fetch);
+
+    const client = await wireUser(1);
+    const res = await call(client, 'debate_idea', { idea: IDEA });
+    expect(res.structuredContent).toMatchObject({ ok: true });
+
+    const rows = db.select().from(llmCalls).all();
+    expect(rows.some((r) => r.feature === 'debate' && r.userId === 1)).toBe(true);
   });
 });
 

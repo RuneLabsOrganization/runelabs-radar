@@ -1,14 +1,20 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { eq } from 'drizzle-orm';
+
+const criticActual = vi.hoisted(() => ({
+  runDebate: undefined as typeof import('@/lib/opportunities/critic').runDebate | undefined,
+}));
 
 vi.mock('@/lib/opportunities/critic', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/opportunities/critic')>();
+  criticActual.runDebate = actual.runDebate;
   return { ...actual, runDebate: vi.fn() };
 });
 
 import { forgeOpportunity } from '@/lib/opportunities/forge';
 import { runDebate, type DebateResult } from '@/lib/opportunities/critic';
-import { opportunities } from '@/lib/db/schema';
+import { _setFetch } from '@/lib/llm/minimax';
+import { llmCalls, opportunities } from '@/lib/db/schema';
 import { SUB_KEYS } from '@/lib/opportunities/engine';
 import { seedUser, useTestDb } from './helpers/db';
 import type { Db } from '@/lib/db';
@@ -52,12 +58,19 @@ function seedOpp(db: Db, slug: string, ownerUserId: number): number {
 
 describe('forgeOpportunity', () => {
   let db: Db;
+  const savedKey = process.env.MINIMAX_API_KEY;
   beforeEach(() => {
     db = useTestDb();
     seedUser(db, 1);
     seedUser(db, 2);
     debateMock.mockReset();
     debateMock.mockResolvedValue(PINNED);
+    process.env.MINIMAX_API_KEY = 'test-key';
+  });
+  afterEach(() => {
+    _setFetch(globalThis.fetch);
+    if (savedKey === undefined) delete process.env.MINIMAX_API_KEY;
+    else process.env.MINIMAX_API_KEY = savedKey;
   });
 
   it('re-scores the opportunity from the debate outcome', async () => {
@@ -109,5 +122,40 @@ describe('forgeOpportunity', () => {
     const res = await forgeOpportunity(id, 1);
     expect(res.ok).toBe(false);
     expect(res.error).toMatch(/503/);
+  });
+
+  it('writes llm_calls rows tagged forge for the calling user', async () => {
+    debateMock.mockImplementation(criticActual.runDebate!);
+    const payloads = [
+      { text: 'The demand is proven: three recurring pains name this gap and prices fell this quarter so a focused API undercuts incumbents.' },
+      { text: 'An incumbent ships this inside two releases and the advocate overstates how long the window stays open for a newcomer.' },
+      { text: 'The comps show per-image tools exiting at 3-5x ARR, launch activity is up, and current model prices do support the stated margin.' },
+      {
+        verdict: 'watch',
+        confidence: 55,
+        reasoning: 'Demand evidence is real but platform risk is named and not yet mitigated by positioning.',
+        killRisks: ['Platform absorbs the feature natively'],
+        conditionsToSucceed: ['own one niche distribution channel'],
+        strengthenedVariants: ['niche down to Plus sellers', 'usage-based API instead of a dashboard'],
+      },
+    ];
+    _setFetch((async () => {
+      const payload = payloads.shift();
+      if (payload === undefined) throw new Error('unexpected extra LLM call in test');
+      return {
+        ok: true,
+        json: async () => ({
+          choices: [{ message: { content: JSON.stringify(payload) } }],
+          usage: { prompt_tokens: 10, completion_tokens: 10 },
+        }),
+      } as Response;
+    }) as unknown as typeof fetch);
+
+    const id = seedOpp(db, 'metered-forge', 1);
+    const res = await forgeOpportunity(id, 1);
+    expect(res.ok).toBe(true);
+
+    const rows = db.select().from(llmCalls).all();
+    expect(rows.some((r) => r.feature === 'forge' && r.userId === 1)).toBe(true);
   });
 });
