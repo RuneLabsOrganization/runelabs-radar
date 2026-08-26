@@ -21,11 +21,12 @@ import { getIdentity } from '@/lib/identity';
 import { formatBoardChange, isNoopChange } from '@/lib/board/change';
 import Link from 'next/link';
 import { getDb } from '@/lib/db';
-import { boardEntries, boardHistory } from '@/lib/db/schema';
+import { boardHistory } from '@/lib/db/schema';
+import { boardRows, type BoardRow } from '@/lib/kits/board-view';
 import { DOMAIN_COLORS, DOMAIN_LABELS, DOMAINS, isDomain } from '@/lib/domains';
 import ChartFrame from '@/components/ChartFrame';
 
-type BoardEntry = typeof boardEntries.$inferSelect;
+type BoardEntry = BoardRow;
 
 export const metadata = {
   title: 'Best Right Now — cost-benefit board',
@@ -89,11 +90,7 @@ export default async function BoardPage() {
   const media = showAA ? aaMedia() : null;
   const chartBrand = `${getIdentity().productName} · ${new URL(config.siteUrl).host}`;
 
-  const entries = db
-    .select()
-    .from(boardEntries)
-    .orderBy(boardEntries.domain, boardEntries.task)
-    .all();
+  const entries = boardRows();
 
   const cutoff = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
   const history = db
@@ -111,7 +108,7 @@ export default async function BoardPage() {
   }
 
   // the verdict column only earns its width when someone can edit or read one
-  const showVerdict = !!user || entries.some((e) => e.runelabsVerdict);
+  const showVerdict = !!user || entries.some((e) => e.verdict);
   // history minus "no field changes" noise, capped — full log lives on /changelog
   const meaningfulHistory = history.filter((h) => !isNoopChange(h.change)).slice(0, 8);
 
@@ -207,7 +204,7 @@ export default async function BoardPage() {
                       <td data-label="verdict">
                         <VerdictEditor
                           entryId={entry.id}
-                          verdict={entry.runelabsVerdict}
+                          verdict={entry.verdict}
                           author={entry.verdictAuthor}
                           canEdit={!!user}
                         />
