@@ -110,7 +110,7 @@ describe('refine_lead', () => {
       .callTool({ name: 'refine_lead', arguments: { lead: 'review-queue' } });
     const p = res.structuredContent as { ok: boolean; error?: string };
     expect(p.ok).toBe(false);
-    expect(p.error).toMatch(/rejected|not genuinely|slug/i);
+    expect(p.error).toMatch(/Could not score this lead/i);
 
     const row = db.select().from(leads).where(eq(leads.ownerKey, 'user:1')).get();
     expect(row?.stage).toBe('composed');

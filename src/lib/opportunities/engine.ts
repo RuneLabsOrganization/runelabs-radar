@@ -80,6 +80,7 @@ export function sanitizeOpportunities(
   v: unknown,
   validRefs: Set<string>,
   rejects?: SanitizeReject[],
+  max = MAX_PROPOSALS,
 ): OppDraft[] {
   if (!Array.isArray(v)) {
     rejects?.push({
@@ -95,7 +96,7 @@ export function sanitizeOpportunities(
   const out: OppDraft[] = [];
   const seenSlugs = new Set<string>();
   for (const raw of v) {
-    if (out.length >= MAX_PROPOSALS) break;
+    if (out.length >= max) break;
     if (typeof raw !== 'object' || raw === null) {
       rejects?.push({ slug: '', reason: 'not-an-object' });
       continue;

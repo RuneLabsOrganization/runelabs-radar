@@ -226,9 +226,9 @@ export function registerLeadTools(server: McpServer, auth: AuthContext): void {
       });
       if (drafts.length === 0) {
         return respond(
-          { ok: false, error: 'The analyst rejected this lead as not genuinely actionable.' },
+          { ok: false, error: 'Could not score this lead — the input may be malformed. Try get_leads again.' },
           {
-            summary: `"${row.title}" did not survive refinement — that is an honest answer, not a failure.`,
+            summary: `Could not score "${row.title}" — the refiner returned no usable entry.`,
             economy: withUserEconomy(auth.userId, 'scout'),
             next: [{ tool: 'get_leads', arguments: { limit: 10 }, reason: 'try a different angle' }],
           },

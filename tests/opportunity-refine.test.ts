@@ -1,14 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { eq } from 'drizzle-orm';
 import { refineLeads } from '@/lib/opportunities/refine';
 import type { LeadRow } from '@/lib/opportunities/leads';
 import type { Primitive } from '@/lib/opportunities/primitives';
+import { persistScoutDrafts } from '@/lib/opportunities/persist-scout';
 import { SUB_KEYS } from '@/lib/opportunities/engine';
+import { opportunities } from '@/lib/db/schema';
+import { getDb } from '@/lib/db';
 import { _setFetch } from '@/lib/llm/minimax';
-import { useTestDb } from './helpers/db';
+import { seedUser, useTestDb } from './helpers/db';
 
-function lead(slug: string): LeadRow {
+function lead(slug: string, id = 1): LeadRow {
   return {
-    id: 1, slug, title: `Title for ${slug}`,
+    id, slug, title: `Title for ${slug}`,
     thesisSkeleton: 'A composed skeleton awaiting refinement.',
     sector: 'devtools', primitiveRefs: ['P1'],
     wedge: {
@@ -185,5 +189,75 @@ describe('refineLeads', () => {
     });
     expect(drafts).toHaveLength(0);
     expect(rejects).toEqual([{ slug: '(payload)', reason: 'not-an-array:undefined' }]);
+  });
+
+  it('keeps a legitimate weak entry instead of dropping it', async () => {
+    const reply = modelReply('weak-but-real');
+    reply.openings[0].subScores = Object.fromEntries(SUB_KEYS.map((k) => [k, 6]));
+    reply.openings[0].evidenceRefs = ['P1'];
+    stubLlm(reply);
+    const { drafts } = await refineLeads({
+      leads: [lead('weak-but-real')], primitives: PRIMITIVES, userId: 1,
+    });
+    expect(drafts).toHaveLength(1);
+    expect(drafts[0].slug).toBe('weak-but-real');
+    expect(drafts[0].evidenceRefs).toEqual(['P1']);
+    for (const k of SUB_KEYS) expect(drafts[0].sub[k]).toBe(6);
+  });
+
+  it('does not warn on a 1:1 low-score reply', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const a = modelReply('alpha-lead');
+    const b = modelReply('beta-lead');
+    a.openings[0].subScores = Object.fromEntries(SUB_KEYS.map((k) => [k, 5]));
+    b.openings[0].subScores = Object.fromEntries(SUB_KEYS.map((k) => [k, 7]));
+    stubLlm({ openings: [a.openings[0], b.openings[0]] });
+    const { drafts } = await refineLeads({
+      leads: [lead('alpha-lead', 1), lead('beta-lead', 2)],
+      primitives: PRIMITIVES,
+      userId: 1,
+    });
+    expect(drafts).toHaveLength(2);
+    expect(warn.mock.calls.some(([msg]) => String(msg).includes('drafts from'))).toBe(false);
+    warn.mockRestore();
+  });
+
+  it('warns on a shortfall in the 1:1 contract', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    stubLlm(modelReply('alpha-lead'));
+    const { drafts } = await refineLeads({
+      leads: [lead('alpha-lead', 1), lead('beta-lead', 2)],
+      primitives: PRIMITIVES,
+      userId: 1,
+    });
+    expect(drafts).toHaveLength(1);
+    expect(warn.mock.calls.some(([msg]) =>
+      String(msg).includes('1 drafts from 2 candidates'),
+    )).toBe(true);
+    warn.mockRestore();
+  });
+
+  it('lets the gate reject a weak single-source draft instead of dropping it', async () => {
+    seedUser(getDb(), 1);
+    const reply = modelReply('thin-evidence-lead');
+    reply.openings[0].subScores = Object.fromEntries(SUB_KEYS.map((k) => [k, 6]));
+    reply.openings[0].evidenceRefs = ['P1'];
+    reply.openings[0].windowMonths = 2;
+    reply.openings[0].window = '2 months';
+    stubLlm(reply);
+    const { drafts } = await refineLeads({
+      leads: [lead('thin-evidence-lead')], primitives: PRIMITIVES, userId: 1,
+    });
+    expect(drafts).toHaveLength(1);
+
+    const { persisted } = persistScoutDrafts(drafts, 1);
+    expect(persisted).toHaveLength(1);
+    const row = getDb()
+      .select()
+      .from(opportunities)
+      .where(eq(opportunities.id, persisted[0]!.id))
+      .get();
+    expect(row?.confidence).toBeLessThanOrEqual(50);
+    expect(row?.verdict).toBe('reject');
   });
 });

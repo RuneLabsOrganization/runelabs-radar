@@ -40,16 +40,6 @@ function renderConstraints(c: ScoutConstraints): string {
   return lines.length ? `<builder-constraints>\n${lines.join('\n')}\n</builder-constraints>` : '';
 }
 
-function formatRejectSummary(rejects: { slug: string; reason: string }[]): string {
-  const counts = new Map<string, number>();
-  for (const r of rejects) {
-    counts.set(r.reason, (counts.get(r.reason) ?? 0) + 1);
-  }
-  return [...counts.entries()]
-    .map(([reason, n]) => (n > 1 ? `${reason} x${n}` : reason))
-    .join(', ');
-}
-
 export async function refineLeads(
   opts: RefineOptions,
 ): Promise<{ drafts: OppDraft[]; rejects: { slug: string; reason: string }[] }> {
@@ -72,18 +62,25 @@ export async function refineLeads(
 
   const identity = getIdentity();
   const system =
-    `You score composed openings for ${identity.productName}. You are given candidate ` +
-    `angles that were composed mechanically from live market signal, and the evidence they ` +
-    `were composed from. Your job is to judge each one honestly and score it.\n\n` +
+    `You score composed business openings for ${identity.productName}, drawn from real ` +
+    `live signal (pain reports, market patterns, news) crossed against a business-model ` +
+    `taxonomy. Your job is to score EVERY candidate honestly, not to decide which ones ` +
+    `make the cut — a separate deterministic gate does that from your scores. A weak or ` +
+    `thin candidate should score low, not be omitted.\n\n` +
     `Rules:\n` +
-    `- Put every scored candidate in the JSON array under the key "openings". Do not wrap ` +
-    `the array under any other key.\n` +
+    `- Put ALL candidates in the JSON array under the key "openings", in the same order ` +
+    `given, one entry per candidate. The array length must equal the number of candidates.\n` +
     `- Keep each candidate's slug EXACTLY as given.\n` +
-    `- Rewrite title and thesis into something a builder would actually recognise as a business.\n` +
-    `- Drop any candidate that is incoherent or has no real demand behind it. Returning fewer ` +
-    `openings than you were given is correct and expected.\n` +
+    `- Rewrite title and thesis into something a builder would recognise as a real business, ` +
+    `even for a weak candidate — describe what it would be, honestly, not what you wish it were.\n` +
+    `- Single-source evidence (one cited ref) is NORMAL at this stage, not a reason to reject. ` +
+    `Score it on its merits and let subScores/confidence reflect the thinness — do not omit it.\n` +
+    `- Only omit a candidate if the input itself is unusable (empty, unintelligible, or ` +
+    `not describing a business at all). This should be rare — most candidates you receive ` +
+    `have a real thesis and should get a real, even if low, score.\n` +
     `- evidenceRefs must only cite refs from the evidence block.\n` +
-    `- subScores: every key 0-20, honest, not uniformly generous.\n` +
+    `- subScores: every key 0-20. Score generously where evidence supports it, honestly low ` +
+    `(0-8 is fine) where it does not — never omit the candidate to avoid scoring it low.\n` +
     `- kpis: concrete numbers or null. Never invent precision you do not have.\n\n` +
     `Reply with JSON: {"openings":[{"slug","title","thesis","sector","window","windowMonths",` +
     `"subScores":{...},"kpis":{...},"evidenceRefs":[...]}]}`;
@@ -98,7 +95,7 @@ export async function refineLeads(
     raw = await chatJSON<unknown>(system, user, {
       feature: 'lead_refine',
       userId,
-      maxTokens: 4000,
+      maxTokens: 12000,
     });
   } catch {
     return { drafts: [], rejects: [] };
@@ -106,7 +103,7 @@ export async function refineLeads(
 
   const { payload, usedKey } = extractOpeningsPayload(raw);
   const rejects: { slug: string; reason: string }[] = [];
-  const sanitized = sanitizeOpportunities(payload, validRefs, rejects);
+  const sanitized = sanitizeOpportunities(payload, validRefs, rejects, Math.max(leads.length, 1));
   const candidateSlugs = new Set(leads.map((l) => normalizeSlug(l.slug)));
   const drafts: OppDraft[] = [];
   for (const d of sanitized) {
@@ -116,14 +113,13 @@ export async function refineLeads(
     }
     drafts.push(d);
   }
-  if (drafts.length === 0) {
+  if (drafts.length < leads.length) {
+    const head =
+      `[refine] ${drafts.length} drafts from ${leads.length} candidates; used=${usedKey}; ` +
+      `keys=${JSON.stringify(Object.keys((raw ?? {}) as object))}`;
     console.warn(
-      `[refine] 0 drafts from ${leads.length} candidates; used=${usedKey}; keys=${JSON.stringify(Object.keys((raw ?? {}) as object))} ` +
-        `raw=${JSON.stringify(raw ?? {}).slice(0, 400)}`,
+      drafts.length === 0 ? `${head} raw=${JSON.stringify(raw ?? {}).slice(0, 400)}` : head,
     );
-    if (rejects.length > 0) {
-      console.warn(`[refine] ${leads.length} candidates in, 0 out — ${formatRejectSummary(rejects)}`);
-    }
   }
   return { drafts, rejects };
 }
