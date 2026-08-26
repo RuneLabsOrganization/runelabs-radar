@@ -1,10 +1,11 @@
 import { NextResponse } from 'next/server';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { getCurrentUser } from '@/lib/auth/user';
 import { config } from '@/lib/config';
 import { getDb } from '@/lib/db';
 import { opportunities } from '@/lib/db/schema';
 import { generateBrief, sanitizeBrief } from '@/lib/opportunities/brief';
+import { visibleTo } from '@/lib/opportunities/scope';
 
 export async function POST(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -20,7 +21,11 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
   }
 
   const db = getDb();
-  const opp = db.select().from(opportunities).where(eq(opportunities.id, oppId)).get();
+  const opp = db
+    .select()
+    .from(opportunities)
+    .where(and(eq(opportunities.id, oppId), visibleTo(user?.id ?? null)))
+    .get();
   if (!opp) return NextResponse.json({ error: 'not found' }, { status: 404 });
 
   // cached briefs are readable by anyone who can see the page…

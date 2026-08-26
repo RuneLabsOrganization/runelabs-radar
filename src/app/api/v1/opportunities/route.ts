@@ -1,9 +1,10 @@
-import { desc, eq } from 'drizzle-orm';
+import { and, desc, eq } from 'drizzle-orm';
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { opportunities } from '@/lib/db/schema';
 import { rateLimited } from '@/lib/api-limit';
 import { urls } from '@/lib/urls';
+import { publicOnly } from '@/lib/opportunities/scope';
 
 /**
  * Public read-only API v1 (Phase 10): active opportunities — the same query
@@ -30,7 +31,7 @@ export async function GET(req: Request) {
   const rows = db
     .select()
     .from(opportunities)
-    .where(eq(opportunities.status, 'active'))
+    .where(and(eq(opportunities.status, 'active'), publicOnly()))
     .orderBy(desc(opportunities.flipScore))
     .limit(limit)
     .all();

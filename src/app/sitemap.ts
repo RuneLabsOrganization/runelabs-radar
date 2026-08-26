@@ -2,6 +2,7 @@ import type { MetadataRoute } from 'next';
 import { and, desc, eq, gt } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
 import { opportunities, stories } from '@/lib/db/schema';
+import { publicOnly } from '@/lib/opportunities/scope';
 import { DOMAINS } from '@/lib/domains';
 import { topEntitySlugs } from '@/lib/entity';
 import { urls } from '@/lib/urls';
@@ -57,7 +58,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
     opportunityRoutes = getDb()
       .select({ id: opportunities.id, slug: opportunities.slug, firstSeenAt: opportunities.firstSeenAt })
       .from(opportunities)
-      .where(eq(opportunities.status, 'active'))
+      .where(and(eq(opportunities.status, 'active'), publicOnly()))
       .all()
       .map((o) => ({
         url: urls.opportunity(o.slug),
