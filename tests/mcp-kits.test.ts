@@ -3,8 +3,8 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { buildServer } from '../mcp/build';
 import type { AuthContext } from '../mcp/lib/auth';
-import { kitPicks } from '@/lib/db/schema';
-import { useTestDb } from './helpers/db';
+import { kitEvidence, kitPicks } from '@/lib/db/schema';
+import { seedUser, useTestDb } from './helpers/db';
 
 const AUTH: AuthContext = {
   authed: false,
@@ -86,5 +86,94 @@ describe('kit MCP tools', () => {
       exclude: ['audio/music'],
     });
     expect(out.total_cells).toBe(5);
+  });
+});
+
+const AUTHED: AuthContext = {
+  authed: true,
+  userId: 1,
+  scopes: new Set(['read', 'plans']),
+  rateKey: 'test-authed',
+};
+
+describe('explain_pick and saved kits', () => {
+  beforeEach(() => {
+    const db = useTestDb();
+    seedUser(db, 1);
+    const pickId = db
+      .insert(kitPicks)
+      .values({
+        category: 'video',
+        task: 'text-to-video',
+        tier: 'cheapest',
+        pickName: 'VidThing',
+        priceModel: 'seat',
+        priceUsdMonth: 20,
+        why: 'cheapest that holds motion',
+        confidence: 'high',
+        evidenceCount: 1,
+        distinctSources: 1,
+        verifiedAt: new Date('2026-08-23T00:00:00Z'),
+        updatedAt: new Date('2026-08-23T00:00:00Z'),
+      })
+      .returning({ id: kitPicks.id })
+      .get()!.id;
+    db.insert(kitEvidence)
+      .values({
+        pickId,
+        kind: 'report',
+        sourceUrl: 'https://example.com/thread',
+        excerpt: 'held motion better than the alternatives at this price',
+        sentiment: 1,
+        observedAt: new Date('2026-08-22T00:00:00Z'),
+      })
+      .run();
+  });
+
+  it('explain_pick returns the evidence receipts', async () => {
+    const out = await call(await wire(), 'explain_pick', {
+      category: 'video',
+      task: 'text-to-video',
+      tier: 'cheapest',
+    });
+    expect(out.found).toBe(true);
+    expect(out.pick).toBe('VidThing');
+    expect(out.evidence).toHaveLength(1);
+    expect(out.evidence[0].source_url).toBe('https://example.com/thread');
+  });
+
+  it('explain_pick reports an uncovered cell honestly', async () => {
+    const out = await call(await wire(), 'explain_pick', {
+      category: 'video',
+      task: 'avatar',
+      tier: 'cheapest',
+    });
+    expect(out.found).toBe(false);
+  });
+
+  it('set_my_kit then get_my_kit round-trips', async () => {
+    const client = await wire(AUTHED);
+    const saved = await call(client, 'set_my_kit', { persona: 'ugc-creator', tier: 'cheapest' });
+    expect(saved.ok).toBe(true);
+    const mine = await call(client, 'get_my_kit');
+    expect(mine.found).toBe(true);
+    expect(mine.persona).toBe('ugc-creator');
+    expect(mine.total_usd_month).toBe(20);
+  });
+
+  it('get_my_kit reports no saved persona rather than guessing', async () => {
+    const out = await call(await wire(AUTHED), 'get_my_kit');
+    expect(out.found).toBe(false);
+  });
+
+  it('set_my_kit requires auth', async () => {
+    const out = await call(await wire(), 'set_my_kit', { persona: 'ugc-creator' });
+    expect(out.ok).toBe(false);
+  });
+
+  it('set_my_kit rejects an unknown persona', async () => {
+    const out = await call(await wire(AUTHED), 'set_my_kit', { persona: 'astronaut' });
+    expect(out.ok).toBe(false);
+    expect(out.available).toContain('agency');
   });
 });

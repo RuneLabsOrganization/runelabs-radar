@@ -1,7 +1,10 @@
 import { z } from 'zod';
+import { and, desc, eq } from 'drizzle-orm';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { getDb } from '../../src/lib/db';
+import { kitEvidence, kitPicks, userProfiles } from '../../src/lib/db/schema';
 import { KIT_PERSONAS, KIT_PERSONA_SLUGS, getKitPersona } from '../../src/lib/kits/personas';
-import { KIT_TIERS, type KitTier } from '../../src/lib/kits/grid';
+import { isKitCell, KIT_TIERS, type KitTier } from '../../src/lib/kits/grid';
 import { loadKit } from '../../src/lib/kits/repo';
 import type { Kit } from '../../src/lib/kits/compose';
 import { envelopeSchema, iso, respond, withUserEconomy } from '../lib/payload';
@@ -165,6 +168,203 @@ export function registerKitTools(server: McpServer, auth: AuthContext): void {
               },
             ]
           : [],
+      });
+    },
+  );
+
+  server.registerTool(
+    'explain_pick',
+    {
+      description:
+        'The evidence behind one kit pick: why it won, what to skip, and the source reports or benchmarks backing it. Radar never asserts a verdict without receipts.',
+      inputSchema: {
+        category: z.string().describe('kit category, e.g. video, infra, connectors'),
+        task: z.string().describe('job within the category, e.g. text-to-video'),
+        tier: tierSchema.optional().describe('cost tier; default value'),
+      },
+      outputSchema: {
+        ...envelopeSchema,
+        found: z.boolean(),
+        reason: z.string().optional(),
+        pick: z.string().optional(),
+        why: z.string().nullable().optional(),
+        skip: z.string().nullable().optional(),
+        confidence: z.string().optional(),
+        verified_at: z.string().nullable().optional(),
+        evidence: z
+          .array(
+            z.object({
+              kind: z.string(),
+              source_url: z.string(),
+              excerpt: z.string().nullable(),
+              sentiment: z.number(),
+              observed_at: z.string().nullable(),
+            }),
+          )
+          .optional(),
+      },
+    },
+    async ({ category, task, tier }) => {
+      const chosen: KitTier = tier ?? 'value';
+      if (!isKitCell(category, task)) {
+        return respond(
+          { found: false, reason: `"${category}/${task}" is not a cell in the kit grid.` },
+          {
+            summary: `Unknown cell ${category}/${task}.`,
+            economy: withUserEconomy(auth.userId, 'read'),
+            next: [{ tool: 'list_kits', arguments: {}, reason: 'personas and their cells' }],
+          },
+        );
+      }
+      const db = getDb();
+      const row = db
+        .select()
+        .from(kitPicks)
+        .where(
+          and(eq(kitPicks.category, category), eq(kitPicks.task, task), eq(kitPicks.tier, chosen)),
+        )
+        .get();
+      if (!row) {
+        return respond(
+          { found: false, reason: 'not yet covered — no approved pick for this cell' },
+          {
+            summary: `${category}/${task} (${chosen}) is not yet covered.`,
+            economy: withUserEconomy(auth.userId, 'read'),
+          },
+        );
+      }
+      const evidence = db
+        .select()
+        .from(kitEvidence)
+        .where(eq(kitEvidence.pickId, row.id))
+        .orderBy(desc(kitEvidence.observedAt))
+        .limit(20)
+        .all();
+      return respond(
+        {
+          found: true,
+          pick: row.pickName,
+          why: row.why ?? null,
+          skip: row.skip ?? null,
+          confidence: row.confidence,
+          verified_at: iso(row.verifiedAt),
+          evidence: evidence.map((e) => ({
+            kind: e.kind,
+            source_url: e.sourceUrl,
+            excerpt: e.excerpt ?? null,
+            sentiment: e.sentiment,
+            observed_at: iso(e.observedAt),
+          })),
+        },
+        {
+          summary: `${row.pickName} for ${category}/${task} (${chosen}) — ${row.confidence} confidence, ${evidence.length} receipts.`,
+          economy: withUserEconomy(auth.userId, 'read'),
+        },
+      );
+    },
+  );
+
+  server.registerTool(
+    'set_my_kit',
+    {
+      description:
+        'Save the caller persona and cost tier so get_my_kit can return their committed setup without being told again.',
+      inputSchema: {
+        persona: z.string().describe('persona slug — see list_kits'),
+        tier: tierSchema.optional(),
+      },
+      outputSchema: {
+        ...envelopeSchema,
+        ok: z.boolean(),
+        error: z.string().optional(),
+        available: z.array(z.string()).optional(),
+        persona: z.string().optional(),
+        tier: z.string().optional(),
+      },
+    },
+    async ({ persona, tier }) => {
+      if (auth.userId == null) {
+        return respond(
+          { ok: false, error: 'sign in required — connect with an OAuth token that has a user' },
+          {
+            summary: 'Sign in required to save a kit.',
+            economy: withUserEconomy(auth.userId, 'read'),
+            next: [{ tool: 'get_server_guide', arguments: {}, reason: 'how to authenticate' }],
+          },
+        );
+      }
+      const p = getKitPersona(persona);
+      if (!p) {
+        return respond(
+          { ok: false, error: `Unknown persona "${persona}".`, available: KIT_PERSONA_SLUGS },
+          {
+            summary: `Unknown persona "${persona}".`,
+            economy: withUserEconomy(auth.userId, 'read'),
+            next: [{ tool: 'list_kits', arguments: {}, reason: 'available personas' }],
+          },
+        );
+      }
+      const chosen: KitTier = tier ?? p.defaultTier;
+      const db = getDb();
+      const now = new Date();
+      db.insert(userProfiles)
+        .values({ userId: auth.userId, kitPersona: p.slug, kitTier: chosen, updatedAt: now })
+        .onConflictDoUpdate({
+          target: userProfiles.userId,
+          set: { kitPersona: p.slug, kitTier: chosen, updatedAt: now },
+        })
+        .run();
+      return respond(
+        { ok: true, persona: p.slug, tier: chosen },
+        {
+          summary: `Saved kit: ${p.label} (${chosen}).`,
+          economy: withUserEconomy(auth.userId, 'read'),
+          next: [{ tool: 'get_my_kit', arguments: {}, reason: 'read your committed setup' }],
+        },
+      );
+    },
+  );
+
+  server.registerTool(
+    'get_my_kit',
+    {
+      description:
+        "The caller's own saved kit — the tool decisions they have already committed to. Read this before proposing a stack so you build on their choices instead of re-litigating them.",
+      inputSchema: {},
+      outputSchema: kitOutput,
+    },
+    async () => {
+      if (auth.userId == null) {
+        return respond(
+          { found: false, available: KIT_PERSONA_SLUGS },
+          {
+            summary: 'Sign in required to read a saved kit.',
+            economy: withUserEconomy(auth.userId, 'read'),
+            next: [{ tool: 'get_kit', arguments: { persona: 'indie-dev' }, reason: 'browse a kit anonymously' }],
+          },
+        );
+      }
+      const db = getDb();
+      const profile = db
+        .select()
+        .from(userProfiles)
+        .where(eq(userProfiles.userId, auth.userId))
+        .get();
+      const p = profile?.kitPersona ? getKitPersona(profile.kitPersona) : null;
+      if (!p) {
+        return respond(
+          { found: false, available: KIT_PERSONA_SLUGS },
+          {
+            summary: 'No saved kit yet — call set_my_kit.',
+            economy: withUserEconomy(auth.userId, 'read'),
+            next: [{ tool: 'set_my_kit', arguments: { persona: 'indie-dev' }, reason: 'save your persona' }],
+          },
+        );
+      }
+      const kit = loadKit(p, (profile?.kitTier as KitTier | null) ?? p.defaultTier);
+      return respond(kitPayload(kit), {
+        summary: kitSummary(kit),
+        economy: withUserEconomy(auth.userId, 'read'),
       });
     },
   );
