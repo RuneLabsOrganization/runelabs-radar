@@ -3,7 +3,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { buildServer } from '../mcp/build';
 import type { AuthContext } from '../mcp/lib/auth';
-import { kitEvidence, kitPicks } from '@/lib/db/schema';
+import { kitEvidence, kitPicks, kitPickHistory } from '@/lib/db/schema';
 import { seedUser, useTestDb } from './helpers/db';
 
 const AUTH: AuthContext = {
@@ -175,5 +175,60 @@ describe('explain_pick and saved kits', () => {
     const out = await call(await wire(AUTHED), 'set_my_kit', { persona: 'astronaut' });
     expect(out.ok).toBe(false);
     expect(out.available).toContain('agency');
+  });
+});
+
+describe('whats_changed', () => {
+  beforeEach(() => {
+    const db = useTestDb();
+    const now = Date.now();
+    db.insert(kitPickHistory)
+      .values([
+        {
+          category: 'video',
+          task: 'text-to-video',
+          tier: 'best',
+          fromPick: 'Old',
+          toPick: 'New',
+          reason: 'board proposal approved',
+          changedAt: new Date(now - 2 * 864e5),
+        },
+        {
+          category: 'coding',
+          task: 'autocomplete',
+          tier: 'value',
+          fromPick: null,
+          toPick: 'First',
+          reason: 'board proposal approved',
+          changedAt: new Date(now - 60 * 864e5),
+        },
+      ])
+      .run();
+  });
+
+  it('returns changes inside the window, newest first', async () => {
+    const out = await call(await wire(), 'whats_changed', { days: 30 });
+    expect(out.count).toBe(1);
+    expect(out.changes[0].pick).toBe('New');
+    expect(out.changes[0].previous_pick).toBe('Old');
+    expect(out.changes[0].task).toBe('text-to-video');
+  });
+
+  it('widens with the window', async () => {
+    const out = await call(await wire(), 'whats_changed', { days: 90 });
+    expect(out.count).toBe(2);
+  });
+
+  it('filters to one persona kit', async () => {
+    const out = await call(await wire(), 'whats_changed', { days: 90, persona: 'ugc-creator' });
+    // ugc-creator routes video/* but not coding/autocomplete
+    expect(out.count).toBe(1);
+    expect(out.changes[0].category).toBe('video');
+  });
+
+  it('says so plainly when nothing changed', async () => {
+    const out = await call(await wire(), 'whats_changed', { days: 1 });
+    expect(out.count).toBe(0);
+    expect(out.summary).toContain('No kit changes');
   });
 });

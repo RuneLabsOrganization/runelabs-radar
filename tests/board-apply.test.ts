@@ -2,8 +2,9 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { useTestDb } from './helpers/db';
 import type { Db } from '@/lib/db';
-import { boardEntries, boardHistory, boardProposals } from '@/lib/db/schema';
+import { boardEntries, boardHistory, boardProposals, kitPicks, kitPickHistory } from '@/lib/db/schema';
 import { applyProposal, rejectProposal } from '@/lib/board/apply';
+import { boardCellToKitCell } from '@/lib/kits/from-board';
 
 describe('board proposal apply/reject', () => {
   let db: Db;
@@ -160,5 +161,95 @@ describe('board proposal apply/reject', () => {
     const entry = db.select().from(boardEntries).where(eq(boardEntries.id, entryId)).get()!;
     expect(entry.bestOverall).toBe('GPT-5.2');
     expect(db.select().from(boardHistory).all()).toHaveLength(0);
+  });
+});
+
+describe('applyProposal mirrors into kit_picks', () => {
+  let db: Db;
+
+  beforeEach(() => {
+    db = useTestDb();
+  });
+
+  async function approve(proposed: Record<string, string | null>, domain = 'video', task = 'avatar/talking-head') {
+    const id = db
+      .insert(boardProposals)
+      .values({
+        domain,
+        task,
+        proposed: JSON.stringify(proposed),
+        rationale: 'test',
+        status: 'pending',
+        createdAt: new Date(),
+      })
+      .returning()
+      .get().id;
+    await applyProposal(id);
+  }
+
+  it('creates one kit_pick per proposed tier, with the renamed task', async () => {
+    await approve({ bestOverall: 'Alpha', bestValue: 'Beta', cheapestViable: null });
+    const rows = db.select().from(kitPicks).all();
+    expect(rows).toHaveLength(2);
+    expect(rows.every((r) => r.category === 'video' && r.task === 'avatar')).toBe(true);
+    expect(rows.map((r) => `${r.tier}:${r.pickName}`).sort()).toEqual(['best:Alpha', 'value:Beta']);
+  });
+
+  it('updates an existing pick and logs the change to kit_pick_history', async () => {
+    await approve({ bestOverall: 'Alpha' });
+    await approve({ bestOverall: 'Gamma' });
+
+    const rows = db.select().from(kitPicks).all();
+    expect(rows).toHaveLength(1);
+    expect(rows[0].pickName).toBe('Gamma');
+
+    const hist = db.select().from(kitPickHistory).all();
+    const swap = hist.find((h) => h.fromPick === 'Alpha');
+    expect(swap).toBeTruthy();
+    expect(swap!.toPick).toBe('Gamma');
+    expect(swap!.tier).toBe('best');
+  });
+
+  it('does not log history when the pick is unchanged', async () => {
+    await approve({ bestOverall: 'Alpha' });
+    const before = db.select().from(kitPickHistory).all().length;
+    await approve({ bestOverall: 'Alpha' });
+    expect(db.select().from(kitPickHistory).all()).toHaveLength(before);
+  });
+
+  // A board task with no kit cell must not block the board write.
+  it('skips cells outside the kit grid without throwing', async () => {
+    await approve({ bestOverall: 'Alpha' }, 'coding', 'not-a-real-task');
+    expect(db.select().from(kitPicks).all()).toHaveLength(0);
+    expect(boardCellToKitCell('coding', 'not-a-real-task')).toBeNull();
+  });
+
+  // INVARIANT: prices come from the pricing feeders, never from the board.
+  it('never sets a price from the board cost note', async () => {
+    await approve({ bestOverall: 'Alpha', costNote: 'Alpha $20/mo' });
+    const row = db.select().from(kitPicks).all()[0];
+    expect(row.priceUsdMonth).toBeNull();
+    expect(row.priceNote).toBe('Alpha $20/mo');
+  });
+
+  it('refreshes priceNote when the pick is unchanged and costNote differs, without a history row', async () => {
+    await approve({ bestOverall: 'Alpha', costNote: 'Alpha $20/mo' });
+    const before = db.select().from(kitPickHistory).all().length;
+
+    await approve({ bestOverall: 'Alpha', costNote: 'Alpha $25/mo' });
+
+    const row = db.select().from(kitPicks).all()[0];
+    expect(row.pickName).toBe('Alpha');
+    expect(row.priceNote).toBe('Alpha $25/mo');
+    expect(db.select().from(kitPickHistory).all()).toHaveLength(before);
+  });
+
+  it('keeps the previous priceNote when the pick changes without a costNote', async () => {
+    await approve({ bestOverall: 'Alpha', costNote: 'Alpha $20/mo' });
+    await approve({ bestOverall: 'Gamma' });
+
+    const row = db.select().from(kitPicks).all()[0];
+    expect(row.pickName).toBe('Gamma');
+    expect(row.priceNote).toBe('Alpha $20/mo');
   });
 });

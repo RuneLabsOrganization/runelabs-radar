@@ -37,6 +37,10 @@ export const SEED_SOURCES: SeedSource[] = [
   { type: 'brave', name: 'Brave — Ads AI', config: { query: 'AI ad creative OR advertising automation AI', pollMinutes: 180 }, domainHints: ['ads'] },
   { type: 'brave', name: 'Brave — Agentic AI', config: { query: 'AI agents OR browser agent OR computer use', pollMinutes: 180 }, domainHints: ['agentic'] },
   { type: 'brave', name: 'Brave — Frontier Watch', config: { query: 'frontier AI model release OR LLM launch', pollMinutes: 180 }, domainHints: [] },
+  { type: 'brave', name: 'Brave — Audio AI', config: { query: 'AI voice generation OR text-to-speech OR AI music model', pollMinutes: 180 }, domainHints: [] },
+  { type: 'brave', name: 'Brave — Dev Infra', config: { query: 'Vercel OR Supabase OR Cloudflare Workers pricing OR outage OR migration', pollMinutes: 180 }, domainHints: ['coding'] },
+  { type: 'brave', name: 'Brave — MCP Servers', config: { query: 'MCP server Model Context Protocol tool integration', pollMinutes: 180 }, domainHints: ['agentic'] },
+  { type: 'reddit', name: 'r/webdev', config: { subreddit: 'webdev' }, domainHints: ['coding'] },
 ];
 
 export const SEED_BOARD_TASKS: Record<Domain, string[]> = {

@@ -94,14 +94,20 @@ function pickModels(
 /* Parsers — each small and specific to its page's current table markup */
 /* ------------------------------------------------------------------ */
 
-export const OPENAI_MODELS = ['GPT-5.5 mini', 'GPT-5.5'] as const;
+export const OPENAI_MODELS = [
+  'GPT-5.6 Sol',
+  'GPT-5.6 Terra',
+  'GPT-5.6 Luna',
+  'GPT-5.5 mini',
+  'GPT-5.5',
+] as const;
 
 /** platform.openai.com/docs/pricing table: [model, input, output]. */
 export function parseOpenAiPricing(html: string): ParsedPrice[] {
   return pickModels(html, OPENAI_MODELS, (c) => ({ priceIn: usd(c[1]), priceOut: usd(c[2]) }));
 }
 
-export const ANTHROPIC_MODELS = ['Claude Opus 5', 'Claude Sonnet 4.5'] as const;
+export const ANTHROPIC_MODELS = ['Claude Opus 5', 'Claude Sonnet 5', 'Claude Sonnet 4.5'] as const;
 
 /**
  * docs.anthropic.com pricing table:
@@ -112,14 +118,14 @@ export function parseAnthropicPricing(html: string): ParsedPrice[] {
   return pickModels(html, ANTHROPIC_MODELS, (c) => ({ priceIn: usd(c[1]), priceOut: usd(c[5]) }));
 }
 
-export const GOOGLE_MODELS = ['Gemini 3 Pro', 'Gemini 3 Flash'] as const;
+export const GOOGLE_MODELS = ['Gemini 3.7 Flash', 'Gemini 3 Pro', 'Gemini 3 Flash'] as const;
 
 /** ai.google.dev/gemini-api/docs/pricing table: [model, input price, output price]. */
 export function parseGooglePricing(html: string): ParsedPrice[] {
   return pickModels(html, GOOGLE_MODELS, (c) => ({ priceIn: usd(c[1]), priceOut: usd(c[2]) }));
 }
 
-export const DEEPSEEK_MODELS = ['DeepSeek-V4', 'DeepSeek-R2'] as const;
+export const DEEPSEEK_MODELS = ['DeepSeek V4 Pro', 'DeepSeek-V4', 'DeepSeek-R2'] as const;
 
 /** api-docs.deepseek.com pricing table: [model, input cache hit, input cache miss, output]. */
 export function parseDeepSeekPricing(html: string): ParsedPrice[] {
@@ -155,6 +161,13 @@ export function parseQwenPricing(html: string): ParsedPrice[] {
   return pickModels(html, QWEN_MODELS, (c) => ({ priceIn: usd(c[1]), priceOut: usd(c[2]) }));
 }
 
+export const XAI_MODELS = ['Grok 4.6', 'Grok 4.5'] as const;
+
+/** docs.x.ai models table: [model, input, output]. */
+export function parseXaiPricing(html: string): ParsedPrice[] {
+  return pickModels(html, XAI_MODELS, (c) => ({ priceIn: usd(c[1]), priceOut: usd(c[2]) }));
+}
+
 /* ------------------------------------------------------------------ */
 
 interface ProviderSpec {
@@ -173,6 +186,7 @@ export const PROVIDERS: readonly ProviderSpec[] = [
   { key: 'moonshot', url: 'https://platform.moonshot.ai/docs/pricing', models: MOONSHOT_MODELS, parse: parseMoonshotPricing },
   { key: 'minimax', url: 'https://platform.minimax.io/docs/guides/pricing-token-plan', models: MINIMAX_MODELS, parse: parseMiniMaxPricing },
   { key: 'qwen', url: 'https://www.alibabacloud.com/help/en/model-studio/billing-for-model-studio', models: QWEN_MODELS, parse: parseQwenPricing },
+  { key: 'xai', url: 'https://docs.x.ai/docs/models', models: XAI_MODELS, parse: parseXaiPricing },
 ];
 
 /**
@@ -180,28 +194,46 @@ export const PROVIDERS: readonly ProviderSpec[] = [
  * markup changed enough that the parser yields zero rows. Keep in sync with
  * the provider pages on each manual review.
  *
- * last manual review: 2026-08
+ * Values carry the date they were verified. An entry without one predates this
+ * convention and should be treated as suspect until re-checked — the
+ * Claude Opus 5 row previously read $15/$75, which is the retired Claude 3
+ * Opus rate, i.e. 3x the real price.
+ *
+ * last manual review: 2026-08-26
  */
 export const MANUAL_FALLBACK: Record<string, ParsedPrice[]> = {
   // https://platform.openai.com/docs/pricing
   openai: [
-    { model: 'GPT-5.5 mini', priceIn: 0.4, priceOut: 1.6 },
-    { model: 'GPT-5.5', priceIn: 10.0, priceOut: 15.0 },
+    // GA list rates. A promotional Sol rate of $4/$20 was reported 2026-08-22
+    // but is not confirmed on the pricing page — under-claim rather than
+    // publish a discount that may not exist.
+    { model: 'GPT-5.6 Sol', priceIn: 5.0, priceOut: 30.0 }, // verified 2026-08-26
+    { model: 'GPT-5.6 Terra', priceIn: 2.0, priceOut: 12.0 }, // verified 2026-08-26 (2026-07-30 cut)
+    { model: 'GPT-5.6 Luna', priceIn: 0.2, priceOut: 1.2 }, // verified 2026-08-26 (2026-07-30 cut)
+    { model: 'GPT-5.5 mini', priceIn: 0.4, priceOut: 1.6 }, // unverified — superseded by 5.6
+    { model: 'GPT-5.5', priceIn: 10.0, priceOut: 15.0 }, // unverified — superseded by 5.6
   ],
   // https://docs.anthropic.com/en/docs/about-claude/pricing
   anthropic: [
-    { model: 'Claude Opus 5', priceIn: 15.0, priceOut: 75.0 },
-    { model: 'Claude Sonnet 4.5', priceIn: 3.0, priceOut: 15.0 },
+    { model: 'Claude Opus 5', priceIn: 5.0, priceOut: 25.0 }, // verified 2026-08-26 (was wrongly $15/$75)
+    // Introductory $2/$10 runs through 2026-08-31; $3/$15 is the standing list price after.
+    { model: 'Claude Sonnet 5', priceIn: 2.0, priceOut: 10.0 }, // verified 2026-08-26
+    { model: 'Claude Sonnet 4.5', priceIn: 3.0, priceOut: 15.0 }, // unverified — superseded by Sonnet 5
   ],
   // https://ai.google.dev/gemini-api/docs/pricing
   google: [
-    { model: 'Gemini 3 Pro', priceIn: 2.0, priceOut: 12.0 },
-    { model: 'Gemini 3 Flash', priceIn: 0.3, priceOut: 2.5 },
+    // Introductory rate through 2026-12-31; standard is $1.50/$7.50 from 2027-01-01.
+    { model: 'Gemini 3.7 Flash', priceIn: 0.75, priceOut: 3.75 }, // verified 2026-08-26
+    { model: 'Gemini 3 Pro', priceIn: 2.0, priceOut: 12.0 }, // unverified
+    { model: 'Gemini 3 Flash', priceIn: 0.3, priceOut: 2.5 }, // unverified
   ],
   // https://api-docs.deepseek.com/quick_start/pricing (publishes cache-hit prices)
   deepseek: [
-    { model: 'DeepSeek-V4', priceCacheHit: 0.07, priceIn: 0.56, priceOut: 1.68 },
-    { model: 'DeepSeek-R2', priceCacheHit: 0.14, priceIn: 1.1, priceOut: 4.35 },
+    // Off-peak standard rate. A peak/off-peak scheme took effect 2026-08-17 and
+    // peak output can run several times higher — this is a floor, not a cap.
+    { model: 'DeepSeek V4 Pro', priceCacheHit: 0.0036, priceIn: 0.435, priceOut: 0.87 }, // verified 2026-08-26
+    { model: 'DeepSeek-V4', priceCacheHit: 0.07, priceIn: 0.56, priceOut: 1.68 }, // unverified
+    { model: 'DeepSeek-R2', priceCacheHit: 0.14, priceIn: 1.1, priceOut: 4.35 }, // unverified
   ],
   // https://platform.moonshot.ai/docs/pricing
   moonshot: [
@@ -212,8 +244,13 @@ export const MANUAL_FALLBACK: Record<string, ParsedPrice[]> = {
   minimax: [{ model: 'MiniMax-M2', priceCacheHit: 0.03, priceIn: 0.3, priceOut: 1.2 }],
   // https://www.alibabacloud.com/help/en/model-studio/billing-for-model-studio
   qwen: [
-    { model: 'Qwen4-Max', priceIn: 1.6, priceOut: 6.4 },
-    { model: 'Qwen4-Plus', priceIn: 0.4, priceOut: 1.2 },
+    { model: 'Qwen4-Max', priceIn: 1.6, priceOut: 6.4 }, // unverified
+    { model: 'Qwen4-Plus', priceIn: 0.4, priceOut: 1.2 }, // unverified
+  ],
+  // https://docs.x.ai/docs/models
+  xai: [
+    { model: 'Grok 4.6', priceIn: 2.0, priceOut: 6.0 }, // verified 2026-08-26
+    { model: 'Grok 4.5', priceIn: 2.0, priceOut: 6.0 }, // verified 2026-08-26
   ],
 };
 

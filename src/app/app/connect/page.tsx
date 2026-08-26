@@ -175,7 +175,7 @@ export default async function ConnectPage() {
             <li>
               <strong className="text-ink-2">Decisions:</strong> get_best_right_now, get_board_changes,
               get_market_models, list_stacks, get_stack_for, list_agent_stacks, get_agent_stack_for, list_kits,
-              get_kit, get_my_kit, set_my_kit, explain_pick
+              get_kit, get_my_kit, set_my_kit, explain_pick, whats_changed
             </li>
             <li>
               <strong className="text-ink-2">Ideas:</strong> get_opportunities, get_opportunity, get_leads, refine_lead,

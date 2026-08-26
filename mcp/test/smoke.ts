@@ -115,6 +115,7 @@ async function main() {
     'explain_pick',
     'get_my_kit',
     'set_my_kit',
+    'whats_changed',
   ];
   for (const e of expected) {
     if (!names.includes(e)) throw new Error(`missing tool: ${e}`);

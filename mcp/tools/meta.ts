@@ -74,7 +74,7 @@ Guided prompts: **find_and_plan**, **explore_unlimited**, whats_new_today, what_
 
 ## Specialists (optional depth)
 - News: get_daily_brief, get_domain_digest, get_daily_insights, get_top_signals, search_stories, get_story, get_weekly_report
-- Decisions: get_best_right_now, get_board_changes, get_market_models, list_stacks, get_stack_for, list_agent_stacks, get_agent_stack_for, list_kits, get_kit, get_my_kit, set_my_kit, explain_pick
+- Decisions: get_best_right_now, get_board_changes, get_market_models, list_stacks, get_stack_for, list_agent_stacks, get_agent_stack_for, list_kits, get_kit, get_my_kit, set_my_kit, explain_pick, whats_changed
 - Ideas: get_opportunities, get_opportunity, get_leads, refine_lead, forge_opportunity, dismiss_opportunity, get_pain_points, get_comps, get_launches, get_patterns, get_topic_map
 - Execution: generate_plan, get_plan, batches
 - Data: list_metrics, get_metric_series, get_forecasts, get_accuracy, get_entity

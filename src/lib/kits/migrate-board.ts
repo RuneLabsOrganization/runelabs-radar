@@ -11,7 +11,7 @@ import { boardEntries, kitPicks } from '../db/schema';
 import { isKitCell, type KitTier } from './grid';
 
 /** board_entries task names that differ from the kit grid. */
-const TASK_RENAMES: Record<string, string> = {
+export const TASK_RENAMES: Record<string, string> = {
   'avatar/talking-head': 'avatar',
 };
 

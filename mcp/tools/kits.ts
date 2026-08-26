@@ -5,7 +5,7 @@ import { getDb } from '../../src/lib/db';
 import { kitEvidence, kitPicks, userProfiles } from '../../src/lib/db/schema';
 import { KIT_PERSONAS, KIT_PERSONA_SLUGS, getKitPersona } from '../../src/lib/kits/personas';
 import { isKitCell, KIT_TIERS, type KitTier } from '../../src/lib/kits/grid';
-import { loadKit } from '../../src/lib/kits/repo';
+import { loadKit, loadKitPickHistory } from '../../src/lib/kits/repo';
 import type { Kit } from '../../src/lib/kits/compose';
 import { envelopeSchema, iso, respond, withUserEconomy } from '../lib/payload';
 import type { AuthContext } from '../lib/auth';
@@ -374,6 +374,71 @@ export function registerKitTools(server: McpServer, auth: AuthContext): void {
         summary: kitSummary(kit),
         economy: withUserEconomy(auth.userId, 'read'),
       });
+    },
+  );
+
+  server.registerTool(
+    'whats_changed',
+    {
+      description:
+        'Kit picks that changed recently — which tool replaced which, per job, with when and why. Use for "what changed since I last looked" and to catch when something you committed to stopped being the pick.',
+      inputSchema: {
+        days: z.number().int().min(1).max(365).default(30),
+        persona: z.string().optional().describe('limit to the cells in one persona kit — see list_kits'),
+        limit: z.number().int().min(1).max(100).default(50),
+      },
+      outputSchema: {
+        ...envelopeSchema,
+        window_days: z.number(),
+        count: z.number(),
+        persona: z.string().nullable().optional(),
+        changes: z.array(
+          z.object({
+            category: z.string(),
+            task: z.string(),
+            tier: z.string(),
+            pick: z.string(),
+            previous_pick: z.string().nullable(),
+            reason: z.string(),
+            changed_at: z.string(),
+          }),
+        ),
+      },
+    },
+    async ({ days, persona, limit }) => {
+      const p = persona ? getKitPersona(persona) : null;
+      const rows = loadKitPickHistory({
+        days,
+        cells: p?.routes ?? null,
+        limit,
+      });
+
+      return respond(
+        {
+          window_days: days,
+          persona: p?.slug ?? null,
+          count: rows.length,
+          changes: rows.map((r) => ({
+            category: r.category,
+            task: r.task,
+            tier: r.tier,
+            pick: r.toPick,
+            previous_pick: r.fromPick ?? null,
+            reason: r.reason,
+            changed_at: r.changedAt.toISOString(),
+          })),
+        },
+        {
+          summary:
+            rows.length === 0
+              ? `No kit changes in the last ${days} days${p ? ` for ${p.label}` : ''}.`
+              : `${rows.length} kit change(s) in the last ${days} days${p ? ` for ${p.label}` : ''}.`,
+          economy: withUserEconomy(auth.userId, 'read'),
+          next: p
+            ? [{ tool: 'get_kit', arguments: { persona: p.slug }, reason: 'see the current kit' }]
+            : [{ tool: 'list_kits', arguments: {}, reason: 'pick a persona to filter by' }],
+        },
+      );
     },
   );
 }

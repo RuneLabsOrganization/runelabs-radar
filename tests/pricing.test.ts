@@ -15,6 +15,7 @@ import {
   parseMoonshotPricing,
   parseOpenAiPricing,
   parseQwenPricing,
+  parseXaiPricing,
   runPricingSync,
   type ParsedPrice,
   type PriceFetcher,
@@ -38,8 +39,8 @@ function allFixtures(): Record<string, string> {
   return Object.fromEntries(PROVIDERS.map((p) => [p.url, fixture(`pricing-${p.key}.html`)]));
 }
 
-/** parsed rows: openai 4, anthropic 4, google 4, deepseek 6, moonshot 4, minimax 3, qwen 4 */
-const EXPECTED_POINTS = 29;
+/** parsed rows: openai 4, anthropic 4, google 4, deepseek 6, moonshot 4, minimax 3, qwen 4, xai 4 */
+const EXPECTED_POINTS = 33;
 
 describe('pricing parsers', () => {
   const cases: { key: string; parse: (html: string) => ParsedPrice[]; expected: ParsedPrice[] }[] = [
@@ -94,6 +95,14 @@ describe('pricing parsers', () => {
       expected: [
         { model: 'Qwen4-Max', priceIn: 1.5, priceOut: 6 },
         { model: 'Qwen4-Plus', priceIn: 0.35, priceOut: 1.05 },
+      ],
+    },
+    {
+      key: 'xai',
+      parse: parseXaiPricing,
+      expected: [
+        { model: 'Grok 4.6', priceIn: 1.9, priceOut: 5.8 },
+        { model: 'Grok 4.5', priceIn: 1.95, priceOut: 5.9 },
       ],
     },
   ];
@@ -170,8 +179,8 @@ describe('runPricingSync', () => {
 
     const db = getDb();
     const rows = db.select().from(metricPoints).where(eq(metricPoints.source, PRICING_SOURCE)).all();
-    // manual-map price (15), not the fixture page price (14)
-    expect(rows.find((r) => r.entity === 'Claude Opus 5' && r.metric === 'price_in')?.value).toBe(15);
+    // manual-map price (5), not the fixture page price (14)
+    expect(rows.find((r) => r.entity === 'Claude Opus 5' && r.metric === 'price_in')?.value).toBe(5);
     expect(rows.find((r) => r.entity === 'Claude Sonnet 4.5' && r.metric === 'price_out')?.value).toBe(15);
 
     const snap = db

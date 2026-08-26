@@ -3,7 +3,7 @@ import { notFound } from 'next/navigation';
 import { requireViewer } from '@/lib/auth/user';
 import { isKitTier, KIT_TIERS, type KitTier } from '@/lib/kits/grid';
 import { getKitPersona } from '@/lib/kits/personas';
-import { loadKit } from '@/lib/kits/repo';
+import { loadKit, loadKitPickHistory } from '@/lib/kits/repo';
 
 export default async function KitPage({
   params,
@@ -21,6 +21,7 @@ export default async function KitPage({
 
   const tier: KitTier = rawTier && isKitTier(rawTier) ? rawTier : persona.defaultTier;
   const kit = loadKit(persona, tier);
+  const changes = loadKitPickHistory({ days: 30, cells: persona.routes });
 
   return (
     <main className="mx-auto max-w-4xl px-4 py-8">
@@ -97,6 +98,19 @@ export default async function KitPage({
             {kit.usageRisk.map((p) => (
               <li key={`${p.category}/${p.task}`}>
                 {p.pickName} ({p.category}/{p.task}) — {p.riskFlag ?? 'metered; set a spend cap'}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {changes.length > 0 && (
+        <section className="mt-6 rounded-lg border border-line p-4">
+          <h2 className="font-medium">Changed since</h2>
+          <ul className="mt-2 space-y-1 text-sm text-ink-4">
+            {changes.map((c) => (
+              <li key={`${c.category}/${c.task}/${c.tier}/${c.changedAt.toISOString()}`}>
+                {c.task}: {c.fromPick ?? '—'} → {c.toPick} ({c.changedAt.toISOString().slice(0, 10)})
               </li>
             ))}
           </ul>
