@@ -215,6 +215,27 @@ export default async function AccuracyPage() {
       <p className="mt-2 text-[12.5px] text-ink-4">
         Formerly <span className="mono">/accuracy</span> — same track record, now the public trust surface.
       </p>
+
+      {/* The independence claim made on the landing page and pricing page has to
+          be substantiated somewhere. This is that somewhere. */}
+      <div className="mt-6 space-y-3 border-l-2 border-phosphor/40 pl-4 text-[13px] leading-relaxed text-ink-2">
+        <p>
+          <span className="text-ink">Nobody pays us to recommend anything.</span> No affiliate links, no
+          sponsorships, no paid placements, no vendor money in any form. When a verdict on the board changes, it is
+          because the evidence changed — and the change is logged with a date you can go and look at.
+        </p>
+        <p>
+          <span className="text-ink">Verdicts are dated, and gaps are left visible.</span> Every board cell carries
+          the date it was last reviewed. Where we do not have evidence we are willing to stand behind, the cell stays
+          empty and says why, rather than being filled with a plausible-sounding pick. There is at least one blank
+          cell on the board right now, on purpose.
+        </p>
+        <p>
+          <span className="text-ink">We round down, not up.</span> Every savings figure we publish comes from a
+          seeded benchmark and is rounded down before it reaches a page, so the number you read is the floor rather
+          than a good day.
+        </p>
+      </div>
       {since && (
         <p className="mono mt-2 text-[10.5px] tracking-[0.06em] uppercase" style={{ color: 'var(--ink-4)' }}>
           grading since {since} &middot; {totalHindsight} graded &middot; {pending} pending &middot; times in UTC

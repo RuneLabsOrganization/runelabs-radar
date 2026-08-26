@@ -502,6 +502,10 @@ export const userProfiles = sqliteTable('user_profiles', {
   interests: text('interests').notNull().default('[]'), // JSON string[] (sectors/topics)
   capitalBand: text('capital_band'), // null | 'bootstrap' | 'small' | 'comfortable' | 'funded'
   avoidedSectors: text('avoided_sectors').notNull().default('[]'), // JSON string[]
+  /** Saved kit persona slug — src/lib/kits/personas.ts KIT_PERSONA_SLUGS. */
+  kitPersona: text('kit_persona'),
+  /** Saved kit tier override; null = the persona's defaultTier. */
+  kitTier: text('kit_tier', { enum: ['best', 'value', 'cheapest'] }),
   updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
 });
 
@@ -792,4 +796,81 @@ export const leads = sqliteTable(
     index('leads_owner_created').on(t.ownerKey, t.createdAt),
     index('leads_expires').on(t.expiresAt),
   ],
+);
+
+/**
+ * Kit picks — one row per (category, task, tier).
+ *
+ * Supersedes board_entries, which flattened the three tiers into columns and
+ * therefore had nowhere to store per-pick price, evidence, confidence or
+ * verification date. That is why it has sat empty.
+ *
+ * `category` is the kit grid (src/lib/kits/grid.ts), NOT domains.ts DOMAINS.
+ */
+export const kitPicks = sqliteTable(
+  'kit_picks',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    category: text('category').notNull(),
+    task: text('task').notNull(),
+    tier: text('tier', { enum: ['best', 'value', 'cheapest'] }).notNull(),
+    pickName: text('pick_name').notNull(),
+    pickUrl: text('pick_url'),
+    /** seat = flat monthly; usage = metered (never enters a kit total); free = $0 */
+    priceModel: text('price_model', { enum: ['seat', 'usage', 'free'] })
+      .notNull()
+      .default('seat'),
+    priceUsdMonth: real('price_usd_month'),
+    priceNote: text('price_note'),
+    /** Bill-shock warning for usage-priced picks, e.g. "no spend cap by default". */
+    riskFlag: text('risk_flag'),
+    why: text('why'),
+    skip: text('skip'),
+    confidence: text('confidence', { enum: ['high', 'med', 'low'] })
+      .notNull()
+      .default('low'),
+    evidenceCount: integer('evidence_count').notNull().default(0),
+    distinctSources: integer('distinct_sources').notNull().default(0),
+    verifiedAt: integer('verified_at', { mode: 'timestamp' }),
+    updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
+  },
+  (t) => [uniqueIndex('kit_pick_cell').on(t.category, t.task, t.tier)],
+);
+
+/** Receipts behind a verdict. The evidence engine writes these; it never writes a verdict. */
+export const kitEvidence = sqliteTable(
+  'kit_evidence',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    pickId: integer('pick_id')
+      .notNull()
+      .references(() => kitPicks.id, { onDelete: 'cascade' }),
+    kind: text('kind', { enum: ['benchmark', 'price', 'report'] }).notNull(),
+    sourceUrl: text('source_url').notNull(),
+    excerpt: text('excerpt'),
+    /** -1 negative, 0 neutral, 1 positive */
+    sentiment: integer('sentiment').notNull().default(0),
+    observedAt: integer('observed_at', { mode: 'timestamp' }).notNull(),
+  },
+  (t) => [index('kit_evidence_pick').on(t.pickId)],
+);
+
+/**
+ * Every pick change, forever. Powers "changed since you last looked" (spec
+ * phase 6) and is the longitudinal asset a competitor cannot scrape — start
+ * accumulating it now even though the read surface ships later.
+ */
+export const kitPickHistory = sqliteTable(
+  'kit_pick_history',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    category: text('category').notNull(),
+    task: text('task').notNull(),
+    tier: text('tier', { enum: ['best', 'value', 'cheapest'] }).notNull(),
+    fromPick: text('from_pick'),
+    toPick: text('to_pick').notNull(),
+    reason: text('reason').notNull(),
+    changedAt: integer('changed_at', { mode: 'timestamp' }).notNull(),
+  },
+  (t) => [index('kit_history_cell').on(t.category, t.task)],
 );

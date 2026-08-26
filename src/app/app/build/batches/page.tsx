@@ -48,9 +48,9 @@ export default async function BatchesPage() {
       <div className="mt-8 grid gap-3">
         {rows.length === 0 && (
           <EmptyState
-            kicker="empty set"
+            kicker="nothing here yet"
             title="No batches yet"
-            description="The next weekly Radar Batch drop lands Monday. Sign in to start a workspace batch anytime."
+            description="A batch works several ideas at once instead of one at a time. The next weekly drop lands Monday, or sign in and start your own whenever you like."
           />
         )}
         {rows.map((b) => {

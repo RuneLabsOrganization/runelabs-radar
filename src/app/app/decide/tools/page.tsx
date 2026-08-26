@@ -21,11 +21,12 @@ import { getIdentity } from '@/lib/identity';
 import { formatBoardChange, isNoopChange } from '@/lib/board/change';
 import Link from 'next/link';
 import { getDb } from '@/lib/db';
-import { boardEntries, boardHistory } from '@/lib/db/schema';
+import { boardHistory } from '@/lib/db/schema';
+import { boardRows, type BoardRow } from '@/lib/kits/board-view';
 import { DOMAIN_COLORS, DOMAIN_LABELS, DOMAINS, isDomain } from '@/lib/domains';
 import ChartFrame from '@/components/ChartFrame';
 
-type BoardEntry = typeof boardEntries.$inferSelect;
+type BoardEntry = BoardRow;
 
 export const metadata = {
   title: 'Best Right Now — cost-benefit board',
@@ -89,11 +90,7 @@ export default async function BoardPage() {
   const media = showAA ? aaMedia() : null;
   const chartBrand = `${getIdentity().productName} · ${new URL(config.siteUrl).host}`;
 
-  const entries = db
-    .select()
-    .from(boardEntries)
-    .orderBy(boardEntries.domain, boardEntries.task)
-    .all();
+  const entries = boardRows();
 
   const cutoff = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
   const history = db
@@ -111,7 +108,7 @@ export default async function BoardPage() {
   }
 
   // the verdict column only earns its width when someone can edit or read one
-  const showVerdict = !!user || entries.some((e) => e.runelabsVerdict);
+  const showVerdict = !!user || entries.some((e) => e.verdict);
   // history minus "no field changes" noise, capped — full log lives on /changelog
   const meaningfulHistory = history.filter((h) => !isNoopChange(h.change)).slice(0, 8);
 
@@ -135,8 +132,9 @@ export default async function BoardPage() {
       <div className="readout text-phosphor">Decide · Best tools</div>
       <h1 className="type-h1 mt-1">Best Right Now</h1>
       <p className="mt-2 max-w-xl text-[13.5px] leading-relaxed text-ink-3">
-        The best AI tool for each task, ranked on quality vs. cost — updated weekly from benchmark data, every
-        change human-approved.
+        For every job: what to use if quality matters most, what to use if you are paying for it yourself, and the
+        cheapest thing that still works. With the reasoning, what to skip, and roughly what it costs. Where we
+        don&rsquo;t have evidence we trust, the cell stays blank and says so.
       </p>
 
       <div className="mt-3">
@@ -207,7 +205,7 @@ export default async function BoardPage() {
                       <td data-label="verdict">
                         <VerdictEditor
                           entryId={entry.id}
-                          verdict={entry.runelabsVerdict}
+                          verdict={entry.verdict}
                           author={entry.verdictAuthor}
                           canEdit={!!user}
                         />

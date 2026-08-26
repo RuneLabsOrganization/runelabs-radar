@@ -24,7 +24,10 @@ export default function DecidePage() {
         Workspace · What to use
       </div>
       <h1 className="type-h1 mt-1">Decide</h1>
-      <p className="mt-2 max-w-xl text-[13.5px] text-ink-3">What to use — ranked for builders, grounded in live market data.</p>
+      <p className="mt-2 max-w-xl text-[13.5px] text-ink-3">
+        Settle it once. What to use for each job, what to build your product on, and what to run your coding agent
+        with — with the reasoning, so you can disagree with us on purpose rather than by accident.
+      </p>
       <div className="mt-6 grid gap-3 sm:grid-cols-2">
         {LINKS.map((l) => (
           <Card key={l.href} className="hover-raise">

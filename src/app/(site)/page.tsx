@@ -4,44 +4,79 @@ import { getIdentity } from '@/lib/identity';
 import { paths } from '@/lib/urls';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { PUBLISHED_SAVINGS, fmtTokens } from '@/lib/mcp-savings-copy';
 import HeroScope from '@/components/hero/HeroScope';
 import { McpDemo } from '@/components/mcp-demo/McpDemo';
 
 export const metadata = {
-  title: 'AI intelligence for builders',
+  title: 'Decide your AI tools once. Get back to work.',
   description:
-    'Radar does the research so your coding agent does not. Compact MCP lookups, ask_radar synthesis, and a receipt of tokens saved — what changed, what to use, what to build.',
+    'A new best-thing ships every week and checking whether it matters is a job nobody pays you for. Radar does that job — for writing, video, design, code and ads. Pick your setup once; we stay quiet until something actually changes.',
 };
 
+/**
+ * Hero stats are trust signals, not spec sheets. Deliberately NOT "50 MCP
+ * tools": tool count is a liability buyers actively try to reduce, and
+ * bragging about it tells an informed reader we will eat their context.
+ */
 const HERO_STATS = [
-  { value: `~${fmtTokens(PUBLISHED_SAVINGS.compactAvgSavedVsDiy)}`, label: 'tokens saved / lookup' },
-  { value: '50', label: 'MCP tools' },
-  { value: '6', label: 'domains watched' },
-  { value: 'OAuth 2.1', label: 'no API keys' },
+  { value: '26', label: 'sources read daily' },
+  { value: '6', label: 'fields watched' },
+  { value: '$0', label: 'vendor money taken' },
+  { value: '$19', label: 'per month' },
+];
+
+/** The cost of the status quo, in the three currencies people actually feel. */
+const TAX = [
+  {
+    title: 'You lose the hours',
+    body: 'Sunday evening, release notes, forty minutes — to find out nothing changed for you.',
+  },
+  {
+    title: 'You lose the money',
+    body: 'A tier you outgrew. A tool you replaced in March and never cancelled. A cheaper thing that does the same job, which you would know about if you had been looking.',
+  },
+  {
+    title: 'You lose the work',
+    body: 'Your output is capped by a decision you made six months ago, before the better option existed.',
+  },
 ];
 
 const WORKSPACES = [
   {
+    icon: Layers,
+    title: 'A setup you can stop second-guessing',
+    verb: 'What to use',
+    body: 'For every job you do — writing, video, design, code, ads — the best pick, the best value, and the cheapest thing that still works. With the reasoning, and what to skip.',
+    href: paths.tools,
+  },
+  {
     icon: Radar,
-    title: 'Signal',
+    title: 'One message when something moves',
     verb: 'What changed',
-    body: 'Live intelligence across coding, copy, image, video, ads, and agents — briefs, topic maps, and the stories that matter.',
+    body: 'Not another feed. We read six fields every day and stay quiet until something changes that touches what you actually do.',
     href: paths.signal,
   },
   {
-    icon: Layers,
-    title: 'Decide',
-    verb: 'What to use',
-    body: 'Best-right-now tools, venture stacks, coding-agent playbooks, and cost-intelligence metrics — ranked for builders, not benchmarks.',
-    href: paths.decide,
+    icon: Sparkles,
+    title: 'Something worth building next',
+    verb: 'What to build',
+    body: 'When you want a new project, not a new tool: openings with the demand already evidenced, argued from four sides, and turned into a plan your agent can run.',
+    href: paths.build,
+  },
+];
+
+const TRUST = [
+  {
+    title: 'Verdicts come from people who used the thing',
+    body: 'Not vendor benchmarks, not a press release, not a model’s opinion. We read what users actually report and we count it.',
   },
   {
-    icon: Sparkles,
-    title: 'Build',
-    verb: 'What to build',
-    body: 'Monetizable openings, multi-role debates, and Batches that turn ideas into execution plans your agent can run — Radar spends the research tokens, not you.',
-    href: paths.build,
+    title: 'Every pick is dated and graded',
+    body: 'You see how much evidence is behind it and when it was last checked. A verdict nobody has re-verified in three months says so, out loud.',
+  },
+  {
+    title: 'We would rather say "we don’t know yet"',
+    body: 'Where the evidence is not there, the answer is blank. Filling gaps with a plausible-sounding pick is how the listicles work, and it is why you do not trust them.',
   },
 ];
 
@@ -69,27 +104,24 @@ export default function LandingPage() {
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-phosphor opacity-60" />
               <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-phosphor" />
             </span>
-            MCP-first · research so your agent does not
+            Decide once · then get back to work
           </div>
           <h1 className="type-display mt-4 max-w-3xl text-balance text-ink">
-            Radar does the research. Your agent keeps coding.
+            You&apos;ve spent more time picking AI tools than using them.
           </h1>
           <p className="mt-5 max-w-xl text-[16px] leading-relaxed text-ink-2">
-            {name} watches the AI field and answers what changed, what to use, what to build — as compact briefs,
-            not page dumps. A typical lookup returns ~{PUBLISHED_SAVINGS.compactAvgReturned} tokens and keeps ~
-            {fmtTokens(PUBLISHED_SAVINGS.compactAvgSavedVsDiy)} out of your coding agent&apos;s context vs doing the
-            research locally.
+            There&apos;s a new best-thing every week, and checking whether it matters to you is a job nobody pays you
+            for. {name} does that job. Pick your setup once — we&apos;ll stay quiet until something actually changes
+            enough to be worth switching.
           </p>
           <div className="mt-8 flex flex-wrap gap-3">
             <Button asChild size="lg">
-              <Link href={paths.app}>
-                Open the app <ArrowRight className="h-4 w-4" />
+              <Link href={paths.tools}>
+                See what to use <ArrowRight className="h-4 w-4" />
               </Link>
             </Button>
             <Button asChild variant="outline" size="lg">
-              <Link href={paths.mcp}>
-                <Cable className="h-4 w-4" /> Connect your agent
-              </Link>
+              <Link href={paths.signal}>What changed this week</Link>
             </Button>
           </div>
           <dl className="mono mt-10 flex flex-wrap gap-x-8 gap-y-3 text-[10.5px] uppercase tracking-[0.1em] text-ink-4">
@@ -103,34 +135,73 @@ export default function LandingPage() {
               </div>
             ))}
           </dl>
-          <p className="mt-6 text-[12.5px] text-ink-4">
-            Compact reads are free. ask_radar, plans, and debates are for members — with a savings receipt on every
-            call.
+          <p className="mt-6 max-w-xl text-[12.5px] text-ink-4">
+            BCG and UC Riverside surveyed 1,488 workers: productivity peaks at three AI tools, then falls. The problem
+            was never finding more tools.
           </p>
         </div>
       </section>
 
       <section className="mx-auto max-w-[1100px] px-4 py-16 sm:px-6">
-        <div className="readout">Three verbs · four workspaces</div>
-        <h2 className="type-h1 mt-2">Signal → Decide → Build → Connect</h2>
+        <div className="readout">The status quo</div>
+        <h2 className="type-h1 mt-2">The tax nobody bills you for</h2>
+        <div className="mt-8 grid gap-4 md:grid-cols-3">
+          {TAX.map((t) => (
+            <div key={t.title} className="border-l border-grat pl-4">
+              <h3 className="text-[15px] font-medium text-ink">{t.title}</h3>
+              <p className="mt-2 text-[13px] leading-relaxed text-ink-3">{t.body}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="mx-auto max-w-[1100px] px-4 py-16 sm:px-6">
+        <div className="readout">What you get</div>
+        <h2 className="type-h1 mt-2">Three answers, so you can stop looking</h2>
         <div className="mt-8 grid gap-4 md:grid-cols-3">
           {WORKSPACES.map((w) => (
             <Card key={w.title} className="hover-raise transition-colors hover:border-grat">
               <CardHeader>
                 <w.icon className="h-5 w-5 text-phosphor" />
-                <CardTitle className="mt-2">{w.title}</CardTitle>
+                <CardTitle className="mt-2 text-[15px] leading-snug">{w.title}</CardTitle>
                 <CardDescription className="font-mono text-[10.5px] uppercase tracking-[0.1em] text-phosphor">
                   {w.verb}
                 </CardDescription>
               </CardHeader>
               <CardContent>
                 <p className="text-[13px] leading-relaxed text-ink-3">{w.body}</p>
-                <Link href={w.href} className="mt-4 inline-flex items-center gap-1 text-[12.5px] text-phosphor hover:underline">
-                  Enter <ArrowRight className="h-3.5 w-3.5" />
+                <Link
+                  href={w.href}
+                  className="mt-4 inline-flex items-center gap-1 text-[12.5px] text-phosphor hover:underline"
+                >
+                  Show me <ArrowRight className="h-3.5 w-3.5" />
                 </Link>
               </CardContent>
             </Card>
           ))}
+        </div>
+      </section>
+
+      <section className="border-y border-grat bg-scope-0/40">
+        <div className="mx-auto max-w-[1100px] px-4 py-16 sm:px-6">
+          <div className="readout">Why believe it</div>
+          <h2 className="type-h1 mt-2 max-w-2xl text-balance">
+            We don&apos;t guess, and nobody pays us to recommend anything.
+          </h2>
+          <div className="mt-8 grid gap-6 md:grid-cols-3">
+            {TRUST.map((t) => (
+              <div key={t.title}>
+                <h3 className="text-[14px] font-medium text-ink">{t.title}</h3>
+                <p className="mt-2 text-[13px] leading-relaxed text-ink-3">{t.body}</p>
+              </div>
+            ))}
+          </div>
+          <Link
+            href={paths.trust}
+            className="mt-8 inline-flex items-center gap-1 text-[12.5px] text-phosphor hover:underline"
+          >
+            How we grade a verdict <ArrowRight className="h-3.5 w-3.5" />
+          </Link>
         </div>
       </section>
 
@@ -139,15 +210,17 @@ export default function LandingPage() {
       <section className="mx-auto max-w-[1100px] px-4 py-16 sm:px-6">
         <div className="grid gap-8 lg:grid-cols-2 lg:items-center">
           <div>
-            <div className="readout">Two lines to connect</div>
-            <h2 className="type-h1 mt-2">Point your client at the URL</h2>
+            <div className="readout">For people who code</div>
+            <h2 className="type-h1 mt-2">Your agent should know your setup too</h2>
             <p className="mt-3 text-[14px] leading-relaxed text-ink-2">
-              Drop this into Cursor, Claude, Zed, or anything else that speaks MCP. Start with{' '}
-              <span className="mono text-ink">ask_radar</span> — Radar synthesizes server-side so your model does not
-              fetch four tools and re-read the evidence.
+              If you build with Claude Code, Cursor or Codex, connect {name} once. Your agent stops suggesting the
+              stack you already rejected, stops re-researching what you&apos;ve settled, and stops burning context
+              reading the internet — so it spends that context on your code instead.
             </p>
             <Button asChild className="mt-6">
-              <Link href={paths.mcp}>See the MCP surface</Link>
+              <Link href={paths.mcp}>
+                <Cable className="h-4 w-4" /> Connect in two lines
+              </Link>
             </Button>
           </div>
           <Card className="border-phosphor/20 bg-scope-0 shadow-glow">
@@ -165,18 +238,17 @@ export default function LandingPage() {
       </section>
 
       <section className="mx-auto max-w-[1100px] px-4 py-16 text-center sm:px-6">
-        <h2 className="type-h1">Start free. Upgrade when you act.</h2>
+        <h2 className="type-h1">Three tools, not seven.</h2>
         <p className="mx-auto mt-3 max-w-lg text-[14px] text-ink-3">
-          Compact reads are free. Members get synthesis, plans, and a private workspace. One research-to-plan session
-          keeps ~{fmtTokens(PUBLISHED_SAVINGS.sessionDiySaved)} tokens out of your agent — artifact pricing, not a
-          token bill.
+          Start free. Everything you need to decide costs nothing. You pay when you want {name} doing work for you,
+          not just telling you things.
         </p>
         <div className="mt-6 flex justify-center gap-3">
           <Button asChild size="lg">
-            <Link href={paths.signup}>Create account</Link>
+            <Link href={paths.signup}>Set up my stack</Link>
           </Button>
           <Button asChild variant="outline" size="lg">
-            <Link href={paths.pricing}>View pricing</Link>
+            <Link href={paths.pricing}>See pricing</Link>
           </Button>
         </div>
       </section>

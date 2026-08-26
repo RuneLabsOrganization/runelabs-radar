@@ -14,7 +14,7 @@ import { paths } from '@/lib/urls';
 export const metadata = {
   title: 'Changelog',
   description:
-    'What changed: new evaluations, board moves and stack updates — refreshed daily.',
+    'What actually changed, and what it means for you — verdict moves, new evaluations and stack updates, with the reasoning. Checked daily so you do not have to.',
 };
 
 const WEEKDAYS = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];

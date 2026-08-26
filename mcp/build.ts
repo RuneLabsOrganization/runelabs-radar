@@ -27,6 +27,7 @@ import { registerAskTools } from './tools/ask';
 import { registerJobTools } from './tools/jobs';
 import { registerProfileTools } from './tools/profile';
 import { registerWatchTools } from './tools/watch';
+import { registerKitTools } from './tools/kits';
 import { registerResources } from './resources';
 import { registerPrompts } from './prompts';
 
@@ -67,6 +68,7 @@ export function buildServer(auth: AuthContext): McpServer {
   registerJobTools(server, auth);
   registerProfileTools(server, auth);
   registerWatchTools(server, auth);
+  registerKitTools(server, auth);
   registerResources(server, auth);
   registerPrompts(server);
   return server;

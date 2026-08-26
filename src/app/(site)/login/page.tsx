@@ -54,9 +54,9 @@ function LoginForm() {
   return (
     <Card className="relative w-full max-w-md">
       <CardHeader>
-        <CardTitle className="type-h1">Sign in</CardTitle>
+        <CardTitle className="type-h1">Welcome back</CardTitle>
         <CardDescription>
-          Access debates, plans, and batches. Reads stay free without an account when public mode is on.
+          Pick up where you left off — your plans, your saved work, and what changed since your last visit.
         </CardDescription>
       </CardHeader>
       <CardContent>

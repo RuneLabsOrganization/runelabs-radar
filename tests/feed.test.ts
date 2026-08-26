@@ -58,6 +58,7 @@ describe('filterBySector', () => {
       domainScores: JSON.stringify(scores),
       topScore: 50,
       createdAt: new Date(),
+      updatedAt: new Date(),
     },
     itemCount: 1,
     firstUrl: null,

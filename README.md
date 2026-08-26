@@ -42,6 +42,8 @@ https://<your-host>/mcp          # behind your reverse proxy, or http://127.0.0.
 
 Other prompts: `whats_new_today`, `what_should_i_use`, `validate_idea`, `builder_weekly_review`, `which_agent_stack`. Call `get_server_guide` from any agent for the live tour.
 
+**What to actually run.** Persona kits — one pick per job, a monthly total, honest gaps. `list_kits` (the roster), `get_kit` (costed kit for a persona; usage-priced picks are excluded from the total and flagged separately), `explain_pick` (evidence receipts behind one cell), `set_my_kit` / `get_my_kit` (save and read the caller's committed stack). Every cell currently reports "not yet covered" until the feeder plans land.
+
 ## Local development
 
 ```bash

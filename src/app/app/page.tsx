@@ -343,9 +343,9 @@ export default async function BriefingPage() {
           title="Today"
           description={
             <>
-              An AI intelligence briefing that never sleeps: {enabledSources} sources scanned around the clock,
-              distilled into {tracked24h} stories worth your time in the last 24h — strongest first, the rest
-              filter below. New here? Read the{' '}
+              We read {enabledSources} sources overnight so you don&apos;t have to. {tracked24h} things happened in
+              the last 24 hours that are worth your attention — most important first, everything else filtered
+              below. New here? Read the{' '}
               <Link
                 href={paths.brief}
                 className="underline decoration-grat-strong underline-offset-2 hover:text-ink-2"

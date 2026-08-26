@@ -2,7 +2,6 @@ import Link from 'next/link';
 import { Check } from 'lucide-react';
 import { TIER_PRICES, quotaFor, type Tier } from '@/lib/billing';
 import { TIER_CAPS } from '@/lib/entitlements';
-import { PUBLISHED_SAVINGS, fmtTokens } from '@/lib/mcp-savings-copy';
 import { paths } from '@/lib/urls';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
@@ -12,42 +11,49 @@ import { CheckoutButtons } from '@/components/account/CheckoutButtons';
 export const metadata = {
   title: 'Pricing',
   description:
-    'Artifact pricing: free compact reads, pay for plans, debates, asks, and batches. Radar spends its tokens so your coding agent does not — ~8k DIY tokens saved per compact lookup. Builder $19 · Factory $49.',
+    'Everything you need to decide what to use is free, forever. You pay when you want Radar producing work for you — plans, arguments, research. Builder $19 · Factory $49.',
 };
 
-const TIERS: { tier: Tier; blurb: string; highlights: string[] }[] = [
+/**
+ * Tiers sell outcomes, not units. A visitor cannot value "30 debates/month"
+ * because nothing has told them what a debate gives them — so every line is
+ * phrased as what you get to do, with the number as supporting detail.
+ */
+const TIERS: { tier: Tier; who: string; blurb: string; highlights: string[] }[] = [
   {
     tier: 'free',
-    blurb: 'Browse everything compact. Try ask_radar and the opportunity → plan flow.',
+    who: 'Anyone tired of guessing',
+    blurb: 'Every verdict, every setup, every brief. No limits, no card.',
     highlights: [
-      'Unlimited compact reads',
-      `${quotaFor('free')} plans / month`,
-      `${TIER_CAPS.free.debatesPerMonth} debates / month`,
-      `${TIER_CAPS.free.asksPerMonth} ask_radar / month`,
-      '1 workspace batch',
+      'What to use for every job — unlimited',
+      'What changed, every day you show up',
+      `Ask us ${TIER_CAPS.free.asksPerMonth} real questions a month`,
+      `Turn ${quotaFor('free')} ideas a month into a full plan`,
+      'One project workspace',
     ],
   },
   {
     tier: 'builder',
-    blurb: 'Indie founders shipping monthly — debates unlimited, synthesis + personalization.',
+    who: 'You ship something most months',
+    blurb: 'Everything free, plus Radar doing the work instead of just answering.',
     highlights: [
-      `${quotaFor('builder')} plans / month`,
-      'Unlimited debates',
-      `${TIER_CAPS.builder.asksPerMonth} ask_radar / month`,
-      `${TIER_CAPS.builder.workspaceBatches} workspace batches`,
-      'Bulk debate & plan runs',
-      'Personalization + watchlists',
+      'Ask as much as you want, effectively',
+      `Turn ${quotaFor('builder')} ideas a month into full plans`,
+      'Pressure-test any idea from four sides — unlimited',
+      'Radar learns what you build and filters to it',
+      `Run ${TIER_CAPS.builder.workspaceBatches} projects side by side`,
     ],
   },
   {
     tier: 'factory',
-    blurb: 'Small teams and serial builders — research feels limitless; plan quota remains.',
+    who: 'You ship constantly, or for clients',
+    blurb: 'Uncapped, and first in line when you are in a hurry.',
     highlights: [
-      `${quotaFor('factory')} plans / month`,
-      'Unlimited debates, asks & batches',
-      'Priority plan queue',
-      'Watchlists + get_since deltas',
-      'Team-ready seats (coming)',
+      'Nothing metered but plans',
+      `Turn ${quotaFor('factory')} ideas a month into full plans`,
+      'Priority when the queue is busy',
+      'Watch the things you care about, get told when they move',
+      'Team seats (coming)',
     ],
   },
 ];
@@ -56,16 +62,16 @@ export default function PricingPage() {
   return (
     <div className="mx-auto max-w-[960px] px-4 py-12 sm:px-6">
       <div className="readout text-phosphor">Hosted · radar.runelabs.org</div>
-      <h1 className="type-h1 mt-2">Pricing</h1>
+      <h1 className="type-h1 mt-2 max-w-2xl text-balance">
+        You already pay for the tools. This is the part that tells you which ones.
+      </h1>
       <p className="mt-3 max-w-xl text-[14px] leading-relaxed text-ink-2">
-        Your unit is a plan, a debate, an ask, or a batch run — not a token. Compact reads are free and unlimited.
-        A typical lookup returns ~{PUBLISHED_SAVINGS.compactAvgReturned} tokens and keeps ~
-        {fmtTokens(PUBLISHED_SAVINGS.compactAvgSavedVsDiy)} out of your coding agent vs researching locally. Quota
-        meters generative actions only.
+        Everything you need to <em>decide</em> is free, forever — every verdict, every setup, every brief. You pay
+        when you want Radar producing work for you: plans, arguments, research you would otherwise do yourself.
       </p>
 
       <div className="mt-8 grid gap-4 md:grid-cols-3">
-        {TIERS.map(({ tier, blurb, highlights }) => (
+        {TIERS.map(({ tier, who, blurb, highlights }) => (
           <Card key={tier} className={tier === 'builder' ? 'border-phosphor/40 shadow-glow' : undefined}>
             <CardHeader>
               <div className="readout capitalize text-phosphor">{tier}</div>
@@ -73,7 +79,8 @@ export default function PricingPage() {
                 <span className="text-[28px] font-semibold tracking-tight">${TIER_PRICES[tier]}</span>
                 <span className="mono text-[10.5px] uppercase text-ink-4">/mo</span>
               </CardTitle>
-              <CardDescription>{blurb}</CardDescription>
+              <p className="mt-1 text-[12px] font-medium text-ink">{who}</p>
+              <CardDescription className="mt-1">{blurb}</CardDescription>
             </CardHeader>
             <CardContent>
               <ul className="space-y-2">
@@ -104,65 +111,50 @@ export default function PricingPage() {
         ))}
       </div>
 
-      <SectionHeader label="what's a plan" />
+      <SectionHeader label="what you get for $19" />
       <Card>
         <CardContent className="space-y-3 p-5 text-[13px] leading-relaxed text-ink-2">
           <p>
-            One plan is a full-lifecycle execution plan from <span className="mono text-ink">generate_plan</span> —
-            validation → build → launch → GTM → revenue — grounded in live signals, pains, comps, and market prices.
+            <span className="text-ink">A plan</span> is the whole life of an idea in one document — is this worth
+            doing, what to build first, how to launch it, how it makes money — grounded in what is actually happening
+            in the market this week, not in a template.
+          </p>
+          <p>
+            <span className="text-ink">A debate</span> is four roles arguing about your idea before you spend a month
+            on it. One of them is trying to kill it.
           </p>
           <p className="text-ink-3">
-            Cached plans never consume quota. Debates, ask_radar, and batch bulk-runs are metered separately by tier.
-            generate_plan returns markdown or JSON — not both — about {PUBLISHED_SAVINGS.planVsDualPct}% smaller than
-            dumping the old dual payload (~{fmtTokens(PUBLISHED_SAVINGS.planDiySaved)} DIY tokens saved per plan).
+            Re-reading a plan you already made is always free. Cancel any time; nothing you have made goes away.
           </p>
         </CardContent>
       </Card>
 
-      <SectionHeader label="token-savings methodology" />
+      <SectionHeader label="the honest caveats" />
       <Card>
         <CardContent className="space-y-3 p-5 text-[13px] leading-relaxed text-ink-2">
           <p>
-            The <span className="mono text-ink">economy</span> field on MCP responses is an ROI receipt, not a bill.
-            We estimate tokens as UTF-8 chars ÷ 4. Figures below are rounded <em>down</em> from a seeded bench (
-            <span className="mono">tests/mcp-savings-bench.test.ts</span>) so we under-claim.
+            <span className="text-ink">Nobody pays us to recommend anything.</span> No affiliate links, no
+            sponsorships, no vendor money. If a verdict changes it is because the evidence changed.
           </p>
-          <ul className="list-disc space-y-1 pl-5 text-ink-3">
-            <li>
-              <span className="text-ink-2">returned</span> — what your agent actually ingested. Compact lookups
-              average ~{PUBLISHED_SAVINGS.compactAvgReturned} tokens.
-            </li>
-            <li>
-              <span className="text-ink-2">saved_vs_full</span> — vs shipping the old pretty-printed JSON dump of
-              the same data (~{PUBLISHED_SAVINGS.compactAvgSavedVsFull} tokens on a typical compact call; weekly
-              compact is ~{PUBLISHED_SAVINGS.weeklyFullVsCompact}× smaller than the full issue)
-            </li>
-            <li>
-              <span className="text-ink-2">saved_vs_diy</span> — vs your agent researching locally. Compact lookup
-              ~{fmtTokens(PUBLISHED_SAVINGS.compactAvgSavedVsDiy)}; ask_radar ~
-              {fmtTokens(PUBLISHED_SAVINGS.askDiySaved)}; plan ~{fmtTokens(PUBLISHED_SAVINGS.planDiySaved)}. A
-              research-to-plan session ~{fmtTokens(PUBLISHED_SAVINGS.sessionDiySaved)}.
-            </li>
-          </ul>
-          <p className="text-ink-3">
-            Call <span className="mono text-ink">get_my_usage</span> from your agent for this-cycle totals. We
-            deliberately under-claim rather than inflate.
+          <p>
+            <span className="text-ink">We under-claim on purpose.</span> Every figure we publish is rounded down from
+            a seeded benchmark rather than up from a good day.{' '}
+            <Link href={paths.trust} className="text-phosphor hover:underline">
+              Here is exactly how we measure it
+            </Link>
+            .
           </p>
-        </CardContent>
-      </Card>
-
-      <SectionHeader label="self-hosting" />
-      <Card>
-        <CardContent className="p-5 text-[13px] text-ink-2">
-          Source-available (BSL 1.1), fully capable on your hardware — same pipeline, same tools, no quotas. These
-          prices apply to the hosted service only.{' '}
-          <a
-            href="https://github.com/RuneLabsOrganization/runelabs-radar"
-            className="text-phosphor hover:underline"
-            rel="noreferrer"
-          >
-            README
-          </a>
+          <p>
+            <span className="text-ink">You can run the whole thing yourself.</span> Source-available under BSL 1.1 —
+            same pipeline, same tools, no quotas, on your own hardware. These prices are for the hosted service.{' '}
+            <a
+              href="https://github.com/RuneLabsOrganization/runelabs-radar"
+              className="text-phosphor hover:underline"
+              rel="noreferrer"
+            >
+              README
+            </a>
+          </p>
         </CardContent>
       </Card>
     </div>
