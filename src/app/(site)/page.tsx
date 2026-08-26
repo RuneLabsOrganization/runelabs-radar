@@ -11,13 +11,18 @@ import HeroScope from '@/components/hero/HeroScope';
 import { McpDemo } from '@/components/mcp-demo/McpDemo';
 
 /**
- * The hero quotes live counts, so this page must NOT be baked at build time —
- * a statically prerendered "/" would freeze "we read N stories yesterday" at
- * whatever it was the day we deployed, which is the same staleness bug the
- * hardcoded "26 sources" already caused once. Ten minutes is far fresher than
- * the daily granularity of the numbers while keeping the busiest page cached.
+ * The hero quotes live counts, so this page must render per request.
+ *
+ * Not `revalidate`: ISR still prerenders once at build time, and `next build`
+ * runs inside the Docker image where the data volume is not mounted — so the
+ * baked-in render read an empty database and shipped "0 sources read daily",
+ * on the one page whose entire argument is that our numbers are true. It would
+ * have self-corrected only after the first revalidation window.
+ *
+ * The cost is a handful of SQLite COUNTs per request, which every other page
+ * in the app already pays.
  */
-export const revalidate = 600;
+export const dynamic = 'force-dynamic';
 
 export const metadata = {
   title: 'We read the whole AI field so you read none of it.',
