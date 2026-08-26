@@ -7,6 +7,9 @@ const FIELDS = ['bestOverall', 'bestValue', 'cheapestViable', 'costNote'] as con
 type Field = (typeof FIELDS)[number];
 type ProposedFields = Record<Field, string | null>;
 
+/** Marks a verdict as machine-written so automation knows it's still free to refresh it. */
+export const AUTO_VERDICT_AUTHOR = 'Runelabs (auto)';
+
 function parseProposed(json: string): ProposedFields {
   let raw: Record<string, unknown> = {};
   try {
@@ -119,11 +122,26 @@ export async function applyProposal(proposalId: number): Promise<{ ok: boolean }
   for (const f of FIELDS) {
     if (proposed[f] !== null) changes[f] = proposed[f];
   }
+
+  // The rationale was already shown to the human in ProposalCard before they
+  // approved this — it's reviewed content, not a fresh assertion. Auto-fill
+  // or refresh the board's verdict from it, but only while no human has
+  // hand-written their own via the VerdictEditor: once verdict_author is a
+  // real name, automation must never overwrite deliberate human prose. This
+  // also keeps the verdict in sync with the pick on every later approval —
+  // leaving it fill-once-then-never-touch-again would let a verdict describe
+  // a tool the board no longer picks, the exact mismatch a stale verdict
+  // caused once already.
+  const verdictClaimed = existing?.verdictAuthor != null && existing.verdictAuthor !== AUTO_VERDICT_AUTHOR;
+  const verdictPatch = verdictClaimed
+    ? {}
+    : { runelabsVerdict: proposal.rationale, verdictAuthor: AUTO_VERDICT_AUTHOR };
+
   db.insert(boardEntries)
-    .values({ domain: proposal.domain, task: proposal.task, ...changes, updatedAt: now })
+    .values({ domain: proposal.domain, task: proposal.task, ...changes, ...verdictPatch, updatedAt: now })
     .onConflictDoUpdate({
       target: [boardEntries.domain, boardEntries.task],
-      set: { ...changes, updatedAt: now },
+      set: { ...changes, ...verdictPatch, updatedAt: now },
     })
     .run();
 

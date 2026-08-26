@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { useTestDb } from './helpers/db';
 import type { Db } from '@/lib/db';
 import { boardEntries, boardHistory, boardProposals, kitPicks, kitPickHistory } from '@/lib/db/schema';
-import { applyProposal, rejectProposal } from '@/lib/board/apply';
+import { applyProposal, rejectProposal, AUTO_VERDICT_AUTHOR } from '@/lib/board/apply';
 import { boardCellToKitCell } from '@/lib/kits/from-board';
 
 describe('board proposal apply/reject', () => {
@@ -56,7 +56,7 @@ describe('board proposal apply/reject', () => {
     expect(entry.bestValue).toBe('GLM-4.7');
     expect(entry.cheapestViable).toBe('DeepSeek-V4');
     expect(entry.costNote).toBe('new cost note');
-    expect(entry.runelabsVerdict).toBe('solid'); // verdict untouched by apply
+    expect(entry.runelabsVerdict).toBe('solid'); // human-claimed verdict — never auto-overwritten
     expect(entry.verdictAuthor).toBe('specter');
     expect(entry.updatedAt!.getTime()).toBeGreaterThan(originalUpdatedAt.getTime());
 
@@ -251,5 +251,60 @@ describe('applyProposal mirrors into kit_picks', () => {
     const row = db.select().from(kitPicks).all()[0];
     expect(row.pickName).toBe('Gamma');
     expect(row.priceNote).toBe('Alpha $20/mo');
+  });
+});
+
+describe('applyProposal auto-fills the board verdict from the reviewed rationale', () => {
+  let db: Db;
+
+  beforeEach(() => {
+    db = useTestDb();
+  });
+
+  async function proposeAndApply(
+    rationale: string,
+    proposed: Record<string, string | null> = { bestOverall: 'Alpha' },
+    domain = 'video',
+    task = 'text-to-video',
+  ) {
+    const id = db
+      .insert(boardProposals)
+      .values({ domain, task, proposed: JSON.stringify(proposed), rationale, status: 'pending', createdAt: new Date() })
+      .returning()
+      .get().id;
+    await applyProposal(id);
+  }
+
+  it('fills an empty verdict from the proposal rationale — the human already reviewed it to approve', async () => {
+    await proposeAndApply('MiniMax H3 leads the video arena this week.');
+    const entry = db.select().from(boardEntries).all()[0];
+    expect(entry.runelabsVerdict).toBe('MiniMax H3 leads the video arena this week.');
+    expect(entry.verdictAuthor).toBe(AUTO_VERDICT_AUTHOR);
+  });
+
+  it('refreshes an auto-written verdict on a later approval, keeping it in sync with the pick', async () => {
+    await proposeAndApply('Alpha leads this week.', { bestOverall: 'Alpha' });
+    await proposeAndApply('Beta overtook Alpha this week.', { bestOverall: 'Beta' });
+
+    const entry = db.select().from(boardEntries).all()[0];
+    expect(entry.bestOverall).toBe('Beta');
+    expect(entry.runelabsVerdict).toBe('Beta overtook Alpha this week.');
+    expect(entry.verdictAuthor).toBe(AUTO_VERDICT_AUTHOR);
+  });
+
+  // The invariant that matters: a human's editorial call is permanent.
+  it('never overwrites a verdict a human wrote, no matter how many later proposals are approved', async () => {
+    await proposeAndApply('Alpha leads this week.', { bestOverall: 'Alpha' });
+    db.update(boardEntries)
+      .set({ runelabsVerdict: 'I disagree with the algorithm — sticking with Alpha.', verdictAuthor: 'specter' })
+      .where(and(eq(boardEntries.domain, 'video'), eq(boardEntries.task, 'text-to-video')))
+      .run();
+
+    await proposeAndApply('Beta overtook Alpha this week.', { bestOverall: 'Beta' });
+
+    const entry = db.select().from(boardEntries).all()[0];
+    expect(entry.bestOverall).toBe('Beta'); // the pick still updates
+    expect(entry.runelabsVerdict).toBe('I disagree with the algorithm — sticking with Alpha.');
+    expect(entry.verdictAuthor).toBe('specter');
   });
 });
