@@ -4,6 +4,10 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import type { AuthContext } from '../mcp/lib/auth';
 import { registerLeadTools } from '../mcp/tools/leads';
+import { composeLeads } from '@/lib/opportunities/compose';
+import { dismissLead, insertLeads } from '@/lib/opportunities/leads';
+import { getStablePool } from '@/lib/opportunities/pool';
+import { dayKey } from '@/lib/opportunities/seed';
 import { seedWedges } from '@/lib/opportunities/wedges';
 import { painPoints, stories } from '@/lib/db/schema';
 import { seedUser, useTestDb } from './helpers/db';
@@ -228,5 +232,34 @@ describe('get_leads', () => {
     const nextDay = (await client.callTool({ name: 'get_leads', arguments: { limit: 8, cursor: 0 } }))
       .structuredContent as unknown as LeadsPayload;
     expect(blob(nextDay.leads)).toMatch(/xyzzycachepain/i);
+  });
+
+  it('does not claim exhaustion when a scan window is empty but more space remains', async () => {
+    const owner = { ownerKey: 'user:1', userId: 1 };
+    const { primitives, space } = getStablePool();
+    const scanned = composeLeads({
+      primitives,
+      space,
+      ownerKey: owner.ownerKey,
+      day: dayKey(),
+      cursor: 0,
+      limit: 4000,
+    });
+    expect(scanned.spaceSize).toBeGreaterThan(scanned.scanned);
+    expect(scanned.nextCursor).not.toBeNull();
+    insertLeads(owner, scanned.leads);
+    for (const l of scanned.leads) dismissLead(owner, l.slug, 'skip');
+
+    const client = await wire(authFor(1, 'user:1'));
+    const p = (await client.callTool({ name: 'get_leads', arguments: { limit: 5, cursor: 0 } }))
+      .structuredContent as unknown as LeadsPayload;
+    expect(p.count).toBe(0);
+    expect(p.next_cursor).not.toBeNull();
+    expect(p.space_size).toBeGreaterThan(4000);
+    expect(p.summary).not.toMatch(/end of your combination space/i);
+    expect(p.summary).toMatch(/scan window|unexplored/i);
+    const more = p.next.find((n) => n.tool === 'get_leads');
+    expect(more).toBeDefined();
+    expect(more!.arguments?.cursor).toBe(p.next_cursor);
   });
 });

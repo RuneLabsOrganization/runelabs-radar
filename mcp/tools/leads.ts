@@ -85,18 +85,30 @@ export function registerLeadTools(server: McpServer, auth: AuthContext): void {
       });
 
       if (composed.leads.length === 0) {
+        const exhausted = composed.nextCursor === null;
         const reason =
           primitives.length === 0
             ? 'no demand signal in the last 21 days — pains come from Reddit/HN discussion, so check that those sources are ingesting'
             : composed.spaceSize === 0
               ? 'the wedge taxonomy is empty — run the seed script'
-              : 'you have reached the end of your combination space for today';
+              : exhausted
+                ? 'you have reached the end of your combination space for today'
+                : 'nothing matched in this scan window — your filters or dismissals rejected every candidate scanned so far, but more of your space is unexplored';
         return respond(
-          { count: 0, leads: [], next_cursor: null, space_size: composed.spaceSize },
+          { count: 0, leads: [], next_cursor: composed.nextCursor, space_size: composed.spaceSize },
           {
             summary: `No leads: ${reason}.`,
             economy: withUserEconomy(auth.userId, 'read'),
             next: [
+              ...(composed.nextCursor !== null
+                ? [
+                    {
+                      tool: 'get_leads',
+                      arguments: { limit, cursor: composed.nextCursor },
+                      reason: 'keep scanning — your space is not exhausted',
+                    },
+                  ]
+                : []),
               {
                 tool: 'get_opportunities',
                 arguments: { limit: 10 },
