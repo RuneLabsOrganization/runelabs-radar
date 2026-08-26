@@ -274,6 +274,7 @@ describe('mcp server', () => {
     const { prompts } = await client.listPrompts();
     expect(prompts.map((p) => p.name).sort()).toEqual([
       'builder_weekly_review',
+      'explore_unlimited',
       'find_and_plan',
       'validate_idea',
       'what_should_i_use',
@@ -284,6 +285,13 @@ describe('mcp server', () => {
     const prompt = await client.getPrompt({ name: 'find_and_plan', arguments: {} });
     expect(prompt.messages[0]!.content.type).toBe('text');
     expect((prompt.messages[0]!.content as { text: string }).text).toContain('generate_plan');
+
+    const explore = await client.getPrompt({ name: 'explore_unlimited', arguments: {} });
+    const exploreText = (explore.messages[0]!.content as { text: string }).text;
+    expect(exploreText).toContain('get_leads');
+    expect(exploreText).toContain('refine_lead');
+    expect(exploreText).toContain('forge_opportunity');
+    expect(exploreText).toContain('dismiss_opportunity');
   });
 
   it('runs the flagship: get_plan miss → generate_plan → cached plan + markdown', async () => {

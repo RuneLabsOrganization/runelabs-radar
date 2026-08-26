@@ -103,6 +103,25 @@ Be honest — I'd rather hear "reject" now than fail in month two. If the verdic
   );
 
   server.registerPrompt(
+    'explore_unlimited',
+    {
+      description:
+        'Browse leads composed for you alone, refine the best into a scored opening, then plan it.',
+      argsSchema: {},
+    },
+    () =>
+      userMessage(`Let's find something worth building from leads composed for me, not the shared public radar.
+
+1. Call get_leads (limit 8). The page is already ordered: pain-derived leads first, then heuristic_score descending. These are UNVALIDATED hypotheses — heuristic is not a flip score, there is no verdict, do not generate_plan against a lead.
+2. Page with cursor=next_cursor if you need more. Two callers never see the same leads.
+3. Pick the strongest two or three, tell me why (cite evidence_refs and the wedge), and wait for my pick.
+4. Call refine_lead with { lead: "<slug>" } on the one we keep. That spends one LLM call, returns scores/KPIs/verdict, and saves a private opportunity.
+5. If it survives (verdict is not reject), call forge_opportunity with { opportunity: "<slug>" } for the four-role adversarial pass. That needs Builder+ and spends four LLM calls.
+6. Then generate_plan with { opportunity: "<slug>", format: "markdown" } and save the result as PLAN.md.
+7. Call dismiss_opportunity with { target: "<slug>", reason: "..." } on anything that is clearly not for me. Pass avoid_sector=true only when I want that whole sector steered away from future get_leads pages.`),
+  );
+
+  server.registerPrompt(
     'builder_weekly_review',
     { description: 'Weekly review for builders: board changes, forecast grades, accuracy, and the freshest opportunities.', argsSchema: {} },
     () =>

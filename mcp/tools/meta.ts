@@ -53,21 +53,29 @@ Radar does the research so your coding agent does not. Prefer ONE job tool over 
 - **whats_relevant** — given your project, what on Radar matters right now
 - **decide** — what model/tool to use for a task (board + market in one shot)
 - **debate_idea** / **scout_opportunities** / **generate_plan** — heavy artifacts (metered)
+- **get_leads** / **refine_lead** / **forge_opportunity** / **dismiss_opportunity** — the generation ladder (leads are free; refine/forge are metered)
 - **get_my_usage** — your quota + token-savings receipt this cycle
 - **get_since** / **watch** — incremental deltas (limitless research without re-dumps)
 - **get_profile** / **set_profile** / **get_session** / **set_session** — personalization + memory
 
-## Flagship workflow: opportunity → plan
-1. ask_radar OR get_opportunities → pick one
-2. get_opportunity (detail=compact) → scores/KPIs without a dossier dump
-3. generate_plan (format=markdown) → save as PLAN.md and execute locally
+## THREE WAYS TO FIND SOMETHING TO BUILD
+  1. get_opportunities — the curated public radar. Reviewed, scored, shared by everyone. Free.
+  2. get_leads — unlimited hypotheses composed for you alone from live signal. No verdict,
+     no flip score: these are unvalidated by design. Free, page forever with next_cursor.
+  3. refine_lead — one LLM call turns a lead into a real scored opportunity (yours, private).
+     Then forge_opportunity for the adversarial deep pass, then generate_plan to execute.
+     dismiss_opportunity hides a lead and can add its sector to your avoid list.
 
-Guided prompts: **find_and_plan**, whats_new_today, what_should_i_use, which_agent_stack, validate_idea, builder_weekly_review.
+## Flagship workflow: opportunity → plan
+Public radar: ask_radar OR get_opportunities → get_opportunity (detail=compact) → generate_plan (format=markdown).
+Private ladder: get_leads → refine_lead ({ lead }) → forge_opportunity ({ opportunity }) → generate_plan. Prompt: **explore_unlimited**.
+
+Guided prompts: **find_and_plan**, **explore_unlimited**, whats_new_today, what_should_i_use, which_agent_stack, validate_idea, builder_weekly_review.
 
 ## Specialists (optional depth)
 - News: get_daily_brief, get_domain_digest, get_daily_insights, get_top_signals, search_stories, get_story, get_weekly_report
 - Decisions: get_best_right_now, get_board_changes, get_market_models, list_stacks, get_stack_for, list_agent_stacks, get_agent_stack_for
-- Ideas: get_opportunities, get_opportunity, get_pain_points, get_comps, get_launches, get_patterns, get_topic_map
+- Ideas: get_opportunities, get_opportunity, get_leads, refine_lead, forge_opportunity, dismiss_opportunity, get_pain_points, get_comps, get_launches, get_patterns, get_topic_map
 - Execution: generate_plan, get_plan, batches
 - Data: list_metrics, get_metric_series, get_forecasts, get_accuracy, get_entity
 
