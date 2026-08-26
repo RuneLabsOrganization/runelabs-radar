@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, isNull, like, or } from 'drizzle-orm';
+import { and, desc, eq, gte, like, or } from 'drizzle-orm';
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { getDb } from '../../src/lib/db';
@@ -18,6 +18,7 @@ import {
   type NextAction,
 } from '../lib/payload';
 import { marketVisible, type AuthContext } from '../lib/auth';
+import { visibleTo } from '../../src/lib/opportunities/scope';
 
 type OppRow = typeof opportunities.$inferSelect;
 
@@ -73,17 +74,6 @@ function dossierSummary(row: OppRow) {
     has_plan: row.plan !== null,
     url: urls.opportunity(row.slug),
   };
-}
-
-/**
- * Rows this caller may see: the canonical public radar (owner NULL) plus
- * their own private openings. Anonymous callers get the public radar only —
- * their Rung-0 leads live in the `leads` table, not here.
- */
-function visibleTo(userId: number | null) {
-  return userId == null
-    ? isNull(opportunities.ownerUserId)
-    : or(isNull(opportunities.ownerUserId), eq(opportunities.ownerUserId, userId));
 }
 
 /** Up to 3 slugs that fuzzily match a missed ref — turns a typo into a suggestion. */
