@@ -14,6 +14,10 @@ vi.mock('@/lib/opportunities/critic', () => ({
   runCritique: vi.fn(),
 }));
 
+vi.mock('@/lib/opportunities/refine', () => ({
+  refineLeads: vi.fn(),
+}));
+
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
@@ -22,6 +26,7 @@ import { registerDebateTools } from '../mcp/tools/debate';
 import { registerScoutTools } from '../mcp/tools/scout';
 import { registerPrompts } from '../mcp/prompts';
 import { runDebate, type DebateResult } from '@/lib/opportunities/critic';
+import { refineLeads } from '@/lib/opportunities/refine';
 import { _setFetch } from '@/lib/llm/minimax';
 import { SUB_KEYS, type OppDraft } from '@/lib/opportunities/engine';
 import { persistScoutDrafts } from '@/lib/opportunities/persist-scout';
@@ -30,6 +35,7 @@ import { comps, launches, opportunities, painPoints, stories } from '@/lib/db/sc
 import { seedUser, useTestDb } from './helpers/db';
 
 const debateMock = vi.mocked(runDebate);
+const refineLeadsMock = vi.mocked(refineLeads);
 
 const PINNED: DebateResult = {
   transcript: [
@@ -90,6 +96,8 @@ beforeEach(() => {
   db = useTestDb();
   debateMock.mockReset();
   debateMock.mockResolvedValue(PINNED);
+  refineLeadsMock.mockReset();
+  refineLeadsMock.mockResolvedValue({ drafts: [], rejects: [] });
   // chatJSON refuses to call out without a key; the fetch below is mocked anyway
   process.env.MINIMAX_API_KEY = 'test-key';
 });
@@ -242,6 +250,25 @@ const draft = (slug: string) => ({
   evidenceRefs: ['P1'],
 });
 
+function asOppDraft(slug: string): OppDraft {
+  const d = draft(slug);
+  return {
+    slug: d.slug,
+    title: d.title,
+    thesis: d.thesis,
+    sector: d.sector,
+    window: d.window,
+    windowMonths: d.windowMonths,
+    sub: d.subScores as OppDraft['sub'],
+    kpis: {
+      ...d.kpis,
+      competitionNote: null,
+      regulatoryNote: null,
+    },
+    evidenceRefs: d.evidenceRefs,
+  };
+}
+
 function persistDraft(slug: string): OppDraft {
   return {
     slug,
@@ -301,7 +328,10 @@ describe('scout_opportunities', () => {
         lastSeenAt: new Date(),
       })
       .run();
-    const { bodies } = mockProposer([draft('existing-opening'), draft('fresh-one'), draft('fresh-two')]);
+    refineLeadsMock.mockResolvedValue({
+      drafts: [asOppDraft('existing-opening'), asOppDraft('fresh-one'), asOppDraft('fresh-two')],
+      rejects: [],
+    });
 
     const client = await wire('scout-happy');
     const res = await call(client, 'scout_opportunities', {
@@ -325,12 +355,15 @@ describe('scout_opportunities', () => {
     expect(openings[0]!.evidence_refs).toEqual(['P1']);
     expect(openings[0]!.sector).toBe('coding');
 
-    // constraints landed in the prompt's <builder-constraints> block
-    expect(bodies).toHaveLength(1);
-    expect(bodies[0]!.user).toContain('<builder-constraints>');
-    expect(bodies[0]!.user).toContain('skills: typescript, nextjs');
-    expect(bodies[0]!.user).toContain('hours per week: 10');
-    expect(bodies[0]!.user).toContain('risk appetite: medium');
+    expect(refineLeadsMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        constraints: expect.objectContaining({
+          skills: 'typescript, nextjs',
+          hoursPerWeek: 10,
+          riskAppetite: 'medium',
+        }),
+      }),
+    );
 
     // anonymous callers get drafts back but nothing is persisted — generate_plan
     // is only offered when a row actually landed for the caller
@@ -351,14 +384,14 @@ describe('scout_opportunities', () => {
 
   it('refuses after MCP_SCOUT_DAILY_CAP calls', async () => {
     seedSignals();
-    const { bodies } = mockProposer([draft('fresh-one')]);
+    refineLeadsMock.mockResolvedValue({ drafts: [asOppDraft('fresh-one')], rejects: [] });
     const client = await wire('scout-cap');
     const first = await call(client, 'scout_opportunities', {});
     const second = await call(client, 'scout_opportunities', {});
     expect(first.structuredContent).toMatchObject({ ok: true });
     expect(second.structuredContent).toMatchObject({ ok: false, openings: [] });
     expect(second.structuredContent!.error as string).toContain('daily scout cap reached (1)');
-    expect(bodies).toHaveLength(1); // the refusal never reaches the LLM
+    expect(refineLeadsMock).toHaveBeenCalledTimes(1); // the refusal never reaches the refiner
   });
 
   it('does not starve a second owner when another caller already holds the slug', async () => {
@@ -366,7 +399,7 @@ describe('scout_opportunities', () => {
     seedUser(db, 2);
     seedSignals();
     persistScoutDrafts([persistDraft('shared-idea')], 1);
-    mockProposer([draft('shared-idea')]);
+    refineLeadsMock.mockResolvedValue({ drafts: [asOppDraft('shared-idea')], rejects: [] });
 
     const client = await wireUser(2);
     const res = await call(client, 'scout_opportunities', {});
