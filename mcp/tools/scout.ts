@@ -180,6 +180,7 @@ export function registerScoutTools(server: McpServer, auth: AuthContext): void {
             primitives,
             ...(hasConstraints ? { constraints } : {}),
             userId: auth.userId,
+            feature: 'scout',
           }));
         } else {
           drafts = [];

@@ -11,6 +11,10 @@ const criticActual = vi.hoisted(() => ({
   runDebate: undefined as typeof import('@/lib/opportunities/critic').runDebate | undefined,
 }));
 
+const refineActual = vi.hoisted(() => ({
+  refineLeads: undefined as typeof import('@/lib/opportunities/refine').refineLeads | undefined,
+}));
+
 // self-contained: runDebate is pinned here while the real multi-role debate
 // pipeline is built concurrently in src/lib/opportunities/critic.ts
 vi.mock('@/lib/opportunities/critic', async (importOriginal) => {
@@ -19,9 +23,11 @@ vi.mock('@/lib/opportunities/critic', async (importOriginal) => {
   return { ...actual, runDebate: vi.fn(), runCritique: vi.fn() };
 });
 
-vi.mock('@/lib/opportunities/refine', () => ({
-  refineLeads: vi.fn(),
-}));
+vi.mock('@/lib/opportunities/refine', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/opportunities/refine')>();
+  refineActual.refineLeads = actual.refineLeads;
+  return { ...actual, refineLeads: vi.fn() };
+});
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
@@ -36,6 +42,7 @@ import { _setFetch } from '@/lib/llm/minimax';
 import { SUB_KEYS, type OppDraft } from '@/lib/opportunities/engine';
 import { persistScoutDrafts } from '@/lib/opportunities/persist-scout';
 import { seedWedges } from '@/lib/opportunities/wedges';
+import { can } from '@/lib/entitlements';
 import { comps, launches, llmCalls, opportunities, painPoints, stories } from '@/lib/db/schema';
 import { seedUser, useTestDb } from './helpers/db';
 
@@ -398,6 +405,7 @@ describe('scout_opportunities', () => {
 
     expect(refineLeadsMock).toHaveBeenCalledWith(
       expect.objectContaining({
+        feature: 'scout',
         constraints: expect.objectContaining({
           skills: 'typescript, nextjs',
           hoursPerWeek: 10,
@@ -450,6 +458,20 @@ describe('scout_opportunities', () => {
     expect(openings).toEqual(
       expect.arrayContaining([expect.objectContaining({ slug: 'shared-idea', persisted: true })]),
     );
+  });
+
+  it('meters a signed-in scout against the scout quota, not lead_refine', async () => {
+    seedUser(db, 7);
+    seedSignals();
+    refineLeadsMock.mockImplementation(refineActual.refineLeads!);
+    mockProposer([]);
+
+    expect(can({ id: 7 }, 'scout').used ?? 0).toBe(0);
+    const client = await wireUser(7);
+    const res = await call(client, 'scout_opportunities', {});
+    expect(res.structuredContent).toMatchObject({ ok: true });
+    expect(can({ id: 7 }, 'scout').used).toBe(1);
+    expect(can({ id: 7 }, 'lead_refine').used ?? 0).toBe(0);
   });
 });
 

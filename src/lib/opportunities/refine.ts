@@ -24,6 +24,8 @@ export interface RefineOptions {
   primitives: Primitive[];
   constraints?: ScoutConstraints;
   userId: number | null;
+  /** llm_calls metering label. Defaults to the standalone refine_lead quota. */
+  feature?: string;
 }
 
 function renderConstraints(c: ScoutConstraints): string {
@@ -43,7 +45,7 @@ function renderConstraints(c: ScoutConstraints): string {
 export async function refineLeads(
   opts: RefineOptions,
 ): Promise<{ drafts: OppDraft[]; rejects: { slug: string; reason: string }[] }> {
-  const { leads, primitives, constraints, userId } = opts;
+  const { leads, primitives, constraints, userId, feature = 'lead_refine' } = opts;
   if (leads.length === 0) return { drafts: [], rejects: [] };
 
   const validRefs = new Set(primitives.map((p) => p.ref));
@@ -102,7 +104,7 @@ export async function refineLeads(
   let raw: unknown;
   try {
     raw = await chatJSON<unknown>(system, user, {
-      feature: 'lead_refine',
+      feature,
       userId,
       maxTokens: 12000,
     });

@@ -5,7 +5,7 @@ import type { LeadRow } from '@/lib/opportunities/leads';
 import type { Primitive } from '@/lib/opportunities/primitives';
 import { persistScoutDrafts } from '@/lib/opportunities/persist-scout';
 import { SUB_KEYS } from '@/lib/opportunities/engine';
-import { opportunities } from '@/lib/db/schema';
+import { llmCalls, opportunities } from '@/lib/db/schema';
 import { getDb } from '@/lib/db';
 import { _setFetch } from '@/lib/llm/minimax';
 import { seedUser, useTestDb } from './helpers/db';
@@ -307,5 +307,24 @@ describe('refineLeads', () => {
     expect(shape).toContain('shape-mismatch');
     expect(shape).toContain('"value":12');
     warn.mockRestore();
+  });
+
+  it('tags the llm_calls row with the requested feature', async () => {
+    stubLlm(modelReply('review-queue-triage'));
+    await refineLeads({
+      leads: [lead('review-queue-triage')], primitives: PRIMITIVES, userId: 1, feature: 'scout',
+    });
+    const rows = getDb().select().from(llmCalls).all();
+    expect(rows.some((r) => r.feature === 'scout')).toBe(true);
+  });
+
+  it('defaults the metering feature to lead_refine', async () => {
+    stubLlm(modelReply('review-queue-triage'));
+    await refineLeads({
+      leads: [lead('review-queue-triage')], primitives: PRIMITIVES, userId: 1,
+    });
+    const rows = getDb().select().from(llmCalls).all();
+    expect(rows.some((r) => r.feature === 'lead_refine')).toBe(true);
+    expect(rows.some((r) => r.feature === 'scout')).toBe(false);
   });
 });
