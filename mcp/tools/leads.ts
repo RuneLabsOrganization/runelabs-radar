@@ -9,6 +9,7 @@ import { persistScoutDrafts } from '../../src/lib/opportunities/persist-scout';
 import { loadPrimitives } from '../../src/lib/opportunities/primitives';
 import { refineLeads } from '../../src/lib/opportunities/refine';
 import { dayKey } from '../../src/lib/opportunities/seed';
+import { normalizeSlug } from '../../src/lib/opportunities/slug';
 import { loadWedges } from '../../src/lib/opportunities/wedges';
 import { getProfile } from '../../src/lib/personalization';
 import { can } from '../../src/lib/entitlements';
@@ -235,13 +236,25 @@ export function registerLeadTools(server: McpServer, auth: AuthContext): void {
       }
 
       const { persisted } = persistScoutDrafts(drafts, auth.userId);
-      if (persisted[0]) markRefined(row.id, persisted[0].id);
+      const wanted = normalizeSlug(row.slug);
+      const match = persisted.find((p) => normalizeSlug(p.slug) === wanted);
+      if (!match) {
+        return respond(
+          { ok: false, error: 'The refiner returned openings, but none matched this lead\'s slug.' },
+          {
+            summary: `"${row.title}" was not linked — the refined opening did not match the candidate slug.`,
+            economy: withUserEconomy(auth.userId, 'scout'),
+            next: [{ tool: 'get_leads', arguments: { limit: 10 }, reason: 'try a different angle' }],
+          },
+        );
+      }
+      markRefined(row.id, match.id);
 
       const db = getDb();
       const saved = db
         .select()
         .from(opportunities)
-        .where(eq(opportunities.id, persisted[0]!.id))
+        .where(eq(opportunities.id, match.id))
         .get()!;
 
       return respond(

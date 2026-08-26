@@ -8,7 +8,7 @@ import { registerLeadTools } from '../mcp/tools/leads';
 import { insertLeads } from '@/lib/opportunities/leads';
 import type { LeadDraft } from '@/lib/opportunities/compose';
 import { SUB_KEYS } from '@/lib/opportunities/engine';
-import { opportunities } from '@/lib/db/schema';
+import { leads, opportunities } from '@/lib/db/schema';
 import { _setFetch } from '@/lib/llm/minimax';
 import { seedUser, useTestDb } from './helpers/db';
 import type { Db } from '@/lib/db';
@@ -100,5 +100,21 @@ describe('refine_lead', () => {
     const p = res.structuredContent as { ok: boolean; error?: string };
     expect(p.ok).toBe(false);
     expect(p.error).toMatch(/sign in/i);
+  });
+
+  it('does not markRefined when the refiner returns only a foreign slug', async () => {
+    insertLeads({ ownerKey: 'user:1', userId: 1 }, [draft('review-queue')]);
+    stubLlm('totally-different-slug');
+
+    const res = await (await wire(authFor(1, 'user:1')))
+      .callTool({ name: 'refine_lead', arguments: { lead: 'review-queue' } });
+    const p = res.structuredContent as { ok: boolean; error?: string };
+    expect(p.ok).toBe(false);
+    expect(p.error).toMatch(/rejected|not genuinely|slug/i);
+
+    const row = db.select().from(leads).where(eq(leads.ownerKey, 'user:1')).get();
+    expect(row?.stage).toBe('composed');
+    expect(row?.opportunityId).toBeNull();
+    expect(db.select().from(opportunities).where(eq(opportunities.ownerUserId, 1)).all()).toHaveLength(0);
   });
 });

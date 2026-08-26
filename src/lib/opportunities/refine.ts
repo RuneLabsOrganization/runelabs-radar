@@ -17,6 +17,7 @@ import { promptLine } from '../prompt-hygiene';
 import { sanitizeOpportunities, type OppDraft, type ScoutConstraints } from './engine';
 import type { LeadRow } from './leads';
 import type { Primitive } from './primitives';
+import { normalizeSlug } from './slug';
 
 export interface RefineOptions {
   leads: LeadRow[];
@@ -102,7 +103,16 @@ export async function refineLeads(
   }
 
   const rejects: { slug: string; reason: string }[] = [];
-  const drafts = sanitizeOpportunities(raw?.openings, validRefs, rejects);
+  const sanitized = sanitizeOpportunities(raw?.openings, validRefs, rejects);
+  const candidateSlugs = new Set(leads.map((l) => normalizeSlug(l.slug)));
+  const drafts: OppDraft[] = [];
+  for (const d of sanitized) {
+    if (!candidateSlugs.has(d.slug)) {
+      rejects.push({ slug: d.slug, reason: 'slug-not-in-candidates' });
+      continue;
+    }
+    drafts.push(d);
+  }
   if (drafts.length === 0 && Array.isArray(raw.openings) && raw.openings.length > 0) {
     console.warn(
       `[refine] ${leads.length} candidates in, 0 out — ${formatRejectSummary(rejects)}`,

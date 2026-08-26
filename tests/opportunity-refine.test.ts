@@ -138,4 +138,13 @@ describe('refineLeads', () => {
     expect(drafts).toHaveLength(1);
     expect(rejects).toEqual([]);
   });
+
+  it('drops a rewritten slug as slug-not-in-candidates', async () => {
+    stubLlm(modelReply('rewritten-by-the-model'));
+    const { drafts, rejects } = await refineLeads({
+      leads: [lead('original-candidate-slug')], primitives: PRIMITIVES, userId: 1,
+    });
+    expect(drafts).toHaveLength(0);
+    expect(rejects.some((r) => r.reason === 'slug-not-in-candidates')).toBe(true);
+  });
 });
