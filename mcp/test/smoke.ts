@@ -41,15 +41,18 @@ async function rpc(method: string, params: unknown = {}): Promise<unknown> {
   return parsed.result;
 }
 
-async function callTool(name: string, args: Record<string, unknown> = {}): Promise<string> {
+/**
+ * `content` is always just the plain-English summary (respond() defaults
+ * mirrorJson: false) — the actual payload is `structuredContent`. Return
+ * both: `.text` for prose checks (get_daily_brief, get_server_guide),
+ * `.data` for everything that used to (incorrectly) JSON.parse the summary.
+ */
+async function callTool(name: string, args: Record<string, unknown> = {}): Promise<{ text: string; data: any }> {
   const result = (await rpc('tools/call', { name, arguments: args })) as {
     content: { type: string; text: string }[];
+    structuredContent?: unknown;
   };
-  return result.content.map((c) => c.text).join('\n');
-}
-
-function stripAttribution(text: string): string {
-  return text.split('\n\n—\n')[0];
+  return { text: result.content.map((c) => c.text).join('\n'), data: result.structuredContent };
 }
 
 async function main() {
@@ -107,33 +110,46 @@ async function main() {
     'list_metrics',
     'list_stacks',
     'search_stories',
+    'list_kits',
+    'get_kit',
+    'explain_pick',
+    'get_my_kit',
+    'set_my_kit',
   ];
   for (const e of expected) {
     if (!names.includes(e)) throw new Error(`missing tool: ${e}`);
   }
 
-  const brief = await callTool('get_daily_brief');
+  const brief = (await callTool('get_daily_brief')).text;
   console.log('get_daily_brief:', brief.slice(0, 90).replace(/\n/g, ' '), '…');
 
-  const signals = JSON.parse(stripAttribution(await callTool('get_top_signals', { domain: 'coding', limit: 3 })));
+  const signals = (await callTool('get_top_signals', { domain: 'coding', limit: 3 })).data;
   console.log('get_top_signals:', signals.count, 'signals (coding)');
 
-  const board = JSON.parse(stripAttribution(await callTool('get_best_right_now', { domain: 'coding' })));
+  const board = (await callTool('get_best_right_now', { domain: 'coding' })).data;
   console.log('get_best_right_now:', board.count, 'entries (coding)');
 
-  const launches = JSON.parse(stripAttribution(await callTool('get_launches', { days: 14, limit: 5 })));
+  const launches = (await callTool('get_launches', { days: 14, limit: 5 })).data;
   console.log('get_launches:', launches.count, 'launches (14d)');
 
-  const patterns = JSON.parse(stripAttribution(await callTool('get_patterns', { days: 7 })));
+  const patterns = (await callTool('get_patterns', { days: 7 })).data;
   console.log('get_patterns:', patterns.count, 'anomalies (7d)');
 
-  const opps = JSON.parse(stripAttribution(await callTool('get_opportunities', { limit: 3 })));
+  const opps = (await callTool('get_opportunities', { limit: 3 })).data;
   console.log('get_opportunities:', opps.count, 'openings');
 
-  const guide = await callTool('get_server_guide');
-  if (!guide.includes('flagship')) throw new Error('get_server_guide missing the flagship workflow');
+  const guide = (await callTool('get_server_guide')).text;
+  if (!guide.toLowerCase().includes('flagship')) throw new Error('get_server_guide missing the flagship workflow');
   if (!guide.includes('get_leads')) throw new Error('get_server_guide missing the generation ladder');
   console.log('get_server_guide: ok');
+
+  const kits = (await callTool('list_kits')).data;
+  console.log('list_kits:', kits.count, 'personas');
+  if (kits.count !== 11) throw new Error(`expected 11 kit personas, got ${kits.count}`);
+
+  const kit = (await callTool('get_kit', { persona: 'indie-dev' })).data;
+  if (!kit.found) throw new Error('get_kit indie-dev: found should be true');
+  console.log('get_kit:', kit.persona, `$${kit.total_usd_month}${kit.total_is_partial ? '+' : ''}/mo`, `${kit.covered}/${kit.total_cells}`);
 
   // resources + prompts
   const resources = (await rpc('resources/list')) as { resources: { uri: string }[] };
@@ -155,7 +171,7 @@ async function main() {
   }
   console.log('prompts/list:', promptNames.join(', '));
 
-  const plan = JSON.parse(stripAttribution(await callTool('get_plan', { opportunity: '__smoke__' })));
+  const plan = (await callTool('get_plan', { opportunity: '__smoke__' })).data;
   if (plan.found !== false) throw new Error('get_plan for a nonexistent slug should return found:false');
   console.log('get_plan (miss path): ok');
 
