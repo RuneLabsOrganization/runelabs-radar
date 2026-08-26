@@ -6,6 +6,8 @@
  */
 const PRICE_PER_1M_USD: Record<string, { in: number; out: number }> = {
   'MiniMax-M2': { in: 0.3, out: 1.2 },
+  // M3 standard ≤512k, 50% off list: $0.30 in / $1.20 out
+  'MiniMax-M3': { in: 0.3, out: 1.2 },
 };
 
 /** Estimated USD cost of one call from its token usage; 0 for unknown models. */

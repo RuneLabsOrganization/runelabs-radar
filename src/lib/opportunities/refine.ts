@@ -72,10 +72,12 @@ export async function refineLeads(
 
   const identity = getIdentity();
   const system =
-    `You are the opportunity analyst for ${identity.productName}. You are given candidate ` +
+    `You score composed openings for ${identity.productName}. You are given candidate ` +
     `angles that were composed mechanically from live market signal, and the evidence they ` +
     `were composed from. Your job is to judge each one honestly and score it.\n\n` +
     `Rules:\n` +
+    `- Put every scored candidate in the JSON array under the key "openings". Do not wrap ` +
+    `the array under any other key.\n` +
     `- Keep each candidate's slug EXACTLY as given.\n` +
     `- Rewrite title and thesis into something a builder would actually recognise as a business.\n` +
     `- Drop any candidate that is incoherent or has no real demand behind it. Returning fewer ` +
@@ -91,9 +93,9 @@ export async function refineLeads(
     `<candidates>\n${leadBlock}\n</candidates>` +
     (constraints ? `\n\n${renderConstraints(constraints)}` : '');
 
-  let raw: { openings?: unknown };
+  let raw: unknown;
   try {
-    raw = await chatJSON<{ openings?: unknown }>(system, user, {
+    raw = await chatJSON<unknown>(system, user, {
       feature: 'lead_refine',
       userId,
       maxTokens: 4000,
@@ -102,8 +104,9 @@ export async function refineLeads(
     return { drafts: [], rejects: [] };
   }
 
+  const { payload, usedKey } = extractOpeningsPayload(raw);
   const rejects: { slug: string; reason: string }[] = [];
-  const sanitized = sanitizeOpportunities(raw?.openings, validRefs, rejects);
+  const sanitized = sanitizeOpportunities(payload, validRefs, rejects);
   const candidateSlugs = new Set(leads.map((l) => normalizeSlug(l.slug)));
   const drafts: OppDraft[] = [];
   for (const d of sanitized) {
@@ -113,10 +116,35 @@ export async function refineLeads(
     }
     drafts.push(d);
   }
-  if (drafts.length === 0 && Array.isArray(raw.openings) && raw.openings.length > 0) {
+  if (drafts.length === 0) {
     console.warn(
-      `[refine] ${leads.length} candidates in, 0 out — ${formatRejectSummary(rejects)}`,
+      `[refine] 0 drafts from ${leads.length} candidates; used=${usedKey}; keys=${JSON.stringify(Object.keys((raw ?? {}) as object))} ` +
+        `raw=${JSON.stringify(raw ?? {}).slice(0, 400)}`,
     );
+    if (rejects.length > 0) {
+      console.warn(`[refine] ${leads.length} candidates in, 0 out — ${formatRejectSummary(rejects)}`);
+    }
   }
   return { drafts, rejects };
+}
+
+/** extractJson spans first `{` to last `}`, so a bare `[{...}]` arrives as the inner object. */
+function looksLikeOpening(v: unknown): v is Record<string, unknown> {
+  if (typeof v !== 'object' || v === null || Array.isArray(v)) return false;
+  const rec = v as Record<string, unknown>;
+  return typeof rec.slug === 'string' && typeof rec.title === 'string' && typeof rec.thesis === 'string';
+}
+
+function extractOpeningsPayload(raw: unknown): { payload: unknown; usedKey: string } {
+  if (Array.isArray(raw)) return { payload: raw, usedKey: '(array)' };
+  if (raw === null || typeof raw !== 'object') return { payload: raw, usedKey: '(raw)' };
+  const rec = raw as Record<string, unknown>;
+  if (rec.openings !== undefined) return { payload: rec.openings, usedKey: 'openings' };
+  if (rec.opportunities !== undefined) return { payload: rec.opportunities, usedKey: 'opportunities' };
+  // extractJson cannot return a top-level array; a one-item payload shows up as the object itself
+  if (looksLikeOpening(raw)) return { payload: [raw], usedKey: '(object)' };
+  for (const k of Object.keys(rec)) {
+    if (Array.isArray(rec[k])) return { payload: rec[k], usedKey: k };
+  }
+  return { payload: undefined, usedKey: '(none)' };
 }

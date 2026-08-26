@@ -81,7 +81,17 @@ export function sanitizeOpportunities(
   validRefs: Set<string>,
   rejects?: SanitizeReject[],
 ): OppDraft[] {
-  if (!Array.isArray(v)) return [];
+  if (!Array.isArray(v)) {
+    rejects?.push({
+      slug: '(payload)',
+      reason: `not-an-array:${v === undefined ? 'undefined' : typeof v}`,
+    });
+    return [];
+  }
+  if (v.length === 0) {
+    rejects?.push({ slug: '(payload)', reason: 'empty-array' });
+    return [];
+  }
   const out: OppDraft[] = [];
   const seenSlugs = new Set<string>();
   for (const raw of v) {

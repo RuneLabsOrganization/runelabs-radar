@@ -57,7 +57,7 @@ Other commands: `npm test` (vitest), `npm run build`, `npm run worker` (cron loo
 | `SESSION_SECRET` | long random string; required in production |
 | `MINIMAX_API_KEY` | same key helix-claw uses — copy from its env on the server |
 | `MINIMAX_BASE_URL` | default `https://api.minimax.io/v1` |
-| `MINIMAX_MODEL` | default `MiniMax-M2` |
+| `MINIMAX_MODEL` | default `MiniMax-M3` |
 | `MINIMAX_DAILY_CALL_CAP` | default 500 calls/day |
 | `AA_API_KEY` | optional; enables Artificial Analysis data (board sync + market scatter) |
 | `PUBLIC_MODE` | `true` = anonymous read-only access; votes/verdicts/admin still require login |

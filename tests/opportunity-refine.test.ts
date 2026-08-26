@@ -147,4 +147,43 @@ describe('refineLeads', () => {
     expect(drafts).toHaveLength(0);
     expect(rejects.some((r) => r.reason === 'slug-not-in-candidates')).toBe(true);
   });
+
+  it('records empty-array when openings is present but vacant', async () => {
+    stubLlm({ openings: [] });
+    const { drafts, rejects } = await refineLeads({
+      leads: [lead('review-queue-triage')], primitives: PRIMITIVES, userId: 1,
+    });
+    expect(drafts).toHaveLength(0);
+    expect(rejects).toEqual([{ slug: '(payload)', reason: 'empty-array' }]);
+  });
+
+  it('accepts a valid opening under the opportunities alias', async () => {
+    const reply = modelReply('review-queue-triage');
+    stubLlm({ opportunities: reply.openings });
+    const { drafts, rejects } = await refineLeads({
+      leads: [lead('review-queue-triage')], primitives: PRIMITIVES, userId: 1,
+    });
+    expect(drafts).toHaveLength(1);
+    expect(drafts[0].slug).toBe('review-queue-triage');
+    expect(rejects).toEqual([]);
+  });
+
+  it('accepts a bare top-level array of one valid opening', async () => {
+    const reply = modelReply('review-queue-triage');
+    stubLlm(reply.openings);
+    const { drafts } = await refineLeads({
+      leads: [lead('review-queue-triage')], primitives: PRIMITIVES, userId: 1,
+    });
+    expect(drafts).toHaveLength(1);
+    expect(drafts[0].slug).toBe('review-queue-triage');
+  });
+
+  it('records not-an-array:undefined when no array payload is present', async () => {
+    stubLlm({ result: 'no' });
+    const { drafts, rejects } = await refineLeads({
+      leads: [lead('review-queue-triage')], primitives: PRIMITIVES, userId: 1,
+    });
+    expect(drafts).toHaveLength(0);
+    expect(rejects).toEqual([{ slug: '(payload)', reason: 'not-an-array:undefined' }]);
+  });
 });
