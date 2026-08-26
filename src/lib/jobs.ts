@@ -28,7 +28,10 @@ export type JobName =
   | 'agent-stacks'
   | 'radar-eval'
   | 'radar-batch'
-  | 'sweep';
+  | 'sweep'
+  | 'media-pricing'
+  | 'kit-evidence'
+  | 'kit-grade';
 
 // In-process overlap guard: a slow run (e.g. curate during a MiniMax incident)
 // must not overlap the next cron tick — overlapping curates would double-score

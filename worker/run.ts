@@ -27,6 +27,9 @@ import { syncAgentStacks } from '../src/lib/agent-stacks-sync';
 import { runRadarEval } from '../src/lib/science/eval';
 import { createWeeklyRadarDrop } from '../src/lib/batches';
 import { runSweep } from '../src/lib/sweep';
+import { runMediaPricingSync } from '../src/lib/ingest/media-pricing';
+import { runKitEvidence } from '../src/lib/kits/evidence';
+import { runKitPriceBackfill, runKitGrade } from '../src/lib/kits/grade';
 
 const jobs: Record<JobName, () => Promise<Record<string, unknown>>> = {
   ingest: runIngest,
@@ -54,6 +57,13 @@ const jobs: Record<JobName, () => Promise<Record<string, unknown>>> = {
   'radar-eval': runRadarEval,
   'radar-batch': createWeeklyRadarDrop,
   sweep: runSweep,
+  'media-pricing': runMediaPricingSync,
+  'kit-evidence': runKitEvidence,
+  'kit-grade': () => {
+    const prices = runKitPriceBackfill();
+    const grades = runKitGrade();
+    return Promise.resolve({ ...prices, ...grades });
+  },
 };
 
 const name = process.argv[2] as JobName | undefined;

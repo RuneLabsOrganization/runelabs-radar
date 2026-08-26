@@ -25,6 +25,9 @@ import { syncAgentStacks } from '../src/lib/agent-stacks-sync';
 import { runRadarEval } from '../src/lib/science/eval';
 import { createWeeklyRadarDrop } from '../src/lib/batches';
 import { runSweep } from '../src/lib/sweep';
+import { runMediaPricingSync } from '../src/lib/ingest/media-pricing';
+import { runKitEvidence } from '../src/lib/kits/evidence';
+import { runKitPriceBackfill, runKitGrade } from '../src/lib/kits/grade';
 
 loadDotEnv();
 
@@ -68,6 +71,16 @@ const tasks = [
   cron.schedule('30 7 * * 1', () => void withJobRun('radar-batch', createWeeklyRadarDrop)),
   // daily: drop expired anonymous leads and stale usage-counter rows
   cron.schedule('20 3 * * *', () => void withJobRun('sweep', runSweep)),
+  // media pricing: Tuesday 05:30, 20 min after the LLM pricing sync
+  cron.schedule('30 5 * * 2', () => void withJobRun('media-pricing', runMediaPricingSync)),
+  // evidence mining: daily 06:55, after pain mining (06:40) and science (06:50)
+  cron.schedule('55 6 * * *', () => void withJobRun('kit-evidence', runKitEvidence)),
+  // price backfill + confidence grading: daily 07:05, after both feeders
+  cron.schedule('5 7 * * *', () => void withJobRun('kit-grade', () => {
+    const prices = runKitPriceBackfill();
+    const grades = runKitGrade();
+    return Promise.resolve({ ...prices, ...grades });
+  })),
 ];
 
 // Populate immediately on boot instead of waiting for the first tick
