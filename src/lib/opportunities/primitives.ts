@@ -65,6 +65,25 @@ function normalize(value: number, ceiling: number): number {
   return Math.max(1, Math.min(100, Math.round((value / ceiling) * 100)));
 }
 
+/** Map each type onto 0..100 using that type's own min/max. Same-value groups get 50. */
+function rescaleIntensityWithinType(prims: Primitive[]): Primitive[] {
+  const bounds = new Map<PrimitiveType, { min: number; max: number }>();
+  for (const p of prims) {
+    const cur = bounds.get(p.type);
+    if (!cur) {
+      bounds.set(p.type, { min: p.intensity, max: p.intensity });
+    } else {
+      if (p.intensity < cur.min) cur.min = p.intensity;
+      if (p.intensity > cur.max) cur.max = p.intensity;
+    }
+  }
+  return prims.map((p) => {
+    const { min, max } = bounds.get(p.type)!;
+    const intensity = max === min ? 50 : Math.round(((p.intensity - min) / (max - min)) * 100);
+    return { ...p, intensity };
+  });
+}
+
 function taggedBeyondGeneral(tags: string[]): boolean {
   return tags.some((t) => t !== 'general');
 }
@@ -112,7 +131,7 @@ export function loadPrimitives(): Primitive[] {
   // so pains+patterns stay a strict majority. Zero demand → empty pool, not
   // headlines crossed with business models.
   const contextBudget = Math.floor(demand.length / 2);
-  if (contextBudget === 0) return demand;
+  if (contextBudget === 0) return rescaleIntensityWithinType(demand);
 
   const candidates: ContextCandidate[] = [];
 
@@ -159,5 +178,5 @@ export function loadPrimitives(): Primitive[] {
     ref: c.type === 'entity' ? `E${++entities}` : `S${++storyCount}`,
   }));
 
-  return [...demand, ...context];
+  return rescaleIntensityWithinType([...demand, ...context]);
 }

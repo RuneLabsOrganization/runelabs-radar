@@ -116,10 +116,15 @@ describe('loadPrimitives', () => {
     }
     const admitted = loadPrimitives()
       .filter((p) => p.type === 'story')
-      .map((p) => p.intensity)
-      .sort((a, b) => b - a);
+      .map((p) => p.label);
     expect(admitted).toHaveLength(5);
-    expect(admitted).toEqual([90, 80, 75, 60, 55]);
+    expect(admitted).toEqual([
+      'MCP agent code review tools scoring 90',
+      'MCP agent code review tools scoring 80',
+      'MCP agent code review tools scoring 75',
+      'MCP agent code review tools scoring 60',
+      'MCP agent code review tools scoring 55',
+    ]);
   });
 
   it('keeps refs unique and typed within P/A/E/S', () => {
@@ -130,6 +135,70 @@ describe('loadPrimitives', () => {
     for (const ref of refs) {
       expect(ref).toMatch(/^[PAES]\d+$/);
     }
+  });
+
+  it('rescales pains that all share intensity 1 to 50, not 5', () => {
+    const now = new Date();
+    for (let i = 0; i < 3; i++) {
+      db.insert(painPoints)
+        .values({
+          summary: `A distinct recurring pain number ${i} that teams keep reporting`,
+          sector: 'devtools',
+          intensity: 1,
+          createdAt: now,
+          lastSeenAt: now,
+        })
+        .run();
+    }
+    const pains = loadPrimitives().filter((p) => p.type === 'pain');
+    expect(pains).toHaveLength(3);
+    expect(pains.every((p) => p.intensity === 50)).toBe(true);
+    expect(pains.some((p) => p.intensity === 5)).toBe(false);
+  });
+
+  it('maps the weakest pain to 0 and the strongest to 100 when raw intensity is 1..5', () => {
+    const now = new Date();
+    for (let i = 1; i <= 5; i++) {
+      db.insert(painPoints)
+        .values({
+          summary: `A distinct recurring pain number ${i} that teams keep reporting`,
+          sector: 'devtools',
+          intensity: i,
+          createdAt: now,
+          lastSeenAt: now,
+        })
+        .run();
+    }
+    const intensities = loadPrimitives()
+      .filter((p) => p.type === 'pain')
+      .map((p) => p.intensity)
+      .sort((a, b) => a - b);
+    expect(intensities[0]).toBe(0);
+    expect(intensities[intensities.length - 1]).toBe(100);
+  });
+
+  it('rescales stories against stories only, never against pains', () => {
+    const now = new Date();
+    for (let i = 0; i < 4; i++) {
+      db.insert(painPoints)
+        .values({
+          summary: `A distinct recurring pain number ${i} that teams keep reporting`,
+          sector: 'devtools',
+          intensity: 1,
+          createdAt: now,
+          lastSeenAt: now,
+        })
+        .run();
+    }
+    seedStory(db, 'MCP agent code review tools scoring 90', 90);
+    seedStory(db, 'MCP agent code review tools scoring 80', 80);
+    const prims = loadPrimitives();
+    const storyIntensities = prims
+      .filter((p) => p.type === 'story')
+      .map((p) => p.intensity)
+      .sort((a, b) => a - b);
+    expect(storyIntensities).toEqual([0, 100]);
+    expect(prims.filter((p) => p.type === 'pain').every((p) => p.intensity === 50)).toBe(true);
   });
 });
 

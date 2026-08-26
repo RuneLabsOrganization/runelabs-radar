@@ -239,4 +239,28 @@ describe('composeLeads', () => {
     expect(storyLead).toBeDefined();
     expect(painLead!.heuristicScore).toBeGreaterThan(storyLead!.heuristicScore);
   });
+
+  it('the weakest pain on the weakest wedge outranks the strongest story on the strongest wedge', () => {
+    const pain = prim('P1', 'Code review backlogs block small teams', ['devtools'], 0);
+    const story = prim('S1', 'A new open-source model dropped', ['devtools'], 100, 'story');
+    const painLead = composeLeads({
+      primitives: [pain],
+      space: weightedWedgeSpace(8),
+      ownerKey: 'user:1',
+      day: '2026-08-25',
+      cursor: 0,
+      limit: 1,
+    }).leads[0];
+    const storyLead = composeLeads({
+      primitives: [story],
+      space: weightedWedgeSpace(15),
+      ownerKey: 'user:1',
+      day: '2026-08-25',
+      cursor: 0,
+      limit: 1,
+    }).leads[0];
+    expect(painLead).toBeDefined();
+    expect(storyLead).toBeDefined();
+    expect(painLead!.heuristicScore).toBeGreaterThan(storyLead!.heuristicScore);
+  });
 });
