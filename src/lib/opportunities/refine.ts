@@ -79,11 +79,20 @@ export async function refineLeads(
     `not describing a business at all). This should be rare — most candidates you receive ` +
     `have a real thesis and should get a real, even if low, score.\n` +
     `- evidenceRefs must only cite refs from the evidence block.\n` +
-    `- subScores: every key 0-20. Score generously where evidence supports it, honestly low ` +
-    `(0-8 is fine) where it does not — never omit the candidate to avoid scoring it low.\n` +
+    `- subScores: ALL TEN keys, each a bare integer 0-20 (not a string, not an ` +
+    `object, not a percent) where higher is always MORE favorable: {demand, ` +
+    `buildability (20 = weekend-buildable), margin, competition (20 = wide-open ` +
+    `field), timing, moat (defensibility once shipped), regClear (20 = no ` +
+    `regulatory exposure), platformSafe (20 = no single-platform dependency), ` +
+    `distribution (20 = the ICP is cheap to reach), qualityBar (20 = sellable ` +
+    `quality is easy to hit)}. Score anchors — 0-5 terrible, 6-10 weak, 11-15 ` +
+    `decent, 16-20 exceptional. A thin, single-source candidate should mostly ` +
+    `land 4-10 across the board — low numbers, never omitted.\n` +
     `- kpis: concrete numbers or null. Never invent precision you do not have.\n\n` +
     `Reply with JSON: {"openings":[{"slug","title","thesis","sector","window","windowMonths",` +
-    `"subScores":{...},"kpis":{...},"evidenceRefs":[...]}]}`;
+    `"subScores":{"demand":9,"buildability":14,"margin":8,"competition":11,` +
+    `"timing":10,"moat":6,"regClear":17,"platformSafe":15,"distribution":9,` +
+    `"qualityBar":13},"kpis":{...},"evidenceRefs":[...]}]}`;
 
   const user =
     `<evidence>\n${evidence}\n</evidence>\n\n` +
@@ -120,8 +129,36 @@ export async function refineLeads(
     console.warn(
       drafts.length === 0 ? `${head} raw=${JSON.stringify(raw ?? {}).slice(0, 400)}` : head,
     );
+    logSubScoreShape(raw, rejects);
   }
   return { drafts, rejects };
+}
+
+function pickScoreBlock(rec: Record<string, unknown>): unknown {
+  for (const k of ['subScores', 'sub_scores', 'scores']) {
+    if (rec[k] !== undefined) return rec[k];
+  }
+  for (const v of Object.values(rec)) {
+    if (v && typeof v === 'object' && !Array.isArray(v) && 'demand' in v) return v;
+  }
+  return rec;
+}
+
+function logSubScoreShape(
+  raw: unknown,
+  rejects: { slug: string; reason: string }[],
+): void {
+  const hit = rejects.find((r) => r.reason.startsWith('missing-or-invalid-sub-score'));
+  if (!hit) return;
+  const { payload } = extractOpeningsPayload(raw);
+  const items = Array.isArray(payload) ? payload : [];
+  const rec = items.find((item): item is Record<string, unknown> => {
+    if (typeof item !== 'object' || item === null) return false;
+    const s = (item as Record<string, unknown>).slug;
+    return typeof s === 'string' && (normalizeSlug(s) === hit.slug || s === hit.slug);
+  });
+  const block = rec ? pickScoreBlock(rec) : undefined;
+  console.warn(`[refine] sub-score shape mismatch on ${hit.slug}: subScores=${JSON.stringify(block)}`);
 }
 
 /** extractJson spans first `{` to last `}`, so a bare `[{...}]` arrives as the inner object. */

@@ -136,8 +136,10 @@ export function sanitizeOpportunities(
     const sub = {} as SubScores;
     let subOk = true;
     for (const k of SUB_KEYS) {
-      const val = subRaw[k];
-      if (typeof val !== 'number' || !Number.isFinite(val)) {
+      const scoreRaw = subRaw[k];
+      const val =
+        typeof scoreRaw === 'number' ? scoreRaw : typeof scoreRaw === 'string' ? Number(scoreRaw.trim()) : NaN;
+      if (!Number.isFinite(val)) {
         rejects?.push({ slug, reason: `missing-or-invalid-sub-score:${k}` });
         subOk = false;
         break;

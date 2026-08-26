@@ -136,6 +136,37 @@ describe('sanitizeOpportunities', () => {
     const out = sanitizeOpportunities([{ ...valid, sector: 'crypto' }], refs);
     expect(out[0].sector).toBeNull();
   });
+
+  it('accepts a string integer sub-score and clamps it like a number', () => {
+    const out = sanitizeOpportunities(
+      [{ ...valid, subScores: { ...fullScores, demand: '12' } }],
+      refs,
+    );
+    expect(out).toHaveLength(1);
+    expect(out[0].sub.demand).toBe(12);
+  });
+
+  it('still rejects an object sub-score with missing-or-invalid-sub-score', () => {
+    const rejects: { slug: string; reason: string }[] = [];
+    const out = sanitizeOpportunities(
+      [{ ...valid, subScores: { ...fullScores, demand: { value: 12 } } }],
+      refs,
+      rejects,
+    );
+    expect(out).toHaveLength(0);
+    expect(rejects.some((r) => r.reason === 'missing-or-invalid-sub-score:demand')).toBe(true);
+  });
+
+  it('still rejects a non-numeric string sub-score', () => {
+    const rejects: { slug: string; reason: string }[] = [];
+    const out = sanitizeOpportunities(
+      [{ ...valid, subScores: { ...fullScores, demand: 'twelve' } }],
+      refs,
+      rejects,
+    );
+    expect(out).toHaveLength(0);
+    expect(rejects.some((r) => r.reason === 'missing-or-invalid-sub-score:demand')).toBe(true);
+  });
 });
 
 describe('sanitizeBrief', () => {

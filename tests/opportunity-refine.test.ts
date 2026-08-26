@@ -260,4 +260,52 @@ describe('refineLeads', () => {
     expect(row?.confidence).toBeLessThanOrEqual(50);
     expect(row?.verdict).toBe('reject');
   });
+
+  it('accepts string integer sub-scores as numbers', async () => {
+    const reply = modelReply('string-scores');
+    reply.openings[0].subScores = Object.fromEntries(SUB_KEYS.map((k) => [k, '12']));
+    stubLlm(reply);
+    const { drafts, rejects } = await refineLeads({
+      leads: [lead('string-scores')], primitives: PRIMITIVES, userId: 1,
+    });
+    expect(drafts).toHaveLength(1);
+    expect(rejects).toEqual([]);
+    for (const k of SUB_KEYS) expect(drafts[0].sub[k]).toBe(12);
+  });
+
+  it('still rejects object-shaped sub-scores', async () => {
+    const reply = modelReply('object-scores');
+    reply.openings[0].subScores = { ...reply.openings[0].subScores, demand: { value: 12 } };
+    stubLlm(reply);
+    const { drafts, rejects } = await refineLeads({
+      leads: [lead('object-scores')], primitives: PRIMITIVES, userId: 1,
+    });
+    expect(drafts).toHaveLength(0);
+    expect(rejects.some((r) => r.reason === 'missing-or-invalid-sub-score:demand')).toBe(true);
+  });
+
+  it('still rejects non-numeric string sub-scores', async () => {
+    const reply = modelReply('word-scores');
+    reply.openings[0].subScores = { ...reply.openings[0].subScores, demand: 'twelve' };
+    stubLlm(reply);
+    const { drafts, rejects } = await refineLeads({
+      leads: [lead('word-scores')], primitives: PRIMITIVES, userId: 1,
+    });
+    expect(drafts).toHaveLength(0);
+    expect(rejects.some((r) => r.reason === 'missing-or-invalid-sub-score:demand')).toBe(true);
+  });
+
+  it('logs the raw sub-score shape on a mismatch', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const reply = modelReply('shape-mismatch');
+    reply.openings[0].subScores = { ...reply.openings[0].subScores, demand: { value: 12 } };
+    stubLlm(reply);
+    await refineLeads({
+      leads: [lead('shape-mismatch')], primitives: PRIMITIVES, userId: 1,
+    });
+    const shape = warn.mock.calls.map(([msg]) => String(msg)).find((m) => m.includes('sub-score shape mismatch'));
+    expect(shape).toContain('shape-mismatch');
+    expect(shape).toContain('"value":12');
+    warn.mockRestore();
+  });
 });
