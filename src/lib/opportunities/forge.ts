@@ -14,7 +14,8 @@ import { getDb } from '../db';
 import { opportunities } from '../db/schema';
 import { SUB_KEYS, type SubScores } from './axes';
 import { runDebate } from './critic';
-import { applyGate, type CriticResult, type GateKpis } from './gate';
+import { applyGate, type CriticResult } from './gate';
+import { parseKpis, parseStoredEvidence } from './rescore';
 import { visibleTo } from './scope';
 
 export interface ForgeResult {
@@ -86,16 +87,9 @@ export async function forgeOpportunity(
   const gate = applyGate(
     {
       sub: parseSub(row.scores),
-      kpis: row.kpis ? (JSON.parse(row.kpis) as GateKpis) : null,
+      kpis: parseKpis(row.kpis),
       windowMonths: row.windowMonths,
-      evidenceCount: (() => {
-        try {
-          const e = JSON.parse(row.evidence) as unknown[];
-          return Array.isArray(e) ? e.length : 0;
-        } catch {
-          return 0;
-        }
-      })(),
+      evidenceCount: parseStoredEvidence(row.evidence).length,
       legacy: false,
     },
     critic,

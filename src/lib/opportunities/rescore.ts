@@ -26,7 +26,7 @@ function parseSub(json: string): { sub: SubScores; legacy: boolean } {
   }
 }
 
-function parseKpis(json: string | null): OppKpis {
+export function parseKpis(json: string | null): OppKpis {
   if (!json) return sanitizeKpis(null);
   try {
     return sanitizeKpis(JSON.parse(json));
@@ -35,7 +35,7 @@ function parseKpis(json: string | null): OppKpis {
   }
 }
 
-function parseStoredEvidence(json: string): { type: string; label: string }[] {
+export function parseStoredEvidence(json: string): { type: string; label: string }[] {
   try {
     const parsed: unknown = JSON.parse(json);
     if (!Array.isArray(parsed)) return [];

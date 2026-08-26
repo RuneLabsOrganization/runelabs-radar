@@ -158,4 +158,31 @@ describe('forgeOpportunity', () => {
     const rows = db.select().from(llmCalls).all();
     expect(rows.some((r) => r.feature === 'forge' && r.userId === 1)).toBe(true);
   });
+
+  it('does not NaN when stored kpis or evidence JSON is malformed', async () => {
+    const now = new Date();
+    const sub = Object.fromEntries(SUB_KEYS.map((k) => [k, 14]));
+    const id = db
+      .insert(opportunities)
+      .values({
+        slug: 'bad-json', ownerUserId: 1, title: 'Malformed stored kpis',
+        thesis: 'A sufficiently long thesis for the forge to work against.',
+        sector: 'devtools', status: 'active', flipScore: 70, holdScore: 50,
+        scores: JSON.stringify(sub),
+        kpis: JSON.stringify({
+          priceUsd: 'free', monthlyCostUsd: 50, breakEvenCustomers: 10, initialCostUsd: 100,
+        }),
+        evidence: '{not-json',
+        windowMonths: 6,
+        firstSeenAt: now, lastSeenAt: now,
+      })
+      .returning({ id: opportunities.id })
+      .get()!.id;
+
+    const res = await forgeOpportunity(id, 1);
+    expect(res.ok).toBe(true);
+    expect(Number.isFinite(res.flipScore)).toBe(true);
+    expect(Number.isFinite(res.holdScore)).toBe(true);
+    expect(Number.isFinite(res.confidence)).toBe(true);
+  });
 });
