@@ -4,6 +4,7 @@ import type { Db } from '@/lib/db';
 import { kitEvidence, kitPicks } from '@/lib/db/schema';
 import { recordMetrics } from '@/lib/metrics';
 import { MEDIA_PRICING_SOURCE } from '@/lib/ingest/media-pricing';
+import { PRICING_SOURCE } from '@/lib/ingest/pricing';
 import { runKitGrade, runKitPriceBackfill } from '@/lib/kits/grade';
 
 describe('kit price backfill', () => {
@@ -126,5 +127,56 @@ describe('kit grade', () => {
     const row = db.select().from(kitPicks).all()[0];
     expect(row.evidenceCount).toBe(2);
     expect(row.distinctSources).toBe(2);
+  });
+});
+
+describe('kit price backfill — provider-pricing (per-token LLM list prices)', () => {
+  let db: Db;
+  const now = new Date('2026-08-26T12:00:00Z');
+
+  function seedPick(pickName: string) {
+    db.insert(kitPicks)
+      .values({ category: 'coding', task: 'agentic-coding', tier: 'best', pickName, updatedAt: now })
+      .run();
+  }
+
+  beforeEach(() => {
+    db = useTestDb();
+    recordMetrics([
+      { source: PRICING_SOURCE, entity: 'Claude Opus 5', metric: 'price_in', value: 15 },
+      { source: PRICING_SOURCE, entity: 'GPT-5.5', metric: 'price_in', value: 10 },
+      { source: PRICING_SOURCE, entity: 'Gemini 3 Flash', metric: 'price_in', value: 0.3 },
+    ]);
+  });
+
+  // Per-token pricing is inherently usage-based: monthly cost depends on volume.
+  it('marks a matched LLM pick as usage-priced with no monthly amount', () => {
+    seedPick('Claude Opus 5 (Adaptive Reasoning, Max Effort)');
+    expect(runKitPriceBackfill(now).updated).toBe(1);
+
+    const row = db.select().from(kitPicks).all()[0];
+    expect(row.priceModel).toBe('usage');
+    expect(row.priceUsdMonth).toBeNull();
+    expect(row.riskFlag).toContain('per token');
+  });
+
+  // The regression this guards: prefix matching would price 5.6 as 5.5.
+  it.each([
+    'GPT-5.6 Sol (max)',
+    'Gemini 3.7 Flash (high)',
+    'Qwen3.8-27B via Ollama',
+  ])('leaves the near-miss/local pick %s unpriced', (pickName) => {
+    seedPick(pickName);
+    expect(runKitPriceBackfill(now).updated).toBe(0);
+
+    const row = db.select().from(kitPicks).all()[0];
+    expect(row.priceUsdMonth).toBeNull();
+    expect(row.riskFlag).toBeNull();
+  });
+
+  it('is idempotent across both pricing sources', () => {
+    seedPick('Claude Opus 5 (Adaptive Reasoning, Max Effort)');
+    expect(runKitPriceBackfill(now).updated).toBe(1);
+    expect(runKitPriceBackfill(now).updated).toBe(0);
   });
 });

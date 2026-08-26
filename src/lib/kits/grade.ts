@@ -9,25 +9,39 @@
  * Turning a per-second rate into a fake monthly figure would be exactly the
  * bill-shock this product exists to warn about.
  */
-import { desc, eq } from 'drizzle-orm';
+import { desc, inArray } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { getDb } from '../db';
 import { kitEvidence, kitPicks, metricPoints } from '../db/schema';
 import { MEDIA_PRICING_SOURCE } from '../ingest/media-pricing';
+import { PRICING_SOURCE } from '../ingest/pricing';
 import { gradeConfidence } from './confidence';
+import { matchPricedEntity } from './match-price';
 
 const UNIT_RISK: Record<string, string> = {
   price_per_second: 'billed per second of output — cost scales with how much you generate',
   price_per_image: 'billed per image — cost scales with volume',
   price_per_1k_chars: 'billed per 1k characters — cost scales with volume',
+  // provider-pricing (per-token LLM list prices). A model's monthly cost is a
+  // function of how much you send it, so this can never be a seat price.
+  price_in: 'billed per token — cost scales with how much you use it',
+  price_out: 'billed per token — cost scales with how much you use it',
+  price_cache_hit: 'billed per token — cost scales with how much you use it',
 };
 
-/** Latest value per (entity, metric) from the media pricing series. */
+/**
+ * Latest value per entity across both pricing feeders.
+ *
+ * media-pricing carries per-unit prices for image/video/audio tools;
+ * provider-pricing carries per-token LLM list prices. Most board picks are
+ * LLMs, so reading only the former left almost every pick unpriced.
+ */
 function latestPrices(): Map<string, { metric: string; value: number }> {
   // metric_points keys on `date` (YYYY-MM-DD text), not a timestamp — see schema.ts
   const rows = getDb()
     .select()
     .from(metricPoints)
-    .where(eq(metricPoints.source, MEDIA_PRICING_SOURCE))
+    .where(inArray(metricPoints.source, [MEDIA_PRICING_SOURCE, PRICING_SOURCE]))
     .orderBy(desc(metricPoints.date), desc(metricPoints.id))
     .all();
   const out = new Map<string, { metric: string; value: number }>();
@@ -43,7 +57,10 @@ export function runKitPriceBackfill(now: Date = new Date()): { updated: number }
   let updated = 0;
 
   for (const pick of db.select().from(kitPicks).all()) {
-    const found = prices.get(pick.pickName);
+    // Exact match after stripping effort/runtime qualifiers — a near-miss like
+    // "GPT-5.6 Sol (max)" -> "GPT-5.5" would assert someone else's price.
+    const entity = matchPricedEntity(pick.pickName, prices.keys());
+    const found = entity ? prices.get(entity) : undefined;
     if (!found) continue;
 
     const isSeat = found.metric === 'price_per_month';
