@@ -1,10 +1,11 @@
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { getDb } from '../../src/lib/db';
 import { opportunities } from '../../src/lib/db/schema';
 import { normalizeSlug, proposeOpportunities, type ScoutConstraints } from '../../src/lib/opportunities/engine';
 import { persistScoutDrafts } from '../../src/lib/opportunities/persist-scout';
+import { publicOnly } from '../../src/lib/opportunities/scope';
 import { getProfile } from '../../src/lib/personalization';
 import { can } from '../../src/lib/entitlements';
 import { bump, peek } from '../../src/lib/usage/counters';
@@ -56,7 +57,7 @@ function activeSlugs(userId: number | null): Set<string> {
   // bug that made scout return nothing once the shared pool saturated.
   const where =
     userId == null
-      ? and(eq(opportunities.status, 'active'), isNull(opportunities.ownerUserId))
+      ? and(eq(opportunities.status, 'active'), publicOnly())
       : and(eq(opportunities.status, 'active'), eq(opportunities.ownerUserId, userId));
   return new Set(
     db.select({ slug: opportunities.slug }).from(opportunities).where(where).all()

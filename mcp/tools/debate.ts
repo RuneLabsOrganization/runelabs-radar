@@ -1,4 +1,4 @@
-import { desc, eq, gte, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { getDb } from '../../src/lib/db';
@@ -10,6 +10,7 @@ import { envelopeSchema, respond, type NextAction, withUserEconomy } from '../li
 import type { AuthContext } from '../lib/auth';
 import { can } from '../../src/lib/entitlements';
 import { estimateTokens } from '../../src/lib/mcp-economy';
+import { visibleTo } from '../../src/lib/opportunities/scope';
 
 // --- per-caller daily cap (§9b): a debate costs 4 LLM calls and there is no
 // cache to serve repeats from, so EVERY call counts — recorded at entry,
@@ -63,7 +64,7 @@ interface Grounding {
   closest: { slug: string; title: string }[];
 }
 
-function buildGrounding(idea: string): Grounding {
+function buildGrounding(idea: string, userId: number | null): Grounding {
   const db = getDb();
   const ideaTok = tokenSet(idea);
   const sections: string[] = [];
@@ -154,7 +155,11 @@ function buildGrounding(idea: string): Grounding {
   }
 
   // closest tracked opportunities by token overlap on title+thesis
-  const active = db.select().from(opportunities).where(eq(opportunities.status, 'active')).all();
+  const active = db
+    .select()
+    .from(opportunities)
+    .where(and(eq(opportunities.status, 'active'), visibleTo(userId)))
+    .all();
   const closest = active
     .map((o) => ({ o, score: overlap(ideaTok, tokenSet(`${o.title} ${o.thesis}`)) }))
     .filter((x) => x.score > 0)
@@ -252,7 +257,7 @@ export function registerDebateTools(server: McpServer, auth: AuthContext): void 
       // anonymous flat cap: record at entry, before the LLM run
       if (auth.userId == null) recordDebate(auth.rateKey);
 
-      const grounding = buildGrounding(idea);
+      const grounding = buildGrounding(idea, auth.userId);
       const ideaText =
         `<idea>\n${promptLine(idea, 600)}\n</idea>` + (grounding.block ? `\n\n${grounding.block}` : '');
 

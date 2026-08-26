@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { and, desc, eq } from 'drizzle-orm';
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { getDb } from '../../src/lib/db';
@@ -11,6 +11,7 @@ import { marketVisible, type AuthContext } from '../lib/auth';
 import { can } from '../../src/lib/entitlements';
 import { quotaFor, type Tier } from '../../src/lib/billing';
 import { estimateTokens } from '../../src/lib/mcp-economy';
+import { visibleTo } from '../../src/lib/opportunities/scope';
 
 // --- plan-generation quotas (§8a): anonymous callers keep the flat per-caller
 // daily cap (plans cost 6-7 LLM calls each, and the global MiniMax cap is
@@ -79,12 +80,17 @@ const planSchema = z.object({
   generated_at: z.string(),
 });
 
-function resolveOpportunity(ref: string) {
+function resolveOpportunity(ref: string, userId: number | null) {
   const db = getDb();
   const asId = /^\d+$/.test(ref) ? Number(ref) : null;
   return asId
-    ? db.select().from(opportunities).where(eq(opportunities.id, asId)).get()
-    : db.select().from(opportunities).where(eq(opportunities.slug, ref)).get();
+    ? db.select().from(opportunities).where(and(eq(opportunities.id, asId), visibleTo(userId))).get()
+    : db
+        .select()
+        .from(opportunities)
+        .where(and(eq(opportunities.slug, ref), visibleTo(userId)))
+        .orderBy(desc(opportunities.ownerUserId))
+        .get();
 }
 
 export function registerPlanTools(server: McpServer, auth: AuthContext): void {
@@ -118,7 +124,7 @@ export function registerPlanTools(server: McpServer, auth: AuthContext): void {
           { summary: "This token has no 'plans' scope — re-authorize with the plans scope to generate plans." },
         );
       }
-      const opp = resolveOpportunity(opportunity);
+      const opp = resolveOpportunity(opportunity, auth.userId);
       if (!opp) {
         return respond(
           { ok: false, error: `no opportunity "${opportunity}" — see get_opportunities` },
@@ -270,7 +276,7 @@ export function registerPlanTools(server: McpServer, auth: AuthContext): void {
       },
     },
     async ({ opportunity, format }) => {
-      const opp = resolveOpportunity(opportunity);
+      const opp = resolveOpportunity(opportunity, auth.userId);
       if (!opp) {
         return respond(
           { found: false, reason: `no opportunity "${opportunity}"` },
@@ -280,7 +286,7 @@ export function registerPlanTools(server: McpServer, auth: AuthContext): void {
           },
         );
       }
-      const plan = readPlan(opp.id);
+      const plan = readPlan(opp.id, auth.userId);
       if (!plan) {
         return respond(
           {

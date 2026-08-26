@@ -12,6 +12,7 @@ import {
 import { urls } from '../../src/lib/urls';
 import { envelopeSchema, hoursAgo, iso, respond, withUserEconomy } from '../lib/payload';
 import type { AuthContext } from '../lib/auth';
+import { visibleTo } from '../../src/lib/opportunities/scope';
 
 const watchKind = z.enum(['entity', 'sector', 'opportunity', 'topic']);
 
@@ -234,7 +235,7 @@ export function registerWatchTools(server: McpServer, auth: AuthContext): void {
       const oppRows = db
         .select()
         .from(opportunities)
-        .where(gte(opportunities.lastSeenAt, since))
+        .where(and(gte(opportunities.lastSeenAt, since), visibleTo(auth.userId)))
         .orderBy(desc(opportunities.lastSeenAt))
         .limit(40)
         .all()

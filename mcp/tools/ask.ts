@@ -17,6 +17,7 @@ import { promptLine, stripCjkLeak } from '../../src/lib/prompt-hygiene';
 import { urls } from '../../src/lib/urls';
 import { envelopeSchema, hoursAgo, respond, withUserEconomy, type NextAction } from '../lib/payload';
 import { marketVisible, type AuthContext } from '../lib/auth';
+import { visibleTo } from '../../src/lib/opportunities/scope';
 
 const ASK_DAILY_CAP = Number(process.env.MCP_ASK_DAILY_CAP ?? 10);
 const askUsage = new Map<string, { date: string; count: number }>();
@@ -57,7 +58,7 @@ function gatherGrounding(auth: AuthContext): { block: string; refs: CiteRef[] } 
       verdict: opportunities.verdict,
     })
     .from(opportunities)
-    .where(eq(opportunities.status, 'active'))
+    .where(and(eq(opportunities.status, 'active'), visibleTo(auth.userId)))
     .orderBy(desc(opportunities.flipScore))
     .limit(5)
     .all();

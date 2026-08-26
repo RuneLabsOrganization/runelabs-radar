@@ -1,11 +1,12 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { count, eq, gte } from 'drizzle-orm';
+import { and, count, eq, gte } from 'drizzle-orm';
 import { getDb } from '../../src/lib/db';
 import { launches, opportunities, stacks, stories } from '../../src/lib/db/schema';
 import { getIdentity } from '../../src/lib/identity';
 import { config } from '../../src/lib/config';
 import { text } from '../lib/payload';
 import type { AuthContext } from '../lib/auth';
+import { publicOnly } from '../../src/lib/opportunities/scope';
 
 /**
  * Orientation for a freshly-connected agent: jobs first, specialists as depth.
@@ -25,7 +26,7 @@ export function registerMetaTools(server: McpServer, auth: AuthContext): void {
       const stats = {
         curated_stories: db.select({ c: count() }).from(stories).where(eq(stories.status, 'curated')).get()?.c ?? 0,
         active_opportunities:
-          db.select({ c: count() }).from(opportunities).where(eq(opportunities.status, 'active')).get()?.c ?? 0,
+          db.select({ c: count() }).from(opportunities).where(and(eq(opportunities.status, 'active'), publicOnly())).get()?.c ?? 0,
         stack_playbooks: db.select({ c: count() }).from(stacks).get()?.c ?? 0,
         launches_7d:
           db

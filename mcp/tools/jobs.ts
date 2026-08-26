@@ -1,4 +1,4 @@
-import { desc, eq } from 'drizzle-orm';
+import { and, desc, eq } from 'drizzle-orm';
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { getDb } from '../../src/lib/db';
@@ -9,6 +9,7 @@ import { setSession } from '../../src/lib/personalization';
 import { urls } from '../../src/lib/urls';
 import { envelopeSchema, respond, withUserEconomy } from '../lib/payload';
 import { marketVisible, type AuthContext } from '../lib/auth';
+import { visibleTo } from '../../src/lib/opportunities/scope';
 
 const STOPWORDS = new Set(
   (
@@ -105,7 +106,11 @@ export function registerJobTools(server: McpServer, auth: AuthContext): void {
         .sort((a, b) => b.overlap - a.overlap || b.score - a.score)
         .slice(0, 8);
 
-      const oppRows = db.select().from(opportunities).where(eq(opportunities.status, 'active')).all();
+      const oppRows = db
+        .select()
+        .from(opportunities)
+        .where(and(eq(opportunities.status, 'active'), visibleTo(auth.userId)))
+        .all();
       const opps = oppRows
         .map((o) => ({
           slug: o.slug,
