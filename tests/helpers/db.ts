@@ -1,11 +1,14 @@
 import { openDb, _setDb, type Db } from '@/lib/db';
 import { users } from '@/lib/db/schema';
+import { _resetPoolCache, _setPoolDayForTests } from '@/lib/opportunities/pool';
 
 /**
  * Creates a fresh in-memory database (migrated) and installs it as the
  * process singleton so lib code under test uses it. Call in beforeEach.
  */
 export function useTestDb(): Db {
+  _resetPoolCache();
+  _setPoolDayForTests(null);
   const db = openDb(':memory:');
   _setDb(db);
   return db;

@@ -7,12 +7,12 @@ import { composeLeads } from '../../src/lib/opportunities/compose';
 import type { PrimitiveType } from '../../src/lib/opportunities/primitives';
 import { getLead, insertLeads, markRefined, dismissLead, dismissedSlugs, type Owner } from '../../src/lib/opportunities/leads';
 import { persistScoutDrafts } from '../../src/lib/opportunities/persist-scout';
+import { getStablePool } from '../../src/lib/opportunities/pool';
 import { loadPrimitives } from '../../src/lib/opportunities/primitives';
 import { refineLeads } from '../../src/lib/opportunities/refine';
 import { dayKey } from '../../src/lib/opportunities/seed';
 import { publicOnly } from '../../src/lib/opportunities/scope';
 import { normalizeSlug } from '../../src/lib/opportunities/slug';
-import { loadWedges } from '../../src/lib/opportunities/wedges';
 import { getProfile, setProfile } from '../../src/lib/personalization';
 import { can } from '../../src/lib/entitlements';
 import { envelopeSchema, respond, withUserEconomy, type NextAction } from '../lib/payload';
@@ -60,8 +60,7 @@ export function registerLeadTools(server: McpServer, auth: AuthContext): void {
     },
     async ({ limit, cursor, sector }) => {
       const owner = ownerFor(auth);
-      const primitives = loadPrimitives();
-      const space = loadWedges();
+      const { primitives, space } = getStablePool();
 
       // Builder+ personalization steers away from sectors the user rejected
       let avoidSectors: string[] = [];
@@ -137,7 +136,7 @@ export function registerLeadTools(server: McpServer, auth: AuthContext): void {
       if (composed.nextCursor !== null) {
         next.push({
           tool: 'get_leads',
-          arguments: { limit, cursor: composed.nextCursor },
+          arguments: { limit, cursor: composed.nextCursor, ...(sector ? { sector } : {}) },
           reason: 'more leads — your space is far from exhausted',
         });
       }

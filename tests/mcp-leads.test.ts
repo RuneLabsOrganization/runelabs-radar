@@ -188,4 +188,45 @@ describe('get_leads', () => {
       .structuredContent as unknown as LeadsPayload;
     expect(again.leads.map((l) => l.slug)).not.toContain(dropped);
   });
+
+  it('carries the current sector filter into the pagination next-action', async () => {
+    const client = await wire(authFor(1, 'user:1'));
+    const p = (await client.callTool({
+      name: 'get_leads',
+      arguments: { limit: 3, sector: 'devtools' },
+    })).structuredContent as unknown as LeadsPayload;
+    const page = p.next.find((n) => n.tool === 'get_leads');
+    expect(page).toBeDefined();
+    expect(page!.arguments?.sector).toBe('devtools');
+    expect(page!.arguments?.cursor).toBe(p.next_cursor);
+  });
+
+  it('holds the primitive pool for the rest of the day so a new pain cannot shift an issued cursor', async () => {
+    const client = await wire(authFor(1, 'user:1'));
+    const first = (await client.callTool({ name: 'get_leads', arguments: { limit: 8, cursor: 0 } }))
+      .structuredContent as unknown as LeadsPayload;
+    const blob = (leads: LeadsPayload['leads']) =>
+      leads.map((l) => `${l.slug} ${l.title}`).join('\n');
+    expect(blob(first.leads)).not.toMatch(/xyzzycachepain/i);
+
+    db.insert(painPoints)
+      .values({
+        summary: 'XYZZYCACHEPAIN a unique new loud pain that would dominate composition',
+        sector: 'devtools',
+        intensity: 99,
+        createdAt: new Date(),
+        lastSeenAt: new Date(),
+      })
+      .run();
+
+    const sameDay = (await client.callTool({ name: 'get_leads', arguments: { limit: 8, cursor: 0 } }))
+      .structuredContent as unknown as LeadsPayload;
+    expect(blob(sameDay.leads)).not.toMatch(/xyzzycachepain/i);
+
+    const { _setPoolDayForTests } = await import('@/lib/opportunities/pool');
+    _setPoolDayForTests('2099-01-01');
+    const nextDay = (await client.callTool({ name: 'get_leads', arguments: { limit: 8, cursor: 0 } }))
+      .structuredContent as unknown as LeadsPayload;
+    expect(blob(nextDay.leads)).toMatch(/xyzzycachepain/i);
+  });
 });
