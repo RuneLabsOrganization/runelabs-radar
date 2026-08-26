@@ -98,6 +98,10 @@ export function registerLeadTools(server: McpServer, auth: AuthContext): void {
         );
       }
 
+      composed.leads.sort(
+        (a, b) => b.heuristicScore - a.heuristicScore || a.slug.localeCompare(b.slug),
+      );
+
       // persist so refine_lead can find them by slug later
       insertLeads(owner, composed.leads);
 

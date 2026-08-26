@@ -28,7 +28,7 @@ interface LeadsPayload {
   next_cursor: number | null;
   space_size: number;
   summary: string;
-  next: { tool: string }[];
+  next: { tool: string; arguments?: Record<string, unknown> }[];
 }
 
 function seedPains(db: Db, n: number) {
@@ -97,6 +97,18 @@ describe('get_leads', () => {
     const overlap = second.leads.map((l) => l.slug)
       .filter((s) => first.leads.some((l) => l.slug === s));
     expect(overlap).toEqual([]);
+  });
+
+  it('returns the page strongest-first and points refine_lead at that lead', async () => {
+    const client = await wire(authFor(1, 'user:1'));
+    const p = (await client.callTool({ name: 'get_leads', arguments: { limit: 8 } }))
+      .structuredContent as unknown as LeadsPayload;
+    expect(p.leads.length).toBeGreaterThan(1);
+    const scores = p.leads.map((l) => l.heuristic_score);
+    expect(scores).toEqual([...scores].sort((a, b) => b - a));
+    const refine = p.next.find((n) => n.tool === 'refine_lead');
+    expect(refine).toBeDefined();
+    expect(refine!.arguments?.lead).toBe(p.leads[0].slug);
   });
 
   it('serves anonymous callers too', async () => {

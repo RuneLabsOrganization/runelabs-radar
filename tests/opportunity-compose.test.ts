@@ -17,14 +17,19 @@ function prim(
 
 /** One-value-per-axis space with no tag rules — both primitives share the wedge. */
 function openWedgeSpace(): WedgeSpace {
+  return weightedWedgeSpace(10);
+}
+
+/** Taxonomy extremes today are weight 8 (weakest) and 15 (strongest). */
+function weightedWedgeSpace(weight: number): WedgeSpace {
   const val = (axis: WedgeAxis, id: number): WedgeValue => ({
     id,
     axis,
-    slug: `open-${axis}`,
-    label: `Open ${axis}`,
+    slug: `w${weight}-${axis}`,
+    label: `W${weight} ${axis}`,
     requiresTags: [],
     excludesTags: [],
-    weight: 10,
+    weight,
   });
   return {
     business_model: [val('business_model', 1)],
@@ -206,6 +211,30 @@ describe('composeLeads', () => {
     expect(res.leads).toHaveLength(2);
     const painLead = res.leads.find((l) => l.primitiveRefs.includes('P1'));
     const storyLead = res.leads.find((l) => l.primitiveRefs.includes('S1'));
+    expect(painLead).toBeDefined();
+    expect(storyLead).toBeDefined();
+    expect(painLead!.heuristicScore).toBeGreaterThan(storyLead!.heuristicScore);
+  });
+
+  it('scores a pain on the weakest wedge above a same-intensity story on the strongest', () => {
+    const pain = prim('P1', 'Code review backlogs block small teams', ['devtools'], 80);
+    const story = prim('S1', 'A new open-source model dropped', ['devtools'], 80, 'story');
+    const painLead = composeLeads({
+      primitives: [pain],
+      space: weightedWedgeSpace(8),
+      ownerKey: 'user:1',
+      day: '2026-08-25',
+      cursor: 0,
+      limit: 1,
+    }).leads[0];
+    const storyLead = composeLeads({
+      primitives: [story],
+      space: weightedWedgeSpace(15),
+      ownerKey: 'user:1',
+      day: '2026-08-25',
+      cursor: 0,
+      limit: 1,
+    }).leads[0];
     expect(painLead).toBeDefined();
     expect(storyLead).toBeDefined();
     expect(painLead!.heuristicScore).toBeGreaterThan(storyLead!.heuristicScore);

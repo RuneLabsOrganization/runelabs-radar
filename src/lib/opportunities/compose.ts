@@ -78,12 +78,12 @@ function phrase(words: string[]): string {
 const TRAILER =
   'Composed from live signal and not yet validated — refine it to get scores and KPIs.';
 
-/** Primitive loudness multiplier. Pain stays 1.0 so existing scores do not move. */
-const TYPE_WEIGHT: Record<PrimitiveType, number> = {
-  pain: 1.0,
-  pattern: 0.6,
-  story: 0.4,
-  entity: 0.4,
+/** Evidence strength by primitive type — a flat, legible ordering term. */
+const TYPE_BONUS: Record<PrimitiveType, number> = {
+  pain: 20,      // someone said they hurt: direct demand evidence
+  pattern: 12,   // capability or timing shift: strong circumstantial
+  entity: 4,
+  story: 0,      // news: context only
 };
 
 function thesisSkeleton(type: PrimitiveType, label: string, wedge: Wedge): string {
@@ -150,14 +150,14 @@ export function composeLeads(opts: ComposeOptions): ComposeResult {
       const slug = normalizeSlug(`${head}-${unique}`);
       if (!slug || exclude.has(slug) || emitted.has(slug)) continue;
 
-      // primitive loudness (0..50, type-weighted) + average wedge weight (0..50)
+      // intensity + wedge weight + a type bonus that dominates wedge variance
       const avgWeight =
         WEDGE_AXES.reduce((n, axis) => n + wedge[axis].weight, 0) / WEDGE_AXES.length;
       const heuristicScore = Math.max(
         0,
         Math.min(
           100,
-          Math.round(primitive.intensity * 0.5 * TYPE_WEIGHT[primitive.type] + avgWeight * 2.5),
+          Math.round(primitive.intensity * 0.35 + avgWeight * 1.5 + TYPE_BONUS[primitive.type]),
         ),
       );
 
