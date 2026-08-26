@@ -148,6 +148,7 @@ describe('mcp server', () => {
         'get_entity',
         'get_forecasts',
         'get_launches',
+        'get_leads',
         'get_market_models',
         'get_metric_series',
         'get_my_usage',

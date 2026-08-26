@@ -6,6 +6,7 @@ import { registerBoardTools } from './tools/board';
 import { registerStackTools } from './tools/stacks';
 import { registerAgentStackTools } from './tools/agent-stacks';
 import { registerOpportunityTools } from './tools/opportunities';
+import { registerLeadTools } from './tools/leads';
 import { registerPlanTools } from './tools/plans';
 import { registerBriefTools } from './tools/briefs';
 import { registerPainTools } from './tools/pains';
@@ -44,6 +45,7 @@ export function buildServer(auth: AuthContext): McpServer {
   registerStackTools(server);
   registerAgentStackTools(server);
   registerOpportunityTools(server, auth);
+  registerLeadTools(server, auth);
   registerPlanTools(server, auth);
   registerBriefTools(server);
   registerPainTools(server);

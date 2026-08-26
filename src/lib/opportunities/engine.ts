@@ -13,18 +13,9 @@ import { runCritique, runDebate } from './critic';
 export { compositeScore, FLIP_WEIGHTS, HOLD_WEIGHTS, SUB_KEYS } from './axes';
 export type { SubKey, SubScores } from './axes';
 import { SUB_KEYS, type SubScores } from './axes';
+import { normalizeSlug } from './slug';
 
-export function normalizeSlug(s: string): string {
-  // trailing strip AFTER the slice keeps this idempotent — a stored 60-char
-  // slug ending at a hyphen must re-normalize to itself, or day-2 refreshes
-  // silently duplicate the opportunity
-  return s
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+/, '')
-    .slice(0, 60)
-    .replace(/-+$/g, '');
-}
+export { normalizeSlug };
 
 export interface OppKpis {
   initialCostUsd: number | null;

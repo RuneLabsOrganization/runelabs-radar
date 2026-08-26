@@ -8,7 +8,7 @@
  *
  * Pure: no DB, no LLM, no clock. Everything it needs is passed in.
  */
-import { normalizeSlug } from './engine';
+import { normalizeSlug } from './slug';
 import type { Primitive, PrimitiveType } from './primitives';
 import { sliceFor } from './seed';
 import { wedgeAt, wedgeCompatible, wedgeSpaceSize, WEDGE_AXES } from './wedges';
