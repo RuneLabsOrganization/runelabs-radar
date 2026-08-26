@@ -60,6 +60,21 @@ describe('composeLeads', () => {
     expect(res.leads).toHaveLength(5);
   });
 
+  it('snapshots the cited primitive label onto each lead', () => {
+    const res = composeLeads({
+      primitives: PRIMITIVES, space: loadWedges(),
+      ownerKey: 'user:1', day: '2026-08-25', cursor: 0, limit: 5,
+    });
+    expect(res.leads.length).toBeGreaterThan(0);
+    for (const lead of res.leads) {
+      const source = PRIMITIVES.find((p) => p.ref === lead.primitiveRefs[0]);
+      expect(source).toBeDefined();
+      expect(lead.evidenceSnapshot).toEqual([
+        { ref: source!.ref, type: source!.type, label: source!.label },
+      ]);
+    }
+  });
+
   it('only emits compatible pairings', () => {
     const space = loadWedges();
     const res = composeLeads({

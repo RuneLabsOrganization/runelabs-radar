@@ -769,6 +769,11 @@ export const leads = sqliteTable(
     sector: text('sector'),
     // JSON string[] of primitive refs (P1, A2, ...)
     primitiveRefs: text('primitive_refs').notNull().default('[]'),
+    // JSON [{ref, type, label}] — the EXACT evidence text these primitiveRefs
+    // resolved to at compose time. refine_lead uses this snapshot instead of
+    // re-resolving refs against a freshly-reloaded (and possibly reordered)
+    // primitive pool, so evidence never silently drifts under a stable ref.
+    evidenceSnapshot: text('evidence_snapshot').notNull().default('[]'),
     // JSON Record<axis, wedge value slug>
     wedge: text('wedge').notNull().default('{}'),
     heuristicScore: integer('heuristic_score').notNull().default(0),

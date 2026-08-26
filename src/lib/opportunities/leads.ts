@@ -24,6 +24,7 @@ export interface LeadRow {
   thesisSkeleton: string;
   sector: string | null;
   primitiveRefs: string[];
+  evidenceSnapshot: { ref: string; type: string; label: string }[];
   wedge: Record<string, string>;
   heuristicScore: number;
   combinationIndex: number;
@@ -55,6 +56,7 @@ function toLead(r: Row): LeadRow {
     thesisSkeleton: r.thesisSkeleton,
     sector: r.sector,
     primitiveRefs: parse<string[]>(r.primitiveRefs, []),
+    evidenceSnapshot: parse<{ ref: string; type: string; label: string }[]>(r.evidenceSnapshot, []),
     wedge: parse<Record<string, string>>(r.wedge, {}),
     heuristicScore: r.heuristicScore,
     combinationIndex: r.combinationIndex,
@@ -93,6 +95,7 @@ export function insertLeads(owner: Owner, drafts: LeadDraft[]): LeadRow[] {
         thesisSkeleton: d.thesisSkeleton,
         sector: d.sector,
         primitiveRefs: JSON.stringify(d.primitiveRefs),
+        evidenceSnapshot: JSON.stringify(d.evidenceSnapshot ?? []),
         wedge: JSON.stringify(d.wedge),
         heuristicScore: d.heuristicScore,
         combinationIndex: d.combinationIndex,

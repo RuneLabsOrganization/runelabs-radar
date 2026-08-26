@@ -20,6 +20,7 @@ function lead(slug: string, id = 1): LeadRow {
       buyer: 'solo-builder', moat_play: 'workflow-lock-in',
     },
     heuristicScore: 60, combinationIndex: 7, stage: 'composed',
+    evidenceSnapshot: [],
     opportunityId: null, createdAt: new Date(), dismissedAt: null, dismissReason: null,
   };
 }

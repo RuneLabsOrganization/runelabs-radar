@@ -13,6 +13,7 @@ function draft(slug: string, score = 50): LeadDraft {
     sector: 'devtools',
     primitiveRefs: ['P1'],
     primitiveType: 'pain',
+    evidenceSnapshot: [],
     wedge: {
       business_model: 'subscription-saas', delivery_form: 'cli-tool',
       buyer: 'solo-builder', moat_play: 'workflow-lock-in',

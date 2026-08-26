@@ -42,16 +42,38 @@ function renderConstraints(c: ScoutConstraints): string {
   return lines.length ? `<builder-constraints>\n${lines.join('\n')}\n</builder-constraints>` : '';
 }
 
+function buildEvidence(
+  leads: LeadRow[],
+  primitives: Primitive[],
+): { evidence: string; validRefs: Set<string> } {
+  const snapshots = leads.map((l) => l.evidenceSnapshot ?? []);
+  if (leads.length > 0 && snapshots.every((s) => s.length > 0)) {
+    const seen = new Set<string>();
+    const lines: string[] = [];
+    const validRefs = new Set<string>();
+    for (const snap of snapshots) {
+      for (const e of snap) {
+        if (seen.has(e.ref)) continue;
+        seen.add(e.ref);
+        validRefs.add(e.ref);
+        lines.push(`[${e.ref}] (${e.type}) ${promptLine(e.label, 200)}`);
+      }
+    }
+    return { evidence: lines.join('\n'), validRefs };
+  }
+  return {
+    evidence: primitives.map((p) => `[${p.ref}] (${p.type}) ${promptLine(p.label, 200)}`).join('\n'),
+    validRefs: new Set(primitives.map((p) => p.ref)),
+  };
+}
+
 export async function refineLeads(
   opts: RefineOptions,
 ): Promise<{ drafts: OppDraft[]; rejects: { slug: string; reason: string }[] }> {
   const { leads, primitives, constraints, userId, feature = 'lead_refine' } = opts;
   if (leads.length === 0) return { drafts: [], rejects: [] };
 
-  const validRefs = new Set(primitives.map((p) => p.ref));
-  const evidence = primitives
-    .map((p) => `[${p.ref}] (${p.type}) ${promptLine(p.label, 200)}`)
-    .join('\n');
+  const { evidence, validRefs } = buildEvidence(leads, primitives);
 
   const leadBlock = leads
     .map(

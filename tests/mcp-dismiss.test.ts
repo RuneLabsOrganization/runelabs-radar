@@ -17,6 +17,7 @@ function draft(slug: string, sector: string): LeadDraft {
   return {
     slug, title: `Title for ${slug}`, thesisSkeleton: 'A composed skeleton.',
     sector, primitiveRefs: ['P1'], primitiveType: 'pain',
+    evidenceSnapshot: [],
     wedge: {
       business_model: 'subscription-saas', delivery_form: 'cli-tool',
       buyer: 'solo-builder', moat_play: 'workflow-lock-in',
