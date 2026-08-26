@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { browserLoopbackRedirect, isLoopbackRedirectUri } from '@/lib/oauth-loopback';
+import {
+  browserLoopbackRedirect,
+  isLoopbackRedirectUri,
+  oauthCompleteLanding,
+} from '@/lib/oauth-loopback';
 
 describe('browserLoopbackRedirect', () => {
   it('detects loopback redirect URIs', () => {
@@ -24,5 +28,36 @@ describe('browserLoopbackRedirect', () => {
     expect(browserLoopbackRedirect('https://claude.ai/api/mcp/auth_callback')).toBe(
       'https://claude.ai/api/mcp/auth_callback',
     );
+  });
+});
+
+describe('oauthCompleteLanding', () => {
+  it('builds /oauth/complete on the public origin, not a Docker request URL', () => {
+    const callback = 'http://127.0.0.1:8787/callback?code=gTsG7k6fYixtVmWv&state=abc';
+    const landing = oauthCompleteLanding(callback, 'https://radar.runelabs.org');
+    const parsed = new URL(landing);
+    expect(parsed.origin).toBe('https://radar.runelabs.org');
+    expect(parsed.pathname).toBe('/oauth/complete');
+    expect(parsed.searchParams.get('to')).toBe(
+      'http://localhost:8787/callback?code=gTsG7k6fYixtVmWv&state=abc',
+    );
+    expect(landing).not.toContain('c1949c020530');
+  });
+
+  it('ignores the incoming request origin when it is a container hostname', () => {
+    const callback = 'http://localhost:8787/callback?code=x';
+    const fromReqUrl = new URL(
+      `/oauth/complete?to=${encodeURIComponent(callback)}`,
+      'https://c1949c020530:3000/api/oauth/authorize',
+    ).toString();
+    expect(new URL(fromReqUrl).hostname).toBe('c1949c020530');
+    const landing = oauthCompleteLanding(callback, 'https://radar.runelabs.org/');
+    expect(new URL(landing).hostname).toBe('radar.runelabs.org');
+    expect(landing.startsWith('https://radar.runelabs.org/oauth/complete?to=')).toBe(true);
+  });
+
+  it('does not wrap non-loopback redirect URIs', () => {
+    const cb = 'https://claude.ai/api/mcp/auth_callback?code=abc';
+    expect(oauthCompleteLanding(cb, 'https://radar.runelabs.org')).toBe(cb);
   });
 });

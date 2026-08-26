@@ -26,3 +26,19 @@ export function browserLoopbackRedirect(redirectUri: string): string {
     return redirectUri;
   }
 }
+
+/**
+ * After consent, loopback MCP clients land on /oauth/complete (paste-the-URL
+ * page) instead of navigating the browser straight at localhost. That page
+ * MUST be on the canonical public hub origin (`SITE_URL`). Building it from
+ * `req.url` inside Docker uses the container hostname:port
+ * (e.g. https://c1949c020530:3000) which NXDOMAINs in the user's browser.
+ */
+export function oauthCompleteLanding(callbackWithCode: string, publicOrigin: string): string {
+  const browserRedirect = browserLoopbackRedirect(callbackWithCode);
+  if (!isLoopbackRedirectUri(callbackWithCode) && !isLoopbackRedirectUri(browserRedirect)) {
+    return browserRedirect;
+  }
+  const origin = publicOrigin.replace(/\/+$/, '');
+  return `${origin}/oauth/complete?to=${encodeURIComponent(browserRedirect)}`;
+}
