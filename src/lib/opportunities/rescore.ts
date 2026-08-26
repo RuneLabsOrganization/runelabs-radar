@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { getDb } from '../db';
 import { opportunities } from '../db/schema';
 import { drainLlmUsageStats } from '../llm/minimax';
@@ -6,6 +6,7 @@ import { SUB_KEYS, type SubScores } from './axes';
 import { sanitizeKpis, type OppDraft, type OppKpis } from './engine';
 import { applyGate, parseWindowMonths, unverifiedCritic } from './gate';
 import { runCritique } from './critic';
+import { publicOnly } from './scope';
 
 type OppRow = typeof opportunities.$inferSelect;
 
@@ -25,7 +26,7 @@ function parseSub(json: string): { sub: SubScores; legacy: boolean } {
   }
 }
 
-function parseKpis(json: string | null): OppKpis {
+export function parseKpis(json: string | null): OppKpis {
   if (!json) return sanitizeKpis(null);
   try {
     return sanitizeKpis(JSON.parse(json));
@@ -34,7 +35,7 @@ function parseKpis(json: string | null): OppKpis {
   }
 }
 
-function parseStoredEvidence(json: string): { type: string; label: string }[] {
+export function parseStoredEvidence(json: string): { type: string; label: string }[] {
   try {
     const parsed: unknown = JSON.parse(json);
     if (!Array.isArray(parsed)) return [];
@@ -61,7 +62,11 @@ export async function runOppRescore(): Promise<{
   skippedLegacy: number;
 }> {
   const db = getDb();
-  const rows = db.select().from(opportunities).where(eq(opportunities.status, 'active')).all();
+  const rows = db
+    .select()
+    .from(opportunities)
+    .where(and(eq(opportunities.status, 'active'), publicOnly()))
+    .all();
 
   const targets: { row: OppRow; draft: OppDraft; evidenceCount: number }[] = [];
   for (const row of rows) {

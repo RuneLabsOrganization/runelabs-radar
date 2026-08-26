@@ -41,6 +41,10 @@ describe('estimateCostUsd', () => {
     expect(estimateCostUsd('MiniMax-M2', 0, 0)).toBe(0);
   });
 
+  it('prices MiniMax-M3 at the same $0.30 in / $1.20 out (standard ≤512k)', () => {
+    expect(estimateCostUsd('MiniMax-M3', 2100, 1500)).toBeCloseTo(0.00243, 12);
+  });
+
   it('returns 0 for unmapped models', () => {
     expect(estimateCostUsd('No-Such-Model', 1_000_000, 1_000_000)).toBe(0);
   });
@@ -58,7 +62,7 @@ describe('chatJSON metering', () => {
     expect(r.feature).toBe('x');
     expect(r.userId).toBe(42);
     expect(r.job).toBeNull();
-    expect(r.model).toBe('MiniMax-M2');
+    expect(r.model).toBe('MiniMax-M3');
     expect(r.promptTokens).toBe(2100);
     expect(r.completionTokens).toBe(1500);
     expect(r.durationMs).toBeGreaterThanOrEqual(0);
@@ -195,7 +199,7 @@ describe('generatePlan userId threading', () => {
     expect(rows).toHaveLength(7);
     for (const r of rows) {
       expect(r.userId).toBe(42);
-      expect(r.model).toBe('MiniMax-M2');
+      expect(r.model).toBe('MiniMax-M3');
       // 100/1e6*0.30 + 50/1e6*1.20 = 0.00009 per call
       expect(r.estCostUsd).toBeCloseTo(0.00009, 12);
     }

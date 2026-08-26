@@ -97,18 +97,27 @@ export function sanitizeComps(v: unknown): CompDraft[] {
  * embedding dedup arrives with the science layer), plus exit/revenue comps
  * from money-mentioning curated stories.
  */
-export async function runPain(): Promise<{ pains: number; comps: number }> {
+export async function runPain(): Promise<{ pains: number; comps: number; candidates: number }> {
   const db = getDb();
   const dayAgo = new Date(Date.now() - 864e5);
+  const discussionTypes = ['reddit', 'hn'] as const;
 
   const discussion = db
     .select({ title: items.title, excerpt: items.excerpt, url: items.url })
     .from(items)
     .innerJoin(sources, eq(items.sourceId, sources.id))
-    .where(and(gte(items.fetchedAt, dayAgo), inArray(sources.type, ['reddit', 'hn'])))
+    .where(and(gte(items.fetchedAt, dayAgo), inArray(sources.type, discussionTypes)))
     .orderBy(desc(items.id))
     .limit(ITEM_CAP)
     .all();
+
+  const candidates = discussion.length;
+  if (candidates === 0) {
+    console.warn(
+      `[pain] no discussion candidates in the last 24h window ` +
+        `(fetchedAt >= ${dayAgo.toISOString()}) for sources.type IN ('${discussionTypes.join("','")}')`,
+    );
+  }
 
   const existing = db.select().from(painPoints).all();
   const byNorm = new Map(existing.map((p) => [p.summary.toLowerCase(), p]));
@@ -180,14 +189,14 @@ export async function runPain(): Promise<{ pains: number; comps: number }> {
   // Exit / revenue comps from money-mentioning curated stories
   let compCount = 0;
   const moneyRegex = /\$\s?[\d,.]+|acquir|sold for|\bMRR\b|\bARR\b|revenue/i;
-  const candidates = db
+  const moneyStories = db
     .select()
     .from(stories)
     .where(and(eq(stories.status, 'curated'), gte(stories.createdAt, dayAgo)))
     .all()
     .filter((s) => moneyRegex.test(`${s.title} ${s.tldr ?? ''}`))
     .slice(0, COMP_CAP);
-  if (candidates.length > 0) {
+  if (moneyStories.length > 0) {
     const system =
       'Extract concrete money comparables for small software products from these stories: ' +
       'acquisitions/sales ("exit") and revenue reports ("revenue"). Only include entries with a ' +
@@ -195,7 +204,7 @@ export async function runPain(): Promise<{ pains: number; comps: number }> {
       '"sold for $120k" → 120000, kind "exit"). Skip big-corp M&A above $100M — Runelabs builds ' +
       'small products.\n' +
       'Respond with STRICT JSON only: {"comps":[{"kind":"exit|revenue","product":"...","amountUsd":123,"note":"..."}]}';
-    const user = candidates.map((s) => `- ${s.title}${s.tldr ? ` — ${s.tldr}` : ''}`).join('\n');
+    const user = moneyStories.map((s) => `- ${s.title}${s.tldr ? ` — ${s.tldr}` : ''}`).join('\n');
     try {
       const res = await chatJSON<{ comps?: unknown }>(system, user, { feature: 'pain' });
       const existing = db
@@ -218,5 +227,5 @@ export async function runPain(): Promise<{ pains: number; comps: number }> {
     }
   }
 
-  return { pains: painCount, comps: compCount, ...drainLlmUsageStats() };
+  return { pains: painCount, comps: compCount, candidates, ...drainLlmUsageStats() };
 }

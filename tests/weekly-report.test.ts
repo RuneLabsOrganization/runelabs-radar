@@ -191,6 +191,34 @@ describe('runWeeklyReport', () => {
     expect(user).not.toContain('aa-only-model');
   });
 
+  it('does not leak private pursue openings into the public weekly prompt', async () => {
+    seedWeek();
+    const now = new Date();
+    db.insert(opportunities)
+      .values({
+        slug: 'alice-secret-opening',
+        ownerUserId: 1,
+        title: 'SECRET PRIVATE OPENING THAT MUST NOT LEAK',
+        thesis: 'A private opening fitted to one builder and never meant for the public radar.',
+        sector: 'devtools',
+        status: 'active',
+        flipScore: 99,
+        holdScore: 80,
+        scores: '{}',
+        evidence: '[]',
+        verdict: 'pursue',
+        confidence: 80,
+        firstSeenAt: now,
+        lastSeenAt: now,
+      })
+      .run();
+    const capture: { user?: string } = {};
+    mockCompletion('# State of the Builder Market\n\nA tight weekly issue with several words.', capture);
+    await runWeeklyReport();
+    expect(capture.user).toContain('Bulk background-removal API');
+    expect(capture.user).not.toContain('SECRET PRIVATE OPENING THAT MUST NOT LEAK');
+  });
+
   it('re-running the same Sunday upserts — one row, updated markdown', async () => {
     seedWeek();
     mockCompletion('# State of the Builder Market\n\nFirst edition.');
@@ -232,7 +260,8 @@ describe('get_weekly_report tool', () => {
     seedReport('2026-08-09', '# Older issue');
     seedReport('2026-08-16', '# Latest issue\n\nNewest words here.');
     const client = await wireWeekly();
-    const res = await callTool(client);
+    // markdown only ships at detail=full; compact (the default) returns excerpt
+    const res = await callTool(client, { detail: 'full' });
     expect(res.structuredContent?.found).toBe(true);
     expect(res.structuredContent?.date).toBe('2026-08-16');
     expect(res.structuredContent?.markdown).toContain('Latest issue');
@@ -243,7 +272,7 @@ describe('get_weekly_report tool', () => {
     seedReport('2026-08-09', '# Older issue');
     seedReport('2026-08-16', '# Latest issue');
     const client = await wireWeekly();
-    const res = await callTool(client, { date: '2026-08-09' });
+    const res = await callTool(client, { date: '2026-08-09', detail: 'full' });
     expect(res.structuredContent?.found).toBe(true);
     expect(res.structuredContent?.date).toBe('2026-08-09');
     expect(res.structuredContent?.markdown).toContain('Older issue');

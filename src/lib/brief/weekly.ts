@@ -13,6 +13,7 @@ import { chatJSON, drainLlmUsageStats, LlmError } from '../llm/minimax';
 import { utcDay } from '../metrics';
 import { promptLine, stripCjkDeep } from '../prompt-hygiene';
 import { marketMovers } from '../pulse';
+import { publicOnly } from '../opportunities/scope';
 
 /** YYYY-MM-DD (UTC) of the Sunday opening the current week (today when it IS Sunday). */
 export function weekSunday(now: Date = new Date()): string {
@@ -76,7 +77,13 @@ export async function runWeeklyReport(): Promise<{
   const pursue = db
     .select()
     .from(opportunities)
-    .where(and(eq(opportunities.verdict, 'pursue'), eq(opportunities.status, 'active')))
+    .where(
+      and(
+        eq(opportunities.verdict, 'pursue'),
+        eq(opportunities.status, 'active'),
+        publicOnly(),
+      ),
+    )
     .orderBy(desc(opportunities.flipScore))
     .limit(8)
     .all();

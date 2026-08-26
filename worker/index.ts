@@ -24,6 +24,7 @@ import { syncAgentPlans } from '../src/lib/agent-plans';
 import { syncAgentStacks } from '../src/lib/agent-stacks-sync';
 import { runRadarEval } from '../src/lib/science/eval';
 import { createWeeklyRadarDrop } from '../src/lib/batches';
+import { runSweep } from '../src/lib/sweep';
 
 loadDotEnv();
 
@@ -65,6 +66,8 @@ const tasks = [
   cron.schedule('0 8 * * 0', () => void withJobRun('weekly-report', runWeeklyReport)),
   // weekly Radar Batch drop (Monday 07:30 — after opportunities)
   cron.schedule('30 7 * * 1', () => void withJobRun('radar-batch', createWeeklyRadarDrop)),
+  // daily: drop expired anonymous leads and stale usage-counter rows
+  cron.schedule('20 3 * * *', () => void withJobRun('sweep', runSweep)),
 ];
 
 // Populate immediately on boot instead of waiting for the first tick

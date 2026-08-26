@@ -13,18 +13,10 @@ import { runCritique, runDebate } from './critic';
 export { compositeScore, FLIP_WEIGHTS, HOLD_WEIGHTS, SUB_KEYS } from './axes';
 export type { SubKey, SubScores } from './axes';
 import { SUB_KEYS, type SubScores } from './axes';
+import { normalizeSlug } from './slug';
+import { publicOnly } from './scope';
 
-export function normalizeSlug(s: string): string {
-  // trailing strip AFTER the slice keeps this idempotent — a stored 60-char
-  // slug ending at a hyphen must re-normalize to itself, or day-2 refreshes
-  // silently duplicate the opportunity
-  return s
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+/, '')
-    .slice(0, 60)
-    .replace(/-+$/g, '');
-}
+export { normalizeSlug };
 
 export interface OppKpis {
   initialCostUsd: number | null;
@@ -78,20 +70,64 @@ const MAX_PROPOSALS = 6;
 // shared daily cap, so K stays small.
 const TOP_K_DEBATES = 2;
 
+export interface SanitizeReject {
+  slug: string;
+  reason: string;
+}
+
 /** Validates the LLM's opportunity proposals. Exported for tests. */
-export function sanitizeOpportunities(v: unknown, validRefs: Set<string>): OppDraft[] {
-  if (!Array.isArray(v)) return [];
+export function sanitizeOpportunities(
+  v: unknown,
+  validRefs: Set<string>,
+  rejects?: SanitizeReject[],
+  max = MAX_PROPOSALS,
+): OppDraft[] {
+  if (!Array.isArray(v)) {
+    rejects?.push({
+      slug: '(payload)',
+      reason: `not-an-array:${v === undefined ? 'undefined' : typeof v}`,
+    });
+    return [];
+  }
+  if (v.length === 0) {
+    rejects?.push({ slug: '(payload)', reason: 'empty-array' });
+    return [];
+  }
   const out: OppDraft[] = [];
   const seenSlugs = new Set<string>();
   for (const raw of v) {
-    if (out.length >= MAX_PROPOSALS) break;
-    if (typeof raw !== 'object' || raw === null) continue;
+    if (out.length >= max) break;
+    if (typeof raw !== 'object' || raw === null) {
+      rejects?.push({ slug: '', reason: 'not-an-object' });
+      continue;
+    }
     const rec = raw as Record<string, unknown>;
-    if (typeof rec.slug !== 'string' || typeof rec.title !== 'string' || typeof rec.thesis !== 'string') continue;
+    if (typeof rec.slug !== 'string' || typeof rec.title !== 'string' || typeof rec.thesis !== 'string') {
+      rejects?.push({
+        slug: typeof rec.slug === 'string' ? rec.slug : '',
+        reason: 'missing-slug-title-or-thesis',
+      });
+      continue;
+    }
     const slug = normalizeSlug(rec.slug);
     const title = promptLine(rec.title, 90);
     const thesis = promptLine(rec.thesis, 400);
-    if (!slug || slug.length < 3 || seenSlugs.has(slug) || title.length < 8 || thesis.length < 30) continue;
+    if (!slug || slug.length < 3) {
+      rejects?.push({ slug, reason: 'slug-too-short' });
+      continue;
+    }
+    if (seenSlugs.has(slug)) {
+      rejects?.push({ slug, reason: 'duplicate-slug' });
+      continue;
+    }
+    if (title.length < 8) {
+      rejects?.push({ slug, reason: 'title-too-short' });
+      continue;
+    }
+    if (thesis.length < 30) {
+      rejects?.push({ slug, reason: 'thesis-too-short' });
+      continue;
+    }
 
     const subRaw = (typeof rec.subScores === 'object' && rec.subScores !== null ? rec.subScores : {}) as Record<
       string,
@@ -100,8 +136,11 @@ export function sanitizeOpportunities(v: unknown, validRefs: Set<string>): OppDr
     const sub = {} as SubScores;
     let subOk = true;
     for (const k of SUB_KEYS) {
-      const val = subRaw[k];
-      if (typeof val !== 'number' || !Number.isFinite(val)) {
+      const scoreRaw = subRaw[k];
+      const val =
+        typeof scoreRaw === 'number' ? scoreRaw : typeof scoreRaw === 'string' ? Number(scoreRaw.trim()) : NaN;
+      if (!Number.isFinite(val)) {
+        rejects?.push({ slug, reason: `missing-or-invalid-sub-score:${k}` });
         subOk = false;
         break;
       }
@@ -319,7 +358,7 @@ export async function proposeOpportunities(constraints?: ScoutConstraints): Prom
   const existing = db
     .select()
     .from(opportunities)
-    .where(eq(opportunities.status, 'active'))
+    .where(and(eq(opportunities.status, 'active'), publicOnly()))
     .orderBy(desc(opportunities.lastSeenAt))
     .limit(20)
     .all();
@@ -407,7 +446,8 @@ export async function runOpportunities(): Promise<{
   const createdRows: { id: number; verdict: string; flipScore: number }[] = [];
   // keyed by re-normalized slug — heals any legacy rows stored pre-idempotency-fix
   const bySlug = new Map(
-    db.select().from(opportunities).all().map((o) => [normalizeSlug(o.slug), o]),
+    db.select().from(opportunities).where(publicOnly()).all()
+      .map((o) => [normalizeSlug(o.slug), o]),
   );
   for (const d of drafts) {
     const critic = critiques?.get(d.slug) ?? unverifiedCritic(d.slug);
@@ -476,6 +516,7 @@ export async function runOpportunities(): Promise<{
     .where(
       and(
         eq(opportunities.status, 'active'),
+        publicOnly(),
         lt(opportunities.lastSeenAt, new Date(Date.now() - ARCHIVE_AFTER_DAYS * 864e5)),
       ),
     )

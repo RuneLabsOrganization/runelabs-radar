@@ -1,28 +1,35 @@
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { getDb } from '../../src/lib/db';
 import { opportunities } from '../../src/lib/db/schema';
-import { normalizeSlug, proposeOpportunities, type ScoutConstraints } from '../../src/lib/opportunities/engine';
+import { normalizeSlug, type OppDraft, type ScoutConstraints } from '../../src/lib/opportunities/engine';
+import { composeLeads } from '../../src/lib/opportunities/compose';
+import { dismissedSlugs, insertLeads } from '../../src/lib/opportunities/leads';
 import { persistScoutDrafts } from '../../src/lib/opportunities/persist-scout';
+import { loadPrimitives } from '../../src/lib/opportunities/primitives';
+import { refineLeads } from '../../src/lib/opportunities/refine';
+import { publicOnly } from '../../src/lib/opportunities/scope';
+import { dayKey } from '../../src/lib/opportunities/seed';
+import { loadWedges } from '../../src/lib/opportunities/wedges';
 import { getProfile } from '../../src/lib/personalization';
 import { can } from '../../src/lib/entitlements';
+import { bump, peek } from '../../src/lib/usage/counters';
 import { envelopeSchema, respond, withUserEconomy, type NextAction } from '../lib/payload';
 import type { AuthContext } from '../lib/auth';
 
-// --- per-caller daily cap (§9c): every scout run is a fresh LLM call, so
-// every call counts — recorded at entry, same pattern as debate_idea ---
+// Per-caller daily cap for anonymous callers: every scout run is a fresh LLM
+// call, so every call counts. Signed-in callers go through entitlements
+// instead (can(user, 'scout')). Persisted, so a deploy no longer grants
+// everyone a fresh allowance.
 const SCOUT_DAILY_CAP = Number(process.env.MCP_SCOUT_DAILY_CAP ?? 10);
-const scoutUsage = new Map<string, { date: string; count: number }>();
+
 function scoutCapExceeded(key: string): boolean {
-  const today = new Date().toISOString().slice(0, 10);
-  const rec = scoutUsage.get(key);
-  return (rec?.date === today ? rec.count : 0) >= SCOUT_DAILY_CAP;
+  return peek(key, 'scout', 'day') >= SCOUT_DAILY_CAP;
 }
+
 function recordScout(key: string): void {
-  const today = new Date().toISOString().slice(0, 10);
-  const rec = scoutUsage.get(key);
-  scoutUsage.set(key, { date: today, count: (rec?.date === today ? rec.count : 0) + 1 });
+  bump(key, 'scout', 'day');
 }
 
 const kpiSchema = z.object({
@@ -48,15 +55,18 @@ const openingSchema = z.object({
   persisted: z.boolean().optional(),
 });
 
-/** Active opportunity slugs, normalized the way the daily engine keys them. */
-function activeSlugs(): Set<string> {
+/** Active opportunity slugs visible to this caller, normalized as the engine keys them. */
+function activeSlugs(userId: number | null): Set<string> {
   const db = getDb();
+  // Only the caller's own openings suppress a draft. Another builder having
+  // already been shown this idea is not a reason to withhold it — that is the
+  // bug that made scout return nothing once the shared pool saturated.
+  const where =
+    userId == null
+      ? and(eq(opportunities.status, 'active'), publicOnly())
+      : and(eq(opportunities.status, 'active'), eq(opportunities.ownerUserId, userId));
   return new Set(
-    db
-      .select({ slug: opportunities.slug })
-      .from(opportunities)
-      .where(eq(opportunities.status, 'active'))
-      .all()
+    db.select({ slug: opportunities.slug }).from(opportunities).where(where).all()
       .map((r) => normalizeSlug(r.slug)),
   );
 }
@@ -150,12 +160,33 @@ export function registerScoutTools(server: McpServer, auth: AuthContext): void {
       };
       const hasConstraints = Object.keys(constraints).length > 0;
 
-      let drafts;
-      let signalCount;
+      let drafts: OppDraft[];
+      let signalCount: number;
       try {
-        const res = await proposeOpportunities(hasConstraints ? constraints : undefined);
-        drafts = res.drafts;
-        signalCount = res.ctx.signalCount;
+        const primitives = loadPrimitives();
+        signalCount = primitives.length;
+        if (signalCount >= 5) {
+          const owner = { ownerKey: auth.rateKey, userId: auth.userId };
+          const composed = composeLeads({
+            primitives,
+            space: loadWedges(),
+            ownerKey: owner.ownerKey,
+            day: dayKey(),
+            cursor: 0,
+            limit: 8,
+            excludeSlugs: dismissedSlugs(owner),
+          });
+          const stored = insertLeads(owner, composed.leads);
+          ({ drafts } = await refineLeads({
+            leads: stored,
+            primitives,
+            ...(hasConstraints ? { constraints } : {}),
+            userId: auth.userId,
+            feature: 'scout',
+          }));
+        } else {
+          drafts = [];
+        }
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
         return respond(
@@ -187,12 +218,12 @@ export function registerScoutTools(server: McpServer, auth: AuthContext): void {
 
       // anti-homogeneity: these must be FRESH personal openings — drop any
       // draft whose slug is already tracked as an active opportunity
-      const existing = activeSlugs();
+      const existing = activeSlugs(auth.userId);
       const fresh = drafts.filter((d) => !existing.has(normalizeSlug(d.slug)));
       const skipped = drafts.length - fresh.length;
 
       // Persist so generate_plan works immediately (no wait for daily engine)
-      const { persisted } = persistScoutDrafts(fresh);
+      const { persisted } = persistScoutDrafts(fresh, auth.userId);
       const persistedSlugs = new Set(persisted.map((p) => p.slug));
 
       const openings = fresh.map((d) => ({
@@ -210,18 +241,18 @@ export function registerScoutTools(server: McpServer, auth: AuthContext): void {
       const top = openings[0];
       const next: NextAction[] = [];
       if (top) {
-        next.push(
-          {
-            tool: 'debate_idea',
-            arguments: { idea: `${top.title} — ${top.thesis}` },
-            reason: 'pressure-test the top opening in a multi-role debate before committing',
-          },
-          {
+        next.push({
+          tool: 'debate_idea',
+          arguments: { idea: `${top.title} — ${top.thesis}` },
+          reason: 'pressure-test the top opening in a multi-role debate before committing',
+        });
+        if (persisted.length > 0) {
+          next.push({
             tool: 'generate_plan',
             arguments: { opportunity: top.slug },
             reason: 'execution plan — openings from this scout are persisted and plan-ready',
-          },
-        );
+          });
+        }
       } else if (skipped > 0) {
         next.push({
           tool: 'get_opportunities',

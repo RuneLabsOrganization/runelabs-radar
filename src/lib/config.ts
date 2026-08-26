@@ -16,7 +16,7 @@ export const config = {
     return process.env.MINIMAX_BASE_URL ?? 'https://api.minimax.io/v1';
   },
   get minimaxModel(): string {
-    return process.env.MINIMAX_MODEL ?? 'MiniMax-M2';
+    return process.env.MINIMAX_MODEL ?? 'MiniMax-M3';
   },
   get minimaxDailyCallCap(): number {
     return Number(process.env.MINIMAX_DAILY_CALL_CAP ?? 500);

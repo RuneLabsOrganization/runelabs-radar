@@ -16,7 +16,9 @@ export type Capability =
   | 'ask'
   | 'batch_create'
   | 'batch_run'
-  | 'personalize';
+  | 'personalize'
+  | 'lead_refine'
+  | 'forge';
 
 export interface EntitlementUser {
   id: number;
@@ -41,6 +43,8 @@ const TIER_CAPS: Record<
     workspaceBatches: number; // -1 = unlimited
     batchRuns: boolean;
     personalize: boolean;
+    leadRefinesPerMonth: number; // -1 = unlimited; Rung 1
+    forgesPerMonth: number; // 0 = unavailable; Rung 2 (4 llm calls each)
   }
 > = {
   free: {
@@ -50,6 +54,8 @@ const TIER_CAPS: Record<
     workspaceBatches: 1,
     batchRuns: false,
     personalize: false,
+    leadRefinesPerMonth: 3,
+    forgesPerMonth: 0,
   },
   builder: {
     plansPerMonth: 30,
@@ -58,6 +64,8 @@ const TIER_CAPS: Record<
     workspaceBatches: 10,
     batchRuns: true,
     personalize: true,
+    leadRefinesPerMonth: 50,
+    forgesPerMonth: 5,
   },
   factory: {
     plansPerMonth: 100,
@@ -66,6 +74,8 @@ const TIER_CAPS: Record<
     workspaceBatches: -1,
     batchRuns: true,
     personalize: true,
+    leadRefinesPerMonth: -1,
+    forgesPerMonth: 30,
   },
 };
 
@@ -195,6 +205,42 @@ export function can(user: EntitlementUser | null | undefined, capability: Capabi
             quota: caps.asksPerMonth,
             reason: `ask_radar quota reached (${used}/${caps.asksPerMonth}).`,
             upgradeHint: tier === 'factory' ? 'Quota resets next cycle.' : 'Upgrade for more synthesis asks.',
+          };
+    }
+
+    case 'lead_refine': {
+      if (caps.leadRefinesPerMonth < 0) return { ok: true, tier };
+      const used = countFeature(user.id, 'lead_refine', ent.resetDay, now);
+      const quota = caps.leadRefinesPerMonth;
+      return used < quota
+        ? { ok: true, tier, used, quota }
+        : {
+            ok: false, tier, used, quota,
+            reason: `Refine quota reached (${used}/${quota} this cycle).`,
+            upgradeHint:
+              tier === 'factory'
+                ? 'Quota resets next cycle.'
+                : 'Upgrade for more refines — composed leads stay free and unlimited.',
+          };
+    }
+
+    case 'forge': {
+      const quota = caps.forgesPerMonth;
+      if (quota === 0) {
+        return {
+          ok: false, tier, used: 0, quota,
+          reason: 'The adversarial deep pass requires Builder.',
+          upgradeHint: 'Upgrade to Builder to forge openings before you commit.',
+        };
+      }
+      // 4 llm_calls (feature='forge') per forge, same accounting as debates
+      const used = Math.floor(countFeature(user.id, 'forge', ent.resetDay, now) / 4);
+      return used < quota
+        ? { ok: true, tier, used, quota }
+        : {
+            ok: false, tier, used, quota,
+            reason: `Forge quota reached (${used}/${quota} this cycle).`,
+            upgradeHint: tier === 'factory' ? 'Quota resets next cycle.' : 'Upgrade for more forges.',
           };
     }
 

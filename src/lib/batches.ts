@@ -5,6 +5,7 @@ import { can } from './entitlements';
 import { runDebate } from './opportunities/critic';
 import { proposeOpportunities, type ScoutConstraints } from './opportunities/engine';
 import { persistScoutDrafts } from './opportunities/persist-scout';
+import { publicOnly, visibleTo } from './opportunities/scope';
 import { generatePlan } from './plans/generate';
 import { getProfile } from './personalization';
 
@@ -146,13 +147,19 @@ export async function runBatchOp(batchId: number, op: 'debate' | 'plan' | 'scout
         const idea =
           item.ideaText ??
           (item.refType === 'opportunity' && item.refId ? undefined : item.refKey ?? 'untitled idea');
-        await runDebate(item.refType === 'opportunity' ? item.refId ?? null : null, idea);
+        await runDebate(item.refType === 'opportunity' ? item.refId ?? null : null, idea, userId);
         const last = db.select({ id: debates.id }).from(debates).orderBy(desc(debates.id)).limit(1).get();
         resultRef = last ? String(last.id) : null;
       } else if (op === 'plan') {
         let oppId: number | null = item.refId ?? null;
         if (!oppId && item.refKey) {
-          oppId = db.select().from(opportunities).where(eq(opportunities.slug, item.refKey)).get()?.id ?? null;
+          oppId =
+            db
+              .select()
+              .from(opportunities)
+              .where(and(eq(opportunities.slug, item.refKey), visibleTo(userId)))
+              .orderBy(desc(opportunities.ownerUserId))
+              .get()?.id ?? null;
         }
         if (!oppId) throw new Error('Plan requires an opportunity');
         const res = await generatePlan(oppId, { userId });
@@ -170,7 +177,7 @@ export async function runBatchOp(batchId: number, op: 'debate' | 'plan' | 'scout
         const { drafts } = await proposeOpportunities(
           Object.keys(constraints).length ? constraints : undefined,
         );
-        const { persisted } = persistScoutDrafts(drafts);
+        const { persisted } = persistScoutDrafts(drafts, userId);
         resultRef = persisted.map((p) => p.slug).join(',') || 'scout-empty';
       }
       db.update(batchRunItems)
@@ -216,7 +223,13 @@ export async function createWeeklyRadarDrop(): Promise<{ slug: string; count: nu
   const tops = db
     .select()
     .from(opportunities)
-    .where(and(eq(opportunities.status, 'active'), eq(opportunities.verdict, 'pursue')))
+    .where(
+      and(
+        eq(opportunities.status, 'active'),
+        eq(opportunities.verdict, 'pursue'),
+        publicOnly(),
+      ),
+    )
     .orderBy(desc(opportunities.flipScore))
     .limit(10)
     .all();

@@ -204,6 +204,48 @@
       "when": 1787678185060,
       "tag": "0028_certain_scarlet_spider",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "6",
+      "when": 1787696149707,
+      "tag": "0029_acoustic_screwball",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "6",
+      "when": 1787700000000,
+      "tag": "0030_opportunity_owner",
+      "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "6",
+      "when": 1787705000000,
+      "tag": "0031_archive_leaked_scout_rows",
+      "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "6",
+      "when": 1787706000000,
+      "tag": "0032_lazy_microbe",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "6",
+      "when": 1787707000000,
+      "tag": "0033_same_major_mapleleaf",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "6",
+      "when": 1787746004603,
+      "tag": "0034_cuddly_the_santerians",
+      "breakpoints": true
     }
   ]
 }

@@ -1,6 +1,7 @@
 node_modules/
 .next/
 data/
+.worktrees/
 *.db
 *.db-journal
 *.db-wal

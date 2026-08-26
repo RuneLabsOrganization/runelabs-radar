@@ -7,13 +7,29 @@ vi.hoisted(() => {
   process.env.MCP_SCOUT_DAILY_CAP = '1';
 });
 
-// self-contained: runDebate is pinned here while the real multi-role debate
-// pipeline is built concurrently in src/lib/opportunities/critic.ts
-vi.mock('@/lib/opportunities/critic', () => ({
-  runDebate: vi.fn(),
-  runCritique: vi.fn(),
+const criticActual = vi.hoisted(() => ({
+  runDebate: undefined as typeof import('@/lib/opportunities/critic').runDebate | undefined,
 }));
 
+const refineActual = vi.hoisted(() => ({
+  refineLeads: undefined as typeof import('@/lib/opportunities/refine').refineLeads | undefined,
+}));
+
+// self-contained: runDebate is pinned here while the real multi-role debate
+// pipeline is built concurrently in src/lib/opportunities/critic.ts
+vi.mock('@/lib/opportunities/critic', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/opportunities/critic')>();
+  criticActual.runDebate = actual.runDebate;
+  return { ...actual, runDebate: vi.fn(), runCritique: vi.fn() };
+});
+
+vi.mock('@/lib/opportunities/refine', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/opportunities/refine')>();
+  refineActual.refineLeads = actual.refineLeads;
+  return { ...actual, refineLeads: vi.fn() };
+});
+
+import { eq } from 'drizzle-orm';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
@@ -22,12 +38,21 @@ import { registerDebateTools } from '../mcp/tools/debate';
 import { registerScoutTools } from '../mcp/tools/scout';
 import { registerPrompts } from '../mcp/prompts';
 import { runDebate, type DebateResult } from '@/lib/opportunities/critic';
+import { refineLeads } from '@/lib/opportunities/refine';
 import { _setFetch } from '@/lib/llm/minimax';
-import { SUB_KEYS } from '@/lib/opportunities/engine';
-import { comps, launches, opportunities, painPoints, stories } from '@/lib/db/schema';
-import { useTestDb } from './helpers/db';
+import { SUB_KEYS, type OppDraft } from '@/lib/opportunities/engine';
+import { persistScoutDrafts } from '@/lib/opportunities/persist-scout';
+import { can } from '@/lib/entitlements';
+import { composeLeads } from '@/lib/opportunities/compose';
+import { dismissLead, insertLeads } from '@/lib/opportunities/leads';
+import { loadPrimitives } from '@/lib/opportunities/primitives';
+import { dayKey } from '@/lib/opportunities/seed';
+import { loadWedges, seedWedges } from '@/lib/opportunities/wedges';
+import { comps, launches, llmCalls, opportunities, painPoints, stories } from '@/lib/db/schema';
+import { seedUser, useTestDb } from './helpers/db';
 
 const debateMock = vi.mocked(runDebate);
+const refineLeadsMock = vi.mocked(refineLeads);
 
 const PINNED: DebateResult = {
   transcript: [
@@ -47,16 +72,32 @@ function authFor(rateKey: string): AuthContext {
   return { authed: false, userId: null, scopes: new Set(['read', 'plans']), rateKey };
 }
 
+function authForUser(userId: number): AuthContext {
+  return {
+    authed: true,
+    userId,
+    scopes: new Set(['read', 'plans']),
+    rateKey: `user:${userId}`,
+  };
+}
+
 /** Minimal server with ONLY the two tools under test (never buildServer). */
-async function wire(rateKey: string): Promise<Client> {
+async function wireWith(auth: AuthContext): Promise<Client> {
   const server = new McpServer({ name: 'debate-scout-test', version: '0.0.1' });
-  const auth = authFor(rateKey);
   registerDebateTools(server, auth);
   registerScoutTools(server, auth);
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   const client = new Client({ name: 'mcp-test', version: '0.0.1' });
   await Promise.all([client.connect(clientTransport), server.connect(serverTransport)]);
   return client;
+}
+
+async function wire(rateKey: string): Promise<Client> {
+  return wireWith(authFor(rateKey));
+}
+
+async function wireUser(userId: number): Promise<Client> {
+  return wireWith(authForUser(userId));
 }
 
 async function call(client: Client, name: string, args: Record<string, unknown> = {}) {
@@ -72,6 +113,8 @@ beforeEach(() => {
   db = useTestDb();
   debateMock.mockReset();
   debateMock.mockResolvedValue(PINNED);
+  refineLeadsMock.mockReset();
+  refineLeadsMock.mockResolvedValue({ drafts: [], rejects: [] });
   // chatJSON refuses to call out without a key; the fetch below is mocked anyway
   process.env.MINIMAX_API_KEY = 'test-key';
 });
@@ -190,15 +233,52 @@ describe('debate_idea', () => {
     expect(third.structuredContent!.error as string).toContain('daily debate cap reached (2)');
     expect(debateMock).toHaveBeenCalledTimes(2); // the refusal never reaches the LLM
   });
+
+  it('writes llm_calls rows tagged debate for the signed-in user', async () => {
+    seedUser(db, 1);
+    debateMock.mockImplementation(criticActual.runDebate!);
+    const payloads = [
+      { text: 'The demand is proven: three recurring pains name this gap and prices fell this quarter so a focused API undercuts incumbents.' },
+      { text: 'An incumbent ships this inside two releases and the advocate overstates how long the window stays open for a newcomer.' },
+      { text: 'The comps show per-image tools exiting at 3-5x ARR, launch activity is up, and current model prices do support the stated margin.' },
+      {
+        verdict: 'watch',
+        confidence: 55,
+        reasoning: 'Demand evidence is real but platform risk is named and not yet mitigated by positioning.',
+        killRisks: ['Shopify ships this natively within two releases'],
+        conditionsToSucceed: ['own one niche distribution channel'],
+        strengthenedVariants: ['niche down to Shopify Plus sellers', 'usage-based API instead of a dashboard'],
+      },
+    ];
+    _setFetch((async () => {
+      const payload = payloads.shift();
+      if (payload === undefined) throw new Error('unexpected extra LLM call in test');
+      return {
+        ok: true,
+        json: async () => ({
+          choices: [{ message: { content: JSON.stringify(payload) } }],
+          usage: { prompt_tokens: 10, completion_tokens: 10 },
+        }),
+      } as Response;
+    }) as unknown as typeof fetch);
+
+    const client = await wireUser(1);
+    const res = await call(client, 'debate_idea', { idea: IDEA });
+    expect(res.structuredContent).toMatchObject({ ok: true });
+
+    const rows = db.select().from(llmCalls).all();
+    expect(rows.some((r) => r.feature === 'debate' && r.userId === 1)).toBe(true);
+  });
 });
 
 // --- scout_opportunities ---
 
 function seedSignals(): void {
-  for (let i = 0; i < 3; i++) {
+  seedWedges();
+  for (let i = 0; i < 5; i++) {
     db.insert(painPoints)
       .values({
-        summary: `paid need number ${i} that keeps recurring`,
+        summary: `paid need number ${i} that keeps recurring for engineering teams`,
         intensity: 2,
         evidence: '[]',
         lastSeenAt: new Date(),
@@ -223,6 +303,48 @@ const draft = (slug: string) => ({
   evidenceRefs: ['P1'],
 });
 
+function asOppDraft(slug: string): OppDraft {
+  const d = draft(slug);
+  return {
+    slug: d.slug,
+    title: d.title,
+    thesis: d.thesis,
+    sector: d.sector,
+    window: d.window,
+    windowMonths: d.windowMonths,
+    sub: d.subScores as OppDraft['sub'],
+    kpis: {
+      ...d.kpis,
+      competitionNote: null,
+      regulatoryNote: null,
+    },
+    evidenceRefs: d.evidenceRefs,
+  };
+}
+
+function persistDraft(slug: string): OppDraft {
+  return {
+    slug,
+    title: `Title for ${slug}`,
+    thesis: 'A sufficiently long thesis to satisfy the sanitizer and the gate.',
+    sector: 'devtools',
+    window: '6 months',
+    windowMonths: 6,
+    sub: Object.fromEntries(SUB_KEYS.map((k) => [k, 12])) as OppDraft['sub'],
+    kpis: {
+      initialCostUsd: 100,
+      monthlyCostUsd: 50,
+      priceUsd: 30,
+      timeToMvpDays: 14,
+      breakEvenCustomers: 5,
+      competitorCount: 3,
+      competitionNote: null,
+      regulatoryNote: null,
+    },
+    evidenceRefs: ['P1'],
+  };
+}
+
 /** Mock MiniMax: proposer returns the given drafts; captures request bodies. */
 function mockProposer(drafts: unknown[]): { bodies: { system: string; user: string }[] } {
   const bodies: { system: string; user: string }[] = [];
@@ -232,7 +354,7 @@ function mockProposer(drafts: unknown[]): { bodies: { system: string; user: stri
     return {
       ok: true,
       json: async () => ({
-        choices: [{ message: { content: JSON.stringify({ opportunities: drafts }) } }],
+        choices: [{ message: { content: JSON.stringify({ openings: drafts }) } }],
         usage: {},
       }),
     } as Response;
@@ -259,7 +381,10 @@ describe('scout_opportunities', () => {
         lastSeenAt: new Date(),
       })
       .run();
-    const { bodies } = mockProposer([draft('existing-opening'), draft('fresh-one'), draft('fresh-two')]);
+    refineLeadsMock.mockResolvedValue({
+      drafts: [asOppDraft('existing-opening'), asOppDraft('fresh-one'), asOppDraft('fresh-two')],
+      rejects: [],
+    });
 
     const client = await wire('scout-happy');
     const res = await call(client, 'scout_opportunities', {
@@ -283,21 +408,23 @@ describe('scout_opportunities', () => {
     expect(openings[0]!.evidence_refs).toEqual(['P1']);
     expect(openings[0]!.sector).toBe('coding');
 
-    // constraints landed in the prompt's <builder-constraints> block
-    expect(bodies).toHaveLength(1);
-    expect(bodies[0]!.user).toContain('<builder-constraints>');
-    expect(bodies[0]!.user).toContain('skills: typescript, nextjs');
-    expect(bodies[0]!.user).toContain('hours per week: 10');
-    expect(bodies[0]!.user).toContain('risk appetite: medium');
+    expect(refineLeadsMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        feature: 'scout',
+        constraints: expect.objectContaining({
+          skills: 'typescript, nextjs',
+          hoursPerWeek: 10,
+          riskAppetite: 'medium',
+        }),
+      }),
+    );
 
-    // next: debate_idea + generate_plan (scout openings are persisted for generate_plan)
+    // anonymous callers get drafts back but nothing is persisted — generate_plan
+    // is only offered when a row actually landed for the caller
     const next = res.structuredContent!.next as { tool: string; reason: string }[];
     expect(next[0]!.tool).toBe('debate_idea');
-    const plan = next.find((n) => n.tool === 'generate_plan');
-    expect(plan).toBeDefined();
-    expect(plan!.reason).toContain('persisted');
-    expect(plan!.reason).toContain('plan-ready');
-    expect(openings).toEqual(expect.arrayContaining([expect.objectContaining({ persisted: true })]));
+    expect(next.find((n) => n.tool === 'generate_plan')).toBeUndefined();
+    expect(openings).toEqual(expect.arrayContaining([expect.objectContaining({ persisted: false })]));
   });
 
   it('politely refuses with ok:false when the scope is too thin (no LLM call)', async () => {
@@ -311,14 +438,80 @@ describe('scout_opportunities', () => {
 
   it('refuses after MCP_SCOUT_DAILY_CAP calls', async () => {
     seedSignals();
-    const { bodies } = mockProposer([draft('fresh-one')]);
+    refineLeadsMock.mockResolvedValue({ drafts: [asOppDraft('fresh-one')], rejects: [] });
     const client = await wire('scout-cap');
     const first = await call(client, 'scout_opportunities', {});
     const second = await call(client, 'scout_opportunities', {});
     expect(first.structuredContent).toMatchObject({ ok: true });
     expect(second.structuredContent).toMatchObject({ ok: false, openings: [] });
     expect(second.structuredContent!.error as string).toContain('daily scout cap reached (1)');
-    expect(bodies).toHaveLength(1); // the refusal never reaches the LLM
+    expect(refineLeadsMock).toHaveBeenCalledTimes(1); // the refusal never reaches the refiner
+  });
+
+  it('does not starve a second owner when another caller already holds the slug', async () => {
+    seedUser(db, 1);
+    seedUser(db, 2);
+    seedSignals();
+    persistScoutDrafts([persistDraft('shared-idea')], 1);
+    refineLeadsMock.mockResolvedValue({ drafts: [asOppDraft('shared-idea')], rejects: [] });
+
+    const client = await wireUser(2);
+    const res = await call(client, 'scout_opportunities', {});
+    expect(res.structuredContent).toMatchObject({ ok: true, skipped_existing: 0 });
+    const openings = res.structuredContent!.openings as { slug: string; persisted?: boolean }[];
+    expect(openings.map((o) => o.slug)).toContain('shared-idea');
+    expect(openings).toEqual(
+      expect.arrayContaining([expect.objectContaining({ slug: 'shared-idea', persisted: true })]),
+    );
+  });
+
+  it('meters a signed-in scout against the scout quota, not lead_refine', async () => {
+    seedUser(db, 7);
+    seedSignals();
+    refineLeadsMock.mockImplementation(refineActual.refineLeads!);
+    mockProposer([]);
+
+    expect(can({ id: 7 }, 'scout').used ?? 0).toBe(0);
+    const client = await wireUser(7);
+    const res = await call(client, 'scout_opportunities', {});
+    expect(res.structuredContent).toMatchObject({ ok: true });
+    expect(can({ id: 7 }, 'scout').used).toBe(1);
+    expect(can({ id: 7 }, 'lead_refine').used ?? 0).toBe(0);
+  });
+
+  it('does not propose, persist, or return a dismissed lead', async () => {
+    seedUser(db, 1);
+    seedSignals();
+    const owner = { ownerKey: 'user:1', userId: 1 };
+    const composed = composeLeads({
+      primitives: loadPrimitives(),
+      space: loadWedges(),
+      ownerKey: owner.ownerKey,
+      day: dayKey(),
+      cursor: 0,
+      limit: 8,
+    });
+    expect(composed.leads.length).toBeGreaterThan(0);
+    insertLeads(owner, composed.leads);
+    const dropped = composed.leads[0]!.slug;
+    dismissLead(owner, dropped, 'not for me');
+
+    refineLeadsMock.mockImplementation(async (opts) => ({
+      drafts: opts.leads.map((l) => asOppDraft(l.slug)),
+      rejects: [],
+    }));
+
+    const res = await call(await wireUser(1), 'scout_opportunities', {});
+    expect(refineLeadsMock).toHaveBeenCalled();
+    const proposed = (refineLeadsMock.mock.calls[0]![0] as { leads: { slug: string }[] }).leads
+      .map((l) => l.slug);
+    expect(proposed).not.toContain(dropped);
+
+    const openings = (res.structuredContent!.openings as { slug: string }[]).map((o) => o.slug);
+    expect(openings).not.toContain(dropped);
+    expect(
+      db.select().from(opportunities).where(eq(opportunities.slug, dropped)).all(),
+    ).toHaveLength(0);
   });
 });
 

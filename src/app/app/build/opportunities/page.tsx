@@ -4,6 +4,7 @@ import { getDb } from '@/lib/db';
 import { opportunities } from '@/lib/db/schema';
 import { factoryFunnel } from '@/lib/analytics';
 import { oppViewFromRow } from '@/lib/opportunities/view';
+import { visibleTo } from '@/lib/opportunities/scope';
 import FactoryPipeline from '@/components/FactoryPipeline';
 import OpportunityList from '@/components/OpportunityList';
 
@@ -16,7 +17,12 @@ export const metadata = {
 export default async function OpportunitiesPage() {
   const user = await requireViewer();
   const db = getDb();
-  const rows = db.select().from(opportunities).orderBy(desc(opportunities.flipScore)).all();
+  const rows = db
+    .select()
+    .from(opportunities)
+    .where(visibleTo(user?.id ?? null))
+    .orderBy(desc(opportunities.flipScore))
+    .all();
   const active = rows.filter((r) => r.status === 'active');
   const archivedCount = rows.length - active.length;
   const views = active.map(oppViewFromRow);

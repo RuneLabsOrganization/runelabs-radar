@@ -32,9 +32,15 @@ https://<your-host>/mcp          # behind your reverse proxy, or http://127.0.0.
 
 **Auth.** Default (self-host) is anonymous + IP rate-limited — nothing to do. For a shared/hosted deployment set `MCP_AUTH_REQUIRED=true`: clients then run the OAuth 2.1 flow automatically (PKCE + dynamic client registration, no keys to copy) — the hub shows a consent screen at `/oauth/authorize` and issues tokens. Scopes: `read` (all intelligence) and `plans` (plan generation, which spends LLM budget).
 
-**The flagship workflow** (also available as the `find_and_plan` prompt): `ask_radar` or `get_opportunities` → `get_opportunity` (`detail=compact`) → `generate_plan` (`format=markdown`) → save as `PLAN.md` and execute. Call `get_my_usage` for quota + this-cycle tokens saved.
+**Finding something to build.** Three rungs, cheapest first:
 
-Other prompts: `whats_new_today`, `what_should_i_use`, `validate_idea`, `builder_weekly_review`. Call `get_server_guide` from any agent for the live tour.
+1. `get_opportunities` — the curated public radar: reviewed, scored, the same for everyone. Free. Prompt: `find_and_plan`.
+2. `get_leads` — unlimited openings composed *for you alone* by crossing live signal against a business-wedge taxonomy. Deliberately unvalidated (heuristic score, no verdict), free, and pageable with `next_cursor` until the combination space runs out. Two callers never see the same leads. The page is ordered pain-first, then heuristic. Prompt: `explore_unlimited`.
+3. `refine_lead` (`{ lead }`) → `forge_opportunity` (`{ opportunity }`) → `generate_plan` (`format=markdown`) — one LLM call scores a lead into your private opportunity; the forge runs a four-role adversarial debate over it (Builder+); the plan makes it executable.
+
+`dismiss_opportunity` (`{ target, reason, avoid_sector? }`) teaches your pool what not to show you again. Call `get_my_usage` for quota and tokens saved.
+
+Other prompts: `whats_new_today`, `what_should_i_use`, `validate_idea`, `builder_weekly_review`, `which_agent_stack`. Call `get_server_guide` from any agent for the live tour.
 
 ## Local development
 
@@ -57,13 +63,14 @@ Other commands: `npm test` (vitest), `npm run build`, `npm run worker` (cron loo
 | `SESSION_SECRET` | long random string; required in production |
 | `MINIMAX_API_KEY` | same key helix-claw uses — copy from its env on the server |
 | `MINIMAX_BASE_URL` | default `https://api.minimax.io/v1` |
-| `MINIMAX_MODEL` | default `MiniMax-M2` |
+| `MINIMAX_MODEL` | default `MiniMax-M3` |
 | `MINIMAX_DAILY_CALL_CAP` | default 500 calls/day |
 | `AA_API_KEY` | optional; enables Artificial Analysis data (board sync + market scatter) |
 | `PUBLIC_MODE` | `true` = anonymous read-only access; votes/verdicts/admin still require login |
 | `MCP_AUTH_REQUIRED` | `true` = MCP endpoint requires OAuth 2.1 bearer tokens (hub is the authorization server); default anonymous |
 | `MCP_RATE_LIMIT` | requests/hour per token (authed) or per IP (anonymous); default 300 |
 | `MCP_PLAN_DAILY_CAP` | plan generations/day per token or IP (each costs 6-7 LLM calls); default 10 |
+| `MCP_SCOUT_DAILY_CAP` | anonymous scout runs/day per IP; default 10 (signed-in callers use tier quotas) |
 | `OAUTH_ISSUER` / `MCP_PUBLIC_URL` | public URLs for the OAuth metadata endpoints; default derived from `SITE_URL` |
 
 ## Deploy on the Hetzner box

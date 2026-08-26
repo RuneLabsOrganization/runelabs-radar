@@ -1,10 +1,11 @@
-import { desc, eq } from 'drizzle-orm';
+import { and, desc, eq } from 'drizzle-orm';
 import { McpServer, ResourceTemplate } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { getDb } from '../src/lib/db';
 import { boardEntries, briefs, opportunities, stacks } from '../src/lib/db/schema';
 import { topicHierarchy, topicHierarchyAsOf } from '../src/lib/analytics';
 import { iso, parseJsonColumn } from './lib/payload';
 import { marketVisible, type AuthContext } from './lib/auth';
+import { visibleTo } from '../src/lib/opportunities/scope';
 import {
   AGENT_STACKS_REVIEWED_AT,
   PERSONA_SLUGS,
@@ -183,7 +184,7 @@ export function registerResources(server: McpServer, auth: AuthContext): void {
       const rows = getDb()
         .select()
         .from(opportunities)
-        .where(eq(opportunities.status, 'active'))
+        .where(and(eq(opportunities.status, 'active'), visibleTo(auth.userId)))
         .orderBy(desc(opportunities.flipScore))
         .limit(25)
         .all();
@@ -196,7 +197,12 @@ export function registerResources(server: McpServer, auth: AuthContext): void {
     new ResourceTemplate('radar://opportunity/{slug}', { list: undefined }),
     { description: 'One opportunity dossier by slug', mimeType: 'application/json' },
     (uri, { slug }) => {
-      const row = getDb().select().from(opportunities).where(eq(opportunities.slug, String(slug))).get();
+      const row = getDb()
+        .select()
+        .from(opportunities)
+        .where(and(eq(opportunities.slug, String(slug)), visibleTo(auth.userId)))
+        .orderBy(desc(opportunities.ownerUserId))
+        .get();
       return jsonContents(uri, row ? { found: true, opportunity: oppResource(row) } : { found: false });
     },
   );
@@ -209,7 +215,12 @@ export function registerResources(server: McpServer, auth: AuthContext): void {
       mimeType: 'application/json',
     },
     (uri, { slug }) => {
-      const row = getDb().select().from(opportunities).where(eq(opportunities.slug, String(slug))).get();
+      const row = getDb()
+        .select()
+        .from(opportunities)
+        .where(and(eq(opportunities.slug, String(slug)), visibleTo(auth.userId)))
+        .orderBy(desc(opportunities.ownerUserId))
+        .get();
       if (!row) return jsonContents(uri, { found: false });
       const plan = parseJsonColumn<Record<string, unknown> | null>(row.plan, null);
       if (!plan) {

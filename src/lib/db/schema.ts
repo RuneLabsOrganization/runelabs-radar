@@ -1,4 +1,5 @@
 import { blob, index, real, sqliteTable, text, integer, primaryKey, uniqueIndex } from 'drizzle-orm/sqlite-core';
+import { sql } from 'drizzle-orm';
 
 export const users = sqliteTable('users', {
   id: integer('id').primaryKey({ autoIncrement: true }),
@@ -269,47 +270,64 @@ export const topicClusters = sqliteTable('topic_clusters', {
 });
 
 /** The Opportunity Engine's output: scored monetizable openings. */
-export const opportunities = sqliteTable('opportunities', {
-  id: integer('id').primaryKey({ autoIncrement: true }),
-  // stable kebab identity — re-detection across days upserts by slug
-  slug: text('slug').notNull().unique(),
-  title: text('title').notNull(),
-  thesis: text('thesis').notNull(),
-  sector: text('sector'),
-  status: text('status', { enum: ['active', 'archived'] }).notNull().default('active'),
-  flipScore: integer('flip_score').notNull(),
-  holdScore: integer('hold_score').notNull(),
-  // JSON sub-scores, each 0-20: demand, buildability, margin, competition,
-  // timing, moat, regClear, platformSafe, distribution, qualityBar
-  scores: text('scores').notNull(),
-  // JSON hard estimates {initialCostUsd, monthlyCostUsd, priceUsd,
-  // timeToMvpDays, breakEvenCustomers, competitorCount, competitionNote, regulatoryNote}
-  kpis: text('kpis'),
-  // JSON [{type: 'pain'|'pattern'|'story'|'entity'|'market', label}]
-  evidence: text('evidence').notNull().default('[]'),
-  window: text('window'),
-  // structured window for the scoring gate (the text above is for humans)
-  windowMonths: integer('window_months'),
-  // layered review outcome: adversarial critic verdict + deterministic gate caps,
-  // full trail in `review` (JSON {killRisks, adjustments, flags, capsApplied,
-  // criticVerdict, rawFlip, rawHold, criticUnavailable?})
-  verdict: text('verdict', { enum: ['pursue', 'watch', 'reject'] }).notNull().default('watch'),
-  confidence: integer('confidence').notNull().default(40),
-  review: text('review'),
-  reviewedAt: integer('reviewed_at', { mode: 'timestamp' }),
-  // JSON launchable brief — generated on first expand, cached
-  brief: text('brief'),
-  briefGeneratedAt: integer('brief_generated_at', { mode: 'timestamp' }),
-  // JSON execution plan (full task graph) — generated on first MCP request, cached
-  plan: text('plan'),
-  planGeneratedAt: integer('plan_generated_at', { mode: 'timestamp' }),
-  // crowdedness signal (Phase 9e): successful plan generations for this
-  // opportunity — "N builders exploring this", with a ranking penalty above
-  // the threshold in the get_opportunities tool
-  planRuns: integer('plan_runs').notNull().default(0),
-  firstSeenAt: integer('first_seen_at', { mode: 'timestamp' }).notNull(),
-  lastSeenAt: integer('last_seen_at', { mode: 'timestamp' }).notNull(),
-});
+export const opportunities = sqliteTable(
+  'opportunities',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    // stable kebab identity — re-detection across days upserts by (owner, slug)
+    slug: text('slug').notNull(),
+    /**
+     * NULL = the canonical public radar, written only by the daily engine.
+     * Non-null = a private opening owned by one user (Rung 1/2 output).
+     * Every read must scope with: owner_user_id IS NULL OR owner_user_id = :me
+     */
+    ownerUserId: integer('owner_user_id'),
+    title: text('title').notNull(),
+    thesis: text('thesis').notNull(),
+    sector: text('sector'),
+    status: text('status', { enum: ['active', 'archived'] }).notNull().default('active'),
+    flipScore: integer('flip_score').notNull(),
+    holdScore: integer('hold_score').notNull(),
+    // JSON sub-scores, each 0-20: demand, buildability, margin, competition,
+    // timing, moat, regClear, platformSafe, distribution, qualityBar
+    scores: text('scores').notNull(),
+    // JSON hard estimates {initialCostUsd, monthlyCostUsd, priceUsd,
+    // timeToMvpDays, breakEvenCustomers, competitorCount, competitionNote, regulatoryNote}
+    kpis: text('kpis'),
+    // JSON [{type: 'pain'|'pattern'|'story'|'entity'|'market', label}]
+    evidence: text('evidence').notNull().default('[]'),
+    window: text('window'),
+    // structured window for the scoring gate (the text above is for humans)
+    windowMonths: integer('window_months'),
+    // layered review outcome: adversarial critic verdict + deterministic gate caps,
+    // full trail in `review` (JSON {killRisks, adjustments, flags, capsApplied,
+    // criticVerdict, rawFlip, rawHold, criticUnavailable?})
+    verdict: text('verdict', { enum: ['pursue', 'watch', 'reject'] }).notNull().default('watch'),
+    confidence: integer('confidence').notNull().default(40),
+    review: text('review'),
+    reviewedAt: integer('reviewed_at', { mode: 'timestamp' }),
+    // JSON launchable brief — generated on first expand, cached
+    brief: text('brief'),
+    briefGeneratedAt: integer('brief_generated_at', { mode: 'timestamp' }),
+    // JSON execution plan (full task graph) — generated on first MCP request, cached
+    plan: text('plan'),
+    planGeneratedAt: integer('plan_generated_at', { mode: 'timestamp' }),
+    // crowdedness signal (Phase 9e): successful plan generations for this
+    // opportunity — "N builders exploring this", with a ranking penalty above
+    // the threshold in the get_opportunities tool
+    planRuns: integer('plan_runs').notNull().default(0),
+    firstSeenAt: integer('first_seen_at', { mode: 'timestamp' }).notNull(),
+    lastSeenAt: integer('last_seen_at', { mode: 'timestamp' }).notNull(),
+  },
+  (t) => [
+    // Two users may legitimately compose the same slug, so uniqueness is
+    // per-owner. SQLite treats NULLs as DISTINCT in unique indexes, so this
+    // index does NOT constrain public rows — the partial index below does.
+    uniqueIndex('opportunities_owner_slug').on(t.ownerUserId, t.slug),
+    uniqueIndex('opportunities_public_slug').on(t.slug).where(sql`${t.ownerUserId} is null`),
+    index('opportunities_owner_status').on(t.ownerUserId, t.status),
+  ],
+);
 
 /** "The machine noticed" — daily anomaly detections, narrated. */
 export const patterns = sqliteTable(
@@ -672,3 +690,106 @@ export const subscription = sqliteTable('subscription', {
   trialStart: integer('trial_start', { mode: 'timestamp' }),
   trialEnd: integer('trial_end', { mode: 'timestamp' }),
 });
+
+/**
+ * Durable replacement for the in-memory rate/quota Maps in mcp/server.ts and
+ * the per-tool daily caps. Keyed by (bucket, feature, windowStart) so a fixed
+ * window is a single upsert-and-read. Survives deploys; correct across replicas.
+ */
+export const usageCounters = sqliteTable(
+  'usage_counters',
+  {
+    // 'user:123' or 'ip:1.2.3.4' — the AuthContext.rateKey, verbatim
+    bucket: text('bucket').notNull(),
+    // 'rate' | 'scout' | 'debate' | 'lead_refine' | 'forge' | ...
+    feature: text('feature').notNull(),
+    // start of the fixed window, epoch ms — hour/day granularity
+    windowStart: integer('window_start', { mode: 'timestamp' }).notNull(),
+    count: integer('count').notNull().default(0),
+  },
+  (t) => [
+    primaryKey({ columns: [t.bucket, t.feature, t.windowStart] }),
+    index('usage_counters_window').on(t.windowStart),
+  ],
+);
+
+/**
+ * The wedge taxonomy: the four axes Rung-0 composition crosses against
+ * intelligence primitives. Admin-editable rows rather than a hardcoded module
+ * so the combination space can grow without a deploy — the same reasoning that
+ * makes `sources` a table.
+ *
+ * requiresTags / excludesTags are JSON string arrays matched against a
+ * primitive's derived tags; they are what stop the cross-product from emitting
+ * incoherent pairings ("compliance certification moat" on a hobbyist toy).
+ */
+export const wedgeValues = sqliteTable(
+  'wedge_values',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    // 'business_model' | 'delivery_form' | 'buyer' | 'moat_play'
+    axis: text('axis').notNull(),
+    slug: text('slug').notNull(),
+    label: text('label').notNull(),
+    // JSON string[] — primitive must carry ALL of these tags
+    requiresTags: text('requires_tags').notNull().default('[]'),
+    // JSON string[] — primitive must carry NONE of these tags
+    excludesTags: text('excludes_tags').notNull().default('[]'),
+    // 0..20 nudge into the heuristic score; higher = generally stronger wedge
+    weight: integer('weight').notNull().default(10),
+    active: integer('active', { mode: 'boolean' }).notNull().default(true),
+  },
+  (t) => [
+    uniqueIndex('wedge_values_axis_slug').on(t.axis, t.slug),
+    index('wedge_values_axis_active').on(t.axis, t.active),
+  ],
+);
+
+/**
+ * Rung-0 composed leads, owner-scoped.
+ *
+ * Separate from `opportunities` on purpose: a lead is a heuristic hypothesis
+ * with no verdict and no flip score, and an agent must never be able to mistake
+ * one for a reviewed dossier. Refining a lead creates an `opportunities` row
+ * and back-links it via opportunityId.
+ *
+ * ownerUserId NULL + ownerKey set = anonymous caller; those rows carry an
+ * expiresAt and are swept periodically.
+ */
+export const leads = sqliteTable(
+  'leads',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    // AuthContext.rateKey — 'user:123' or 'ip:1.2.3.4'
+    ownerKey: text('owner_key').notNull(),
+    ownerUserId: integer('owner_user_id'),
+    slug: text('slug').notNull(),
+    title: text('title').notNull(),
+    thesisSkeleton: text('thesis_skeleton').notNull(),
+    sector: text('sector'),
+    // JSON string[] of primitive refs (P1, A2, ...)
+    primitiveRefs: text('primitive_refs').notNull().default('[]'),
+    // JSON [{ref, type, label}] — the EXACT evidence text these primitiveRefs
+    // resolved to at compose time. refine_lead uses this snapshot instead of
+    // re-resolving refs against a freshly-reloaded (and possibly reordered)
+    // primitive pool, so evidence never silently drifts under a stable ref.
+    evidenceSnapshot: text('evidence_snapshot').notNull().default('[]'),
+    // JSON Record<axis, wedge value slug>
+    wedge: text('wedge').notNull().default('{}'),
+    heuristicScore: integer('heuristic_score').notNull().default(0),
+    combinationIndex: integer('combination_index').notNull().default(0),
+    // 'composed' → 'refined'
+    stage: text('stage', { enum: ['composed', 'refined'] }).notNull().default('composed'),
+    opportunityId: integer('opportunity_id'),
+    createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+    // set for anonymous callers only; NULL means keep
+    expiresAt: integer('expires_at', { mode: 'timestamp' }),
+    dismissedAt: integer('dismissed_at', { mode: 'timestamp' }),
+    dismissReason: text('dismiss_reason'),
+  },
+  (t) => [
+    uniqueIndex('leads_owner_slug').on(t.ownerKey, t.slug),
+    index('leads_owner_created').on(t.ownerKey, t.createdAt),
+    index('leads_expires').on(t.expiresAt),
+  ],
+);

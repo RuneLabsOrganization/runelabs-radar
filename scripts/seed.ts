@@ -7,6 +7,7 @@ loadDotEnv();
 import { users, sources, boardEntries } from '../src/lib/db/schema';
 import { SEED_SOURCES, SEED_BOARD_TASKS } from '../src/lib/db/seed-data';
 import { DOMAINS } from '../src/lib/domains';
+import { seedWedges } from '../src/lib/opportunities/wedges';
 
 async function main() {
   const args = process.argv.slice(2);
@@ -57,6 +58,9 @@ async function main() {
       if (inserted.changes > 0) newEntries++;
     }
   }
+
+  const wedgeCount = seedWedges();
+  console.log(`[seed] wedge taxonomy: ${wedgeCount} value(s) installed`);
 
   console.log(`Seeded: ${newSources} new sources, ${newEntries} new board entries`);
 }

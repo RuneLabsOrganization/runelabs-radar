@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { useTestDb } from './helpers/db';
 import { opportunities, painPoints, stories } from '@/lib/db/schema';
-import { eq } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 
 vi.mock('@/lib/llm/minimax', () => ({
   chatJSON: vi.fn(),
@@ -135,6 +135,37 @@ describe('sanitizeOpportunities', () => {
   it('nulls invalid sectors', () => {
     const out = sanitizeOpportunities([{ ...valid, sector: 'crypto' }], refs);
     expect(out[0].sector).toBeNull();
+  });
+
+  it('accepts a string integer sub-score and clamps it like a number', () => {
+    const out = sanitizeOpportunities(
+      [{ ...valid, subScores: { ...fullScores, demand: '12' } }],
+      refs,
+    );
+    expect(out).toHaveLength(1);
+    expect(out[0].sub.demand).toBe(12);
+  });
+
+  it('still rejects an object sub-score with missing-or-invalid-sub-score', () => {
+    const rejects: { slug: string; reason: string }[] = [];
+    const out = sanitizeOpportunities(
+      [{ ...valid, subScores: { ...fullScores, demand: { value: 12 } } }],
+      refs,
+      rejects,
+    );
+    expect(out).toHaveLength(0);
+    expect(rejects.some((r) => r.reason === 'missing-or-invalid-sub-score:demand')).toBe(true);
+  });
+
+  it('still rejects a non-numeric string sub-score', () => {
+    const rejects: { slug: string; reason: string }[] = [];
+    const out = sanitizeOpportunities(
+      [{ ...valid, subScores: { ...fullScores, demand: 'twelve' } }],
+      refs,
+      rejects,
+    );
+    expect(out).toHaveLength(0);
+    expect(rejects.some((r) => r.reason === 'missing-or-invalid-sub-score:demand')).toBe(true);
   });
 });
 
@@ -338,5 +369,62 @@ describe('runOpportunities lifecycle', () => {
     expect(row.verdict).toBe('watch');
     expect(row.confidence).toBe(40);
     expect(JSON.parse(row.review!).criticUnavailable).toBe(true);
+  });
+
+  it('does not steal or archive a private row that shares a public slug', async () => {
+    const db = useTestDb();
+    seedSignal(db);
+    const now = new Date();
+    const old = new Date(Date.now() - 30 * 864e5);
+    db.insert(opportunities)
+      .values({
+        slug: 'canonical',
+        ownerUserId: null,
+        title: 'Public canonical',
+        thesis: 'Public canonical thesis that is long enough to pass checks.',
+        status: 'active',
+        flipScore: 50,
+        holdScore: 50,
+        scores: '{}',
+        firstSeenAt: now,
+        lastSeenAt: now,
+      })
+      .run();
+    const privateRow = db
+      .insert(opportunities)
+      .values({
+        slug: 'canonical',
+        ownerUserId: 1,
+        title: 'Private canonical',
+        thesis: 'PRIVATE distinctive thesis that must survive the daily job.',
+        status: 'active',
+        flipScore: 40,
+        holdScore: 40,
+        scores: '{}',
+        firstSeenAt: old,
+        lastSeenAt: old,
+      })
+      .returning()
+      .get()!;
+
+    vi.mocked(chatJSON).mockResolvedValueOnce({ opportunities: [draft('canonical')] } as never);
+    const res = await runOpportunities();
+    expect(res.archived).toBe(0);
+
+    const prompt = String(vi.mocked(chatJSON).mock.calls[0]?.[1] ?? '');
+    expect(prompt).not.toContain('PRIVATE distinctive thesis');
+
+    const pub = db
+      .select()
+      .from(opportunities)
+      .where(and(eq(opportunities.slug, 'canonical'), isNull(opportunities.ownerUserId)))
+      .get()!;
+    expect(pub.id).not.toBe(privateRow.id);
+    expect(pub.title).toBe('Bulk background removal for Shopify sellers');
+
+    const priv = db.select().from(opportunities).where(eq(opportunities.ownerUserId, 1)).get()!;
+    expect(priv.id).toBe(privateRow.id);
+    expect(priv.thesis).toBe('PRIVATE distinctive thesis that must survive the daily job.');
+    expect(priv.status).toBe('active');
   });
 });

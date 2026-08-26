@@ -96,7 +96,14 @@ export function respond(data: Record<string, unknown>, meta?: RespondMeta) {
   };
   const economy: EconomySnapshot = computeEconomy(structured, economyOpts, summary);
   structured.economy = economy;
-  recordEconomy(economyOpts.userId, economy);
+  // Metering is bookkeeping — it must never cost the agent its answer. A
+  // failed write here (FK violation, locked DB) used to surface as a tool
+  // error with no payload at all.
+  try {
+    recordEconomy(economyOpts.userId, economy);
+  } catch {
+    /* best-effort */
+  }
 
   const contentText = meta?.mirrorJson
     ? JSON.stringify(structured, null, 2) + attribution()
