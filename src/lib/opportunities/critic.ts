@@ -1,4 +1,4 @@
-import { desc, eq, gte, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, sql } from 'drizzle-orm';
 import { marketModels } from '../analytics';
 import { getDb } from '../db';
 import { comps, debates, launches, opportunities, painPoints } from '../db/schema';
@@ -8,6 +8,7 @@ import { promptLine, stripCjkDeep } from '../prompt-hygiene';
 import { SUB_KEYS, type SubKey } from './axes';
 import type { AxisAdjustment, CriticResult } from './gate';
 import type { OppDraft } from './engine';
+import { visibleTo } from './scope';
 
 /**
  * Layer 2 of the opportunity pipeline: the red team. One batched call over the
@@ -165,6 +166,7 @@ type StoredDebateTurn = DebateTurn & {
 function debateSubject(
   oppId: number | null,
   ideaText: string | undefined,
+  userId: number | null,
 ): { subject: string; sector: string | null; idea: string | null } {
   if (oppId === null) {
     const idea = promptLine(ideaText ?? '', 600);
@@ -177,7 +179,11 @@ function debateSubject(
       idea,
     };
   }
-  const opp = getDb().select().from(opportunities).where(eq(opportunities.id, oppId)).get();
+  const opp = getDb()
+    .select()
+    .from(opportunities)
+    .where(and(eq(opportunities.id, oppId), visibleTo(userId)))
+    .get();
   if (!opp) throw new LlmError(`opportunity ${oppId} not found`, false);
   let priorRisks: string[] = [];
   try {
@@ -282,8 +288,12 @@ function realistGrounding(sector: string | null): string {
  * (a debate must never fail the job), the debate_idea MCP tool surfaces the
  * error payload to its caller.
  */
-export async function runDebate(oppId: number | null, ideaText?: string): Promise<DebateResult> {
-  const { subject, sector, idea } = debateSubject(oppId, ideaText);
+export async function runDebate(
+  oppId: number | null,
+  ideaText?: string,
+  userId: number | null = null,
+): Promise<DebateResult> {
+  const { subject, sector, idea } = debateSubject(oppId, ideaText, userId);
 
   const prior = (turns: DebateTurn[]): string =>
     turns.length === 0

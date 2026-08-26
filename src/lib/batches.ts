@@ -1,10 +1,11 @@
-import { and, asc, desc, eq, isNull, or } from 'drizzle-orm';
+import { and, asc, desc, eq } from 'drizzle-orm';
 import { getDb } from './db';
 import { batchItems, batchRunItems, batchRuns, batches, debates, opportunities } from './db/schema';
 import { can } from './entitlements';
 import { runDebate } from './opportunities/critic';
 import { proposeOpportunities, type ScoutConstraints } from './opportunities/engine';
 import { persistScoutDrafts } from './opportunities/persist-scout';
+import { publicOnly, visibleTo } from './opportunities/scope';
 import { generatePlan } from './plans/generate';
 import { getProfile } from './personalization';
 
@@ -146,7 +147,7 @@ export async function runBatchOp(batchId: number, op: 'debate' | 'plan' | 'scout
         const idea =
           item.ideaText ??
           (item.refType === 'opportunity' && item.refId ? undefined : item.refKey ?? 'untitled idea');
-        await runDebate(item.refType === 'opportunity' ? item.refId ?? null : null, idea);
+        await runDebate(item.refType === 'opportunity' ? item.refId ?? null : null, idea, userId);
         const last = db.select({ id: debates.id }).from(debates).orderBy(desc(debates.id)).limit(1).get();
         resultRef = last ? String(last.id) : null;
       } else if (op === 'plan') {
@@ -156,12 +157,7 @@ export async function runBatchOp(batchId: number, op: 'debate' | 'plan' | 'scout
             db
               .select()
               .from(opportunities)
-              .where(
-                and(
-                  eq(opportunities.slug, item.refKey),
-                  or(isNull(opportunities.ownerUserId), eq(opportunities.ownerUserId, userId)),
-                ),
-              )
+              .where(and(eq(opportunities.slug, item.refKey), visibleTo(userId)))
               .orderBy(desc(opportunities.ownerUserId))
               .get()?.id ?? null;
         }
@@ -231,7 +227,7 @@ export async function createWeeklyRadarDrop(): Promise<{ slug: string; count: nu
       and(
         eq(opportunities.status, 'active'),
         eq(opportunities.verdict, 'pursue'),
-        isNull(opportunities.ownerUserId),
+        publicOnly(),
       ),
     )
     .orderBy(desc(opportunities.flipScore))

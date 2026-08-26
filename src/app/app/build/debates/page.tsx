@@ -5,6 +5,7 @@ import { getDb } from '@/lib/db';
 import { debates, opportunities } from '@/lib/db/schema';
 import { paths } from '@/lib/urls';
 import { can } from '@/lib/entitlements';
+import { visibleTo } from '@/lib/opportunities/scope';
 import { UpgradeWall } from '@/components/UpgradeWall';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -32,6 +33,7 @@ export default async function DebatesPage() {
     getDb()
       .select({ id: opportunities.id, title: opportunities.title, slug: opportunities.slug })
       .from(opportunities)
+      .where(visibleTo(user?.id ?? null))
       .all()
       .map((o) => [o.id, o]),
   );

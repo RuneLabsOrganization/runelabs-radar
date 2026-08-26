@@ -1,4 +1,4 @@
-import { desc, eq, gte, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, sql } from 'drizzle-orm';
 import { getDb } from '../db';
 import { boardEntries, comps, opportunities, painPoints, stacks } from '../db/schema';
 import { aaModels, latestRadarScores, normalizeModelKey } from '../analytics';
@@ -6,6 +6,7 @@ import { config } from '../config';
 import { chatJSON } from '../llm/minimax';
 import { promptLine } from '../prompt-hygiene';
 import { generateBrief } from '../opportunities/brief';
+import { visibleTo } from '../opportunities/scope';
 import {
   PLAN_PHASES,
   planFromWire,
@@ -73,9 +74,13 @@ export function generatePlan(
 }
 
 /** Cached plan without generation (get_plan / radar://plan). */
-export function readPlan(oppId: number): ExecutionPlan | null {
+export function readPlan(oppId: number, userId: number | null = null): ExecutionPlan | null {
   const db = getDb();
-  const row = db.select({ plan: opportunities.plan }).from(opportunities).where(eq(opportunities.id, oppId)).get();
+  const row = db
+    .select({ plan: opportunities.plan })
+    .from(opportunities)
+    .where(and(eq(opportunities.id, oppId), visibleTo(userId)))
+    .get();
   if (!row?.plan) return null;
   try {
     return planFromWire(JSON.parse(row.plan));
@@ -117,7 +122,11 @@ async function generatePlanInner(
   userId: number | null = null,
 ): Promise<PlanResult> {
   const db = getDb();
-  let opp = db.select().from(opportunities).where(eq(opportunities.id, oppId)).get();
+  let opp = db
+    .select()
+    .from(opportunities)
+    .where(and(eq(opportunities.id, oppId), visibleTo(userId)))
+    .get();
   if (!opp) return { ok: false, error: 'opportunity not found' };
 
   // steps: (launch brief if missing) + frame + one per lifecycle phase
@@ -139,7 +148,7 @@ async function generatePlanInner(
     const briefRes = await generateBrief(oppId, { userId, allowMarket: includeMarket });
     report('launch brief');
     if (!briefRes.ok) return { ok: false, error: `brief generation failed: ${briefRes.error}` };
-    opp = db.select().from(opportunities).where(eq(opportunities.id, oppId)).get() ?? opp;
+    opp = db.select().from(opportunities).where(and(eq(opportunities.id, oppId), visibleTo(userId))).get() ?? opp;
   }
   const brief = opp.brief ? (JSON.parse(opp.brief) as Record<string, unknown>) : null;
   const stackVenture = typeof brief?.stackVenture === 'string' ? brief.stackVenture : null;

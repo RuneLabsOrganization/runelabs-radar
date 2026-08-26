@@ -1,10 +1,11 @@
-import { desc, eq, gte } from 'drizzle-orm';
+import { and, desc, eq, gte } from 'drizzle-orm';
 import { aaModels } from '../analytics';
 import { getDb } from '../db';
 import { comps, opportunities, painPoints, stacks } from '../db/schema';
 import { chatJSON } from '../llm/minimax';
 import { promptLine, stripCjkDeep } from '../prompt-hygiene';
 import { VENTURES } from '../stacks/generate';
+import { visibleTo } from './scope';
 
 export interface UnitEconomics {
   assumptions: string[];
@@ -102,7 +103,11 @@ async function generateBriefInner(
   allowMarket: boolean,
 ): Promise<BriefResult> {
   const db = getDb();
-  const opp = db.select().from(opportunities).where(eq(opportunities.id, oppId)).get();
+  const opp = db
+    .select()
+    .from(opportunities)
+    .where(and(eq(opportunities.id, oppId), visibleTo(userId)))
+    .get();
   if (!opp) return { ok: false, error: 'opportunity not found' };
   if (opp.brief) {
     try {

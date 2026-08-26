@@ -1,20 +1,25 @@
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
-import { desc, eq } from 'drizzle-orm';
+import { and, desc, eq } from 'drizzle-orm';
 import { requireViewer } from '@/lib/auth/user';
 import { getDb } from '@/lib/db';
 import { debates, opportunities } from '@/lib/db/schema';
 import { getIdentity } from '@/lib/identity';
 import { DOMAIN_COLORS, DOMAIN_LABELS, isDomain } from '@/lib/domains';
 import { oppViewFromRow } from '@/lib/opportunities/view';
+import { visibleTo } from '@/lib/opportunities/scope';
 import { paths, urls } from '@/lib/urls';
 import OppDossier, { VerdictChip } from '@/components/OppDossier';
 import OppBrief from '@/components/OppBrief';
 import BriefSection from '@/components/BriefSection';
 import { AddToBatchButton } from '@/components/batches/AddToBatchButton';
 
-function getOpportunity(id: number) {
-  return getDb().select().from(opportunities).where(eq(opportunities.id, id)).get();
+function getOpportunity(id: number, userId: number | null) {
+  return getDb()
+    .select()
+    .from(opportunities)
+    .where(and(eq(opportunities.id, id), visibleTo(userId)))
+    .get();
 }
 
 const ROLE_LABEL: Record<string, string> = {
@@ -76,7 +81,8 @@ function getLatestDebate(oppId: number): DebateView | null {
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const row = getOpportunity(Number(id));
+  const user = await requireViewer();
+  const row = getOpportunity(Number(id), user?.id ?? null);
   if (!row) return {};
   const description = row.thesis.slice(0, 160);
   return {
@@ -93,7 +99,7 @@ export default async function OpportunityPage({ params }: { params: Promise<{ id
   if (!Number.isInteger(oppId) || oppId <= 0) notFound();
 
   const user = await requireViewer();
-  const row = getOpportunity(oppId);
+  const row = getOpportunity(oppId, user?.id ?? null);
   if (!row) notFound();
   const opp = oppViewFromRow(row);
   const debate = getLatestDebate(oppId);

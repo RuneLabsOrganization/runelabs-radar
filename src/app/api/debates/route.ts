@@ -15,7 +15,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'idea or opportunityId required' }, { status: 400 });
   }
   try {
-    const result = await runDebate(body.opportunityId ?? null, body.idea?.trim());
+    const result = await runDebate(body.opportunityId ?? null, body.idea?.trim(), user.id);
     return NextResponse.json({
       verdict: result.verdict,
       confidence: result.confidence,

@@ -44,7 +44,7 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
   }
 
   try {
-    const res = await generateBrief(oppId);
+    const res = await generateBrief(oppId, { userId: user?.id ?? null });
     if (!res.ok) return NextResponse.json({ error: res.error }, { status: 502 });
     return NextResponse.json({ brief: res.brief });
   } catch (e) {
