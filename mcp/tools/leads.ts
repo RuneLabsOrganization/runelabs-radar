@@ -5,14 +5,14 @@ import { getDb } from '../../src/lib/db';
 import { opportunities } from '../../src/lib/db/schema';
 import { composeLeads } from '../../src/lib/opportunities/compose';
 import type { PrimitiveType } from '../../src/lib/opportunities/primitives';
-import { getLead, insertLeads, markRefined, type Owner } from '../../src/lib/opportunities/leads';
+import { getLead, insertLeads, markRefined, dismissLead, type Owner } from '../../src/lib/opportunities/leads';
 import { persistScoutDrafts } from '../../src/lib/opportunities/persist-scout';
 import { loadPrimitives } from '../../src/lib/opportunities/primitives';
 import { refineLeads } from '../../src/lib/opportunities/refine';
 import { dayKey } from '../../src/lib/opportunities/seed';
 import { normalizeSlug } from '../../src/lib/opportunities/slug';
 import { loadWedges } from '../../src/lib/opportunities/wedges';
-import { getProfile } from '../../src/lib/personalization';
+import { getProfile, setProfile } from '../../src/lib/personalization';
 import { can } from '../../src/lib/entitlements';
 import { envelopeSchema, respond, withUserEconomy, type NextAction } from '../lib/payload';
 import type { AuthContext } from '../lib/auth';
@@ -296,6 +296,75 @@ export function registerLeadTools(server: McpServer, auth: AuthContext): void {
               arguments: { opportunity: saved.slug },
               reason: 'turn it into an executable plan',
             },
+          ],
+        },
+      );
+    },
+  );
+
+  server.registerTool(
+    'dismiss_opportunity',
+    {
+      description:
+        'Tell Radar a lead or opportunity is not for you, and why. Dismissed items stop appearing in your results. With avoid_sector=true the sector is added to your profile avoid list, so future composed leads steer away from it — this is how your private pool gets sharper instead of repeating itself.',
+      inputSchema: {
+        target: z.string().describe('lead slug (from get_leads) or opportunity slug'),
+        reason: z.string().max(200).describe('why it is not for you — kept on the record'),
+        avoid_sector: z
+          .boolean()
+          .default(false)
+          .describe('also add this item sector to your profile avoid list'),
+      },
+      outputSchema: {
+        ...envelopeSchema,
+        ok: z.boolean(),
+        error: z.string().optional(),
+        avoided_sectors: z.array(z.string()).optional(),
+      },
+    },
+    async ({ target, reason, avoid_sector }) => {
+      if (auth.userId == null) {
+        return respond(
+          { ok: false, error: 'Dismissing requires sign in — anonymous pools are ephemeral anyway.' },
+          {
+            summary: 'Sign in to keep dismissals across sessions.',
+            economy: withUserEconomy(auth.userId, 'read'),
+          },
+        );
+      }
+
+      const owner = ownerFor(auth);
+      const row = getLead(owner, target);
+      if (!row) {
+        return respond(
+          { ok: false, error: `No lead "${target}" in your pool.` },
+          {
+            summary: `Nothing called "${target}" in your pool to dismiss.`,
+            economy: withUserEconomy(auth.userId, 'read'),
+            next: [{ tool: 'get_leads', arguments: { limit: 10 }, reason: 'list your current leads' }],
+          },
+        );
+      }
+
+      dismissLead(owner, target, reason);
+
+      let avoided: string[] = getProfile(auth.userId)?.avoidedSectors ?? [];
+      if (avoid_sector && row.sector && can({ id: auth.userId }, 'personalize').ok) {
+        if (!avoided.some((s) => s.toLowerCase() === row.sector!.toLowerCase())) {
+          avoided = [...avoided, row.sector];
+          setProfile(auth.userId, { avoidedSectors: avoided });
+        }
+      }
+
+      return respond(
+        { ok: true, avoided_sectors: avoided },
+        {
+          summary: `Dismissed "${row.title}".${
+            avoid_sector && row.sector ? ` Future leads will steer away from ${row.sector}.` : ''
+          }`,
+          economy: withUserEconomy(auth.userId, 'read'),
+          next: [
+            { tool: 'get_leads', arguments: { limit: 8 }, reason: 'fresh leads, now better targeted' },
           ],
         },
       );
