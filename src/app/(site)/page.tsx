@@ -51,18 +51,18 @@ interface HeroFacts {
 
 function heroFacts(): HeroFacts {
   const db = getDb();
-  const dayAgo = new Date(Date.now() - 864e5);
+  const monthAgo = new Date(Date.now() - 30 * 864e5);
 
-  const read24h = db.select({ c: count() }).from(items).where(gte(items.fetchedAt, dayAgo)).get()?.c ?? 0;
-  // A quiet ingest day (or a fresh self-host) must not put "we read 3 stories
-  // yesterday" in the headline — fall back to the 7-day daily average, and the
-  // hero drops the number entirely when even that is empty (see below).
-  const week = db
-    .select({ c: count() })
-    .from(items)
-    .where(gte(items.fetchedAt, new Date(Date.now() - 7 * 864e5)))
-    .get()?.c ?? 0;
-  const storiesRead = read24h >= 100 ? read24h : Math.round(week / 7);
+  // Rolling 30 days, not all-time and not yesterday.
+  //
+  // All-time reads *worse*: it is only ~2x the monthly figure, because more
+  // than half of everything ever ingested arrived in the last month — so it
+  // quietly advertises how young the product is, and grows slower every week.
+  // The daily count is honest but reads modest. The 30-day window is ~15x the
+  // daily number, still a hard measured count rather than a projection, and it
+  // rises on its own as ingest volume grows.
+  const storiesRead =
+    db.select({ c: count() }).from(items).where(gte(items.fetchedAt, monthAgo)).get()?.c ?? 0;
 
   const board = db.select().from(boardEntries).all();
   const verdicts = board.reduce(
@@ -176,7 +176,7 @@ export default function LandingPage() {
           <h1 className="type-display mt-4 max-w-3xl text-balance text-ink">
             {facts.storiesRead > 0 ? (
               <>
-                We read {facts.storiesRead.toLocaleString('en-US')} AI stories yesterday.
+                We read {facts.storiesRead.toLocaleString('en-US')} AI stories last month.
                 <br />
                 You need to read none.
               </>
