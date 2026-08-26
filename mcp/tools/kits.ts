@@ -35,9 +35,14 @@ const kitOutput = {
   label: z.string().optional(),
   tier: z.string().optional(),
   total_usd_month: z.number().optional(),
+  /** True when total_usd_month omits one or more covered picks with no price on file — never a bare $0 claim. */
+  total_is_partial: z.boolean().optional(),
   covered: z.number().optional(),
   total_cells: z.number().optional(),
   lines: z.array(lineSchema).optional(),
+  unpriced: z
+    .array(z.object({ pick: z.string(), category: z.string(), task: z.string() }))
+    .optional(),
   usage_risk: z
     .array(z.object({ pick: z.string(), category: z.string(), task: z.string(), risk: z.string().nullable() }))
     .optional(),
@@ -52,6 +57,7 @@ export function kitPayload(kit: Kit): Record<string, unknown> {
     label: kit.label,
     tier: kit.tier,
     total_usd_month: kit.totalUsdMonth,
+    total_is_partial: kit.unpriced.length > 0,
     covered: kit.coveredCount,
     total_cells: kit.totalCount,
     lines: kit.lines.map((l) => ({
@@ -68,6 +74,7 @@ export function kitPayload(kit: Kit): Record<string, unknown> {
       verified_at: l.pick ? iso(l.pick.verifiedAt) : null,
       risk_flag: l.pick?.riskFlag ?? null,
     })),
+    unpriced: kit.unpriced.map((p) => ({ pick: p.pickName, category: p.category, task: p.task })),
     usage_risk: kit.usageRisk.map((p) => ({
       pick: p.pickName,
       category: p.category,
@@ -80,7 +87,8 @@ export function kitPayload(kit: Kit): Record<string, unknown> {
 
 export function kitSummary(kit: Kit): string {
   const usage = kit.usageRisk.length ? `, ${kit.usageRisk.length} usage-priced excluded` : '';
-  return `${kit.label} (${kit.tier}): $${kit.totalUsdMonth}/mo across ${kit.coveredCount} of ${kit.totalCount} cells${usage}.`;
+  const partial = kit.unpriced.length ? ` (partial — ${kit.unpriced.length} covered pick(s) have no price on file)` : '';
+  return `${kit.label} (${kit.tier}): $${kit.totalUsdMonth}/mo${partial} across ${kit.coveredCount} of ${kit.totalCount} cells${usage}.`;
 }
 
 export function registerKitTools(server: McpServer, auth: AuthContext): void {

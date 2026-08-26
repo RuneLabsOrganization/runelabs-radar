@@ -30,12 +30,20 @@ export default async function KitPage({
       <h1 className="mt-2 text-2xl font-semibold">{kit.label}</h1>
       <p className="mt-1 text-ink-4">{persona.blurb}</p>
 
-      <div className="mt-4 flex items-baseline gap-4">
-        <span className="text-3xl font-semibold">${kit.totalUsdMonth}</span>
+      <div className="mt-4 flex flex-wrap items-baseline gap-4">
+        <span className="text-3xl font-semibold">
+          {kit.unpriced.length > 0 ? '$' + kit.totalUsdMonth + '+' : '$' + kit.totalUsdMonth}
+        </span>
         <span className="text-ink-4">
           /mo · {kit.coveredCount} of {kit.totalCount} covered
         </span>
       </div>
+      {kit.unpriced.length > 0 && (
+        <p className="mt-1 text-sm text-ink-4">
+          Price not on file yet for {kit.unpriced.map((p) => p.pickName).join(', ')} — the total above does not
+          include {kit.unpriced.length === 1 ? 'it' : 'them'}.
+        </p>
+      )}
 
       <nav className="mt-4 flex gap-2 text-sm">
         {KIT_TIERS.map((t) => (
@@ -72,7 +80,9 @@ export default async function KitPage({
                     ? 'usage-priced'
                     : l.pick.priceModel === 'free'
                       ? 'free'
-                      : `$${l.pick.priceUsdMonth ?? 0}`}
+                      : l.pick.priceUsdMonth != null
+                        ? `$${l.pick.priceUsdMonth}`
+                        : <span className="text-ink-4">price unknown</span>}
               </td>
               <td className="text-ink-4">{l.pick ? l.pick.confidence : '—'}</td>
             </tr>

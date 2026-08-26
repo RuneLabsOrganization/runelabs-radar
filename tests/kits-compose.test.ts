@@ -34,12 +34,31 @@ describe('composeKit', () => {
     expect(kit.totalCount).toBe(6);
   });
 
-  it('counts free picks as zero', () => {
+  it('counts free picks as a known zero, not unpriced', () => {
     const kit = composeKit(UGC, 'cheapest', [
       pick({ category: 'audio', task: 'music', priceModel: 'free', priceUsdMonth: null }),
     ]);
     expect(kit.totalUsdMonth).toBe(0);
     expect(kit.coveredCount).toBe(1);
+    expect(kit.unpriced).toHaveLength(0);
+  });
+
+  // INVARIANT 4 — a seat pick with no price on file is UNPRICED, never a
+  // silent zero. This is the bug the migration from board_entries hit: every
+  // migrated pick is priceModel 'seat' with priceUsdMonth null, and the old
+  // composer summed `?? 0` and reported "$0/mo" for a kit of paid tools.
+  it('excludes a priceless seat pick from the total and reports it as unpriced', () => {
+    const kit = composeKit(UGC, 'cheapest', [
+      pick({ category: 'video', task: 'text-to-video', priceModel: 'seat', priceUsdMonth: null }),
+      pick({ category: 'image', task: 'photoreal', priceModel: 'seat', priceUsdMonth: 10 }),
+    ]);
+    expect(kit.totalUsdMonth).toBe(10);
+    expect(kit.unpriced).toHaveLength(1);
+    expect(kit.unpriced[0].task).toBe('text-to-video');
+    // still a covered line, not a gap — we have a pick, just not its price
+    expect(kit.coveredCount).toBe(2);
+    expect(kit.gaps).toHaveLength(4);
+    expect(kit.lines.find((l) => l.task === 'text-to-video')?.pick).not.toBeNull();
   });
 
   // INVARIANT 1 — usage-priced picks never enter the total.
