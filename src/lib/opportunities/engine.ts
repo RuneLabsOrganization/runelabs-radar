@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, isNull, lt, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, lt, sql } from 'drizzle-orm';
 import { aaModels, latestPatterns, topEntities } from '../analytics';
 import { getDb } from '../db';
 import { launches, opportunities, painPoints, stories } from '../db/schema';
@@ -14,6 +14,7 @@ export { compositeScore, FLIP_WEIGHTS, HOLD_WEIGHTS, SUB_KEYS } from './axes';
 export type { SubKey, SubScores } from './axes';
 import { SUB_KEYS, type SubScores } from './axes';
 import { normalizeSlug } from './slug';
+import { publicOnly } from './scope';
 
 export { normalizeSlug };
 
@@ -310,7 +311,7 @@ export async function proposeOpportunities(constraints?: ScoutConstraints): Prom
   const existing = db
     .select()
     .from(opportunities)
-    .where(and(eq(opportunities.status, 'active'), isNull(opportunities.ownerUserId)))
+    .where(and(eq(opportunities.status, 'active'), publicOnly()))
     .orderBy(desc(opportunities.lastSeenAt))
     .limit(20)
     .all();
@@ -398,7 +399,7 @@ export async function runOpportunities(): Promise<{
   const createdRows: { id: number; verdict: string; flipScore: number }[] = [];
   // keyed by re-normalized slug — heals any legacy rows stored pre-idempotency-fix
   const bySlug = new Map(
-    db.select().from(opportunities).where(isNull(opportunities.ownerUserId)).all()
+    db.select().from(opportunities).where(publicOnly()).all()
       .map((o) => [normalizeSlug(o.slug), o]),
   );
   for (const d of drafts) {
@@ -468,7 +469,7 @@ export async function runOpportunities(): Promise<{
     .where(
       and(
         eq(opportunities.status, 'active'),
-        isNull(opportunities.ownerUserId),
+        publicOnly(),
         lt(opportunities.lastSeenAt, new Date(Date.now() - ARCHIVE_AFTER_DAYS * 864e5)),
       ),
     )
