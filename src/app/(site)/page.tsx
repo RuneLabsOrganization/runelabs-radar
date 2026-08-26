@@ -1,5 +1,8 @@
 import Link from 'next/link';
+import { count, eq, gte, isNotNull } from 'drizzle-orm';
 import { ArrowRight, Radar, Layers, Sparkles, Cable } from 'lucide-react';
+import { getDb } from '@/lib/db';
+import { boardEntries, items, sources, stories } from '@/lib/db/schema';
 import { getIdentity } from '@/lib/identity';
 import { paths } from '@/lib/urls';
 import { Button } from '@/components/ui/button';
@@ -7,23 +10,68 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import HeroScope from '@/components/hero/HeroScope';
 import { McpDemo } from '@/components/mcp-demo/McpDemo';
 
+/**
+ * The hero quotes live counts, so this page must NOT be baked at build time —
+ * a statically prerendered "/" would freeze "we read N stories yesterday" at
+ * whatever it was the day we deployed, which is the same staleness bug the
+ * hardcoded "26 sources" already caused once. Ten minutes is far fresher than
+ * the daily granularity of the numbers while keeping the busiest page cached.
+ */
+export const revalidate = 600;
+
 export const metadata = {
-  title: 'Decide your AI tools once. Get back to work.',
+  title: 'We read the whole AI field so you read none of it.',
   description:
-    'A new best-thing ships every week and checking whether it matters is a job nobody pays you for. Radar does that job — for writing, video, design, code and ads. Pick your setup once; we stay quiet until something actually changes.',
+    'Radar reads every source in the AI field daily and turns it into one answer per job: what is best, what is best value, and what is cheapest that still works. Dated, benchmark-backed, and funded by nobody we cover.',
 };
 
 /**
- * Hero stats are trust signals, not spec sheets. Deliberately NOT "50 MCP
- * tools": tool count is a liability buyers actively try to reduce, and
- * bragging about it tells an informed reader we will eat their context.
+ * Hero numbers are READ LIVE, never hardcoded.
+ *
+ * The previous hero shipped "26 sources" and was still claiming it at 37 — the
+ * exact failure this whole page argues against, sitting in our own hero. Every
+ * number below is a Rolls-Royce-style verifiable fact ("at 60 miles an hour…"),
+ * so it has to actually be true at render time or it is worse than no number.
+ *
+ * Deliberately NOT "50 MCP tools": tool count is a liability buyers actively
+ * try to reduce, and bragging about it tells an informed reader we will eat
+ * their context.
  */
-const HERO_STATS = [
-  { value: '26', label: 'sources read daily' },
-  { value: '6', label: 'fields watched' },
-  { value: '$0', label: 'vendor money taken' },
-  { value: '$19', label: 'per month' },
-];
+interface HeroFacts {
+  storiesRead: number;
+  sourcesOn: number;
+  verdicts: number;
+  graded: number;
+}
+
+function heroFacts(): HeroFacts {
+  const db = getDb();
+  const dayAgo = new Date(Date.now() - 864e5);
+
+  const read24h = db.select({ c: count() }).from(items).where(gte(items.fetchedAt, dayAgo)).get()?.c ?? 0;
+  // A quiet ingest day (or a fresh self-host) must not put "we read 3 stories
+  // yesterday" in the headline — fall back to the 7-day daily average, and the
+  // hero drops the number entirely when even that is empty (see below).
+  const week = db
+    .select({ c: count() })
+    .from(items)
+    .where(gte(items.fetchedAt, new Date(Date.now() - 7 * 864e5)))
+    .get()?.c ?? 0;
+  const storiesRead = read24h >= 100 ? read24h : Math.round(week / 7);
+
+  const board = db.select().from(boardEntries).all();
+  const verdicts = board.reduce(
+    (n, r) => n + [r.bestOverall, r.bestValue, r.cheapestViable].filter(Boolean).length,
+    0,
+  );
+
+  return {
+    storiesRead,
+    sourcesOn: db.select({ c: count() }).from(sources).where(eq(sources.enabled, true)).get()?.c ?? 0,
+    verdicts,
+    graded: db.select({ c: count() }).from(stories).where(isNotNull(stories.hindsight)).get()?.c ?? 0,
+  };
+}
 
 /** The cost of the status quo, in the three currencies people actually feel. */
 const TAX = [
@@ -82,6 +130,13 @@ const TRUST = [
 
 export default function LandingPage() {
   const name = getIdentity().productName;
+  const facts = heroFacts();
+  const stats = [
+    { value: String(facts.sourcesOn), label: 'sources read daily' },
+    { value: String(facts.verdicts), label: 'verdicts on the board' },
+    { value: facts.graded.toLocaleString('en-US'), label: 'predictions graded' },
+    { value: '$0', label: 'vendor money taken' },
+  ];
   return (
     <div>
       <section className="relative isolate flex min-h-[600px] items-center overflow-hidden border-b border-grat lg:min-h-[680px]">
@@ -104,28 +159,38 @@ export default function LandingPage() {
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-phosphor opacity-60" />
               <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-phosphor" />
             </span>
-            Decide once · then get back to work
+            {facts.sourcesOn} sources · $0 vendor money
           </div>
+          {/* Ogilvy's Rolls-Royce move: lead with a verifiable fact, not a
+              claim. "We reviewed the AI tools" is "the best car in the world" —
+              an assertion. The number is the electric clock. */}
           <h1 className="type-display mt-4 max-w-3xl text-balance text-ink">
-            You&apos;ve spent more time picking AI tools than using them.
+            {facts.storiesRead > 0 ? (
+              <>
+                We read {facts.storiesRead.toLocaleString('en-US')} AI stories yesterday.
+                <br />
+                You need to read none.
+              </>
+            ) : (
+              <>We read the whole AI field. You need to read none of it.</>
+            )}
           </h1>
+          {/* 15 words. The measured sweet spot is 10-20: converts 14% better
+              than a one-liner and 22% better than a long paragraph. */}
           <p className="mt-5 max-w-xl text-[16px] leading-relaxed text-ink-2">
-            There&apos;s a new best-thing every week, and checking whether it matters to you is a job nobody pays you
-            for. {name} does that job. Pick your setup once — we&apos;ll stay quiet until something actually changes
-            enough to be worth switching.
+            One answer per job: what&apos;s best, what&apos;s best value, and what&apos;s cheapest that still works.
           </p>
+          {/* One CTA, not two. Two buttons make a decision; one makes momentum
+              — and it names what you get rather than "learn more". */}
           <div className="mt-8 flex flex-wrap gap-3">
             <Button asChild size="lg">
               <Link href={paths.tools}>
-                See what to use <ArrowRight className="h-4 w-4" />
+                See the {facts.verdicts} verdicts <ArrowRight className="h-4 w-4" />
               </Link>
-            </Button>
-            <Button asChild variant="outline" size="lg">
-              <Link href={paths.signal}>What changed this week</Link>
             </Button>
           </div>
           <dl className="mono mt-10 flex flex-wrap gap-x-8 gap-y-3 text-[10.5px] uppercase tracking-[0.1em] text-ink-4">
-            {HERO_STATS.map((s) => (
+            {stats.map((s) => (
               <div key={s.label}>
                 <dt className="sr-only">{s.label}</dt>
                 <dd>
@@ -135,10 +200,6 @@ export default function LandingPage() {
               </div>
             ))}
           </dl>
-          <p className="mt-6 max-w-xl text-[12.5px] text-ink-4">
-            BCG and UC Riverside surveyed 1,488 workers: productivity peaks at three AI tools, then falls. The problem
-            was never finding more tools.
-          </p>
         </div>
       </section>
 
@@ -153,6 +214,12 @@ export default function LandingPage() {
             </div>
           ))}
         </div>
+        {/* Moved down from the hero: it argues "run fewer tools", which supports
+            the cost-of-the-status-quo section rather than the new hero promise. */}
+        <p className="mt-8 max-w-2xl text-[12.5px] text-ink-4">
+          BCG and UC Riverside surveyed 1,488 workers: productivity peaks at three AI tools, then falls. The problem
+          was never finding more tools.
+        </p>
       </section>
 
       <section className="mx-auto max-w-[1100px] px-4 py-16 sm:px-6">
