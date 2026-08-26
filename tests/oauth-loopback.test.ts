@@ -3,6 +3,7 @@ import {
   browserLoopbackRedirect,
   isLoopbackRedirectUri,
   oauthCompleteLanding,
+  scheduleLoopbackHandoff,
 } from '@/lib/oauth-loopback';
 
 describe('browserLoopbackRedirect', () => {
@@ -59,5 +60,27 @@ describe('oauthCompleteLanding', () => {
   it('does not wrap non-loopback redirect URIs', () => {
     const cb = 'https://claude.ai/api/mcp/auth_callback?code=abc';
     expect(oauthCompleteLanding(cb, 'https://radar.runelabs.org')).toBe(cb);
+  });
+});
+
+describe('scheduleLoopbackHandoff', () => {
+  it('navigates to the callback URL', async () => {
+    const hits: string[] = [];
+    const cancel = scheduleLoopbackHandoff(
+      'http://localhost:8787/callback?code=x',
+      (url) => hits.push(url),
+      0,
+    );
+    await new Promise((r) => setTimeout(r, 20));
+    expect(hits).toEqual(['http://localhost:8787/callback?code=x']);
+    cancel();
+  });
+
+  it('cancel prevents a pending handoff', async () => {
+    const hits: string[] = [];
+    const cancel = scheduleLoopbackHandoff('http://localhost:1/x', (url) => hits.push(url), 40);
+    cancel();
+    await new Promise((r) => setTimeout(r, 60));
+    expect(hits).toEqual([]);
   });
 });

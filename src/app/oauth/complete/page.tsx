@@ -50,9 +50,8 @@ export default async function OAuthCompletePage({
           AUTHORIZATION COMPLETE
         </div>
         <p className="mt-4 text-[13.5px] text-[var(--ink-2)]">
-          Radar issued an authorization code for your MCP client. Return to{' '}
-          <strong className="text-[var(--ink)]">Kimi Code</strong> or{' '}
-          <strong className="text-[var(--ink)]">VS Code</strong> to finish connecting.
+          Radar issued an authorization code for your MCP client. Your editor
+          should finish connecting automatically.
         </p>
         <CompleteClient callbackUrl={callbackUrl} />
       </div>

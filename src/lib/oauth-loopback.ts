@@ -42,3 +42,13 @@ export function oauthCompleteLanding(callbackWithCode: string, publicOrigin: str
   const origin = publicOrigin.replace(/\/+$/, '');
   return `${origin}/oauth/complete?to=${encodeURIComponent(browserRedirect)}`;
 }
+
+/** Same-tab navigation to the editor's loopback callback. Returns a cancel fn. */
+export function scheduleLoopbackHandoff(
+  callbackUrl: string,
+  assign: (url: string) => void,
+  delayMs = 0,
+): () => void {
+  const id = setTimeout(() => assign(callbackUrl), delayMs);
+  return () => clearTimeout(id);
+}
