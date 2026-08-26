@@ -25,6 +25,7 @@ import { runDebate, type DebateResult } from '@/lib/opportunities/critic';
 import { _setFetch } from '@/lib/llm/minimax';
 import { SUB_KEYS, type OppDraft } from '@/lib/opportunities/engine';
 import { persistScoutDrafts } from '@/lib/opportunities/persist-scout';
+import { seedWedges } from '@/lib/opportunities/wedges';
 import { comps, launches, opportunities, painPoints, stories } from '@/lib/db/schema';
 import { seedUser, useTestDb } from './helpers/db';
 
@@ -212,10 +213,11 @@ describe('debate_idea', () => {
 // --- scout_opportunities ---
 
 function seedSignals(): void {
-  for (let i = 0; i < 3; i++) {
+  seedWedges();
+  for (let i = 0; i < 5; i++) {
     db.insert(painPoints)
       .values({
-        summary: `paid need number ${i} that keeps recurring`,
+        summary: `paid need number ${i} that keeps recurring for engineering teams`,
         intensity: 2,
         evidence: '[]',
         lastSeenAt: new Date(),
@@ -272,7 +274,7 @@ function mockProposer(drafts: unknown[]): { bodies: { system: string; user: stri
     return {
       ok: true,
       json: async () => ({
-        choices: [{ message: { content: JSON.stringify({ opportunities: drafts }) } }],
+        choices: [{ message: { content: JSON.stringify({ openings: drafts }) } }],
         usage: {},
       }),
     } as Response;

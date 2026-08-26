@@ -1,8 +1,13 @@
+import { eq } from 'drizzle-orm';
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { getDb } from '../../src/lib/db';
+import { opportunities } from '../../src/lib/db/schema';
 import { composeLeads } from '../../src/lib/opportunities/compose';
-import { insertLeads, type Owner } from '../../src/lib/opportunities/leads';
+import { getLead, insertLeads, markRefined, type Owner } from '../../src/lib/opportunities/leads';
+import { persistScoutDrafts } from '../../src/lib/opportunities/persist-scout';
 import { loadPrimitives } from '../../src/lib/opportunities/primitives';
+import { refineLeads } from '../../src/lib/opportunities/refine';
 import { dayKey } from '../../src/lib/opportunities/seed';
 import { loadWedges } from '../../src/lib/opportunities/wedges';
 import { getProfile } from '../../src/lib/personalization';
@@ -141,6 +146,132 @@ export function registerLeadTools(server: McpServer, auth: AuthContext): void {
           summary: `${composed.leads.length} unvalidated leads composed for you (of ${composed.spaceSize.toLocaleString()} combinations) — strongest: "${top.title}" (heuristic ${top.heuristicScore}). Refine one to get real scores.`,
           economy: withUserEconomy(auth.userId, 'read'),
           next,
+        },
+      );
+    },
+  );
+
+  server.registerTool(
+    'refine_lead',
+    {
+      description:
+        'Spend one LLM call to turn a composed lead into a real, scored opportunity: rewritten thesis, 10-axis sub-scores, KPIs, flip/hold scores and a verdict. The result is saved as YOUR private opportunity and is immediately usable with generate_plan. Requires sign-in and consumes your monthly refine quota. Get lead slugs from get_leads.',
+      inputSchema: {
+        lead: z.string().describe('lead slug from get_leads'),
+      },
+      outputSchema: {
+        ...envelopeSchema,
+        ok: z.boolean(),
+        error: z.string().optional(),
+        opportunity: z
+          .object({
+            slug: z.string(),
+            title: z.string(),
+            thesis: z.string(),
+            flip_score: z.number(),
+            hold_score: z.number(),
+            verdict: z.string(),
+            confidence: z.number(),
+          })
+          .optional(),
+      },
+    },
+    async ({ lead }) => {
+      if (auth.userId == null) {
+        return respond(
+          { ok: false, error: 'Refining a lead requires sign in — anonymous leads stay unvalidated.' },
+          {
+            summary: 'Sign in to refine leads into scored opportunities.',
+            economy: withUserEconomy(auth.userId, 'read'),
+            next: [
+              { tool: 'get_leads', arguments: { limit: 10 }, reason: 'browsing leads stays free and unlimited' },
+            ],
+          },
+        );
+      }
+
+      const gate = can({ id: auth.userId }, 'lead_refine');
+      if (!gate.ok) {
+        const hint = gate.upgradeHint ? ` — ${gate.upgradeHint}` : '';
+        return respond(
+          { ok: false, error: `${gate.reason ?? 'refine quota reached'}${hint}` },
+          {
+            summary: `Refine quota reached (${gate.used}/${gate.quota}, tier "${gate.tier}")${hint}.`,
+            economy: withUserEconomy(auth.userId, 'read'),
+            next: [
+              { tool: 'get_leads', arguments: { limit: 10 }, reason: 'leads remain free and unlimited' },
+            ],
+          },
+        );
+      }
+
+      const owner = ownerFor(auth);
+      const row = getLead(owner, lead);
+      if (!row) {
+        return respond(
+          { ok: false, error: `No lead "${lead}" in your pool.` },
+          {
+            summary: `Lead "${lead}" is not in your pool.`,
+            economy: withUserEconomy(auth.userId, 'read'),
+            next: [{ tool: 'get_leads', arguments: { limit: 10 }, reason: 'list your current leads' }],
+          },
+        );
+      }
+
+      const drafts = await refineLeads({
+        leads: [row],
+        primitives: loadPrimitives(),
+        userId: auth.userId,
+      });
+      if (drafts.length === 0) {
+        return respond(
+          { ok: false, error: 'The analyst rejected this lead as not genuinely actionable.' },
+          {
+            summary: `"${row.title}" did not survive refinement — that is an honest answer, not a failure.`,
+            economy: withUserEconomy(auth.userId, 'scout'),
+            next: [{ tool: 'get_leads', arguments: { limit: 10 }, reason: 'try a different angle' }],
+          },
+        );
+      }
+
+      const { persisted } = persistScoutDrafts(drafts, auth.userId);
+      if (persisted[0]) markRefined(row.id, persisted[0].id);
+
+      const db = getDb();
+      const saved = db
+        .select()
+        .from(opportunities)
+        .where(eq(opportunities.id, persisted[0]!.id))
+        .get()!;
+
+      return respond(
+        {
+          ok: true,
+          opportunity: {
+            slug: saved.slug,
+            title: saved.title,
+            thesis: saved.thesis,
+            flip_score: saved.flipScore,
+            hold_score: saved.holdScore,
+            verdict: saved.verdict,
+            confidence: saved.confidence,
+          },
+        },
+        {
+          summary: `"${saved.title}" refined — flip ${saved.flipScore}/hold ${saved.holdScore}, verdict ${saved.verdict} (${saved.confidence}% confidence). Saved as your private opportunity.`,
+          economy: withUserEconomy(auth.userId, 'scout'),
+          next: [
+            {
+              tool: 'forge_opportunity',
+              arguments: { opportunity: saved.slug },
+              reason: 'adversarial deep pass before you commit real time',
+            },
+            {
+              tool: 'generate_plan',
+              arguments: { opportunity: saved.slug },
+              reason: 'turn it into an executable plan',
+            },
+          ],
         },
       );
     },

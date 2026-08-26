@@ -173,6 +173,7 @@ describe('mcp server', () => {
         'list_stacks',
         'list_watches',
         'run_batch',
+        'refine_lead',
         'scout_opportunities',
         'search_stories',
         'set_profile',

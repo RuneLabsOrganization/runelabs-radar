@@ -3,9 +3,15 @@ import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { getDb } from '../../src/lib/db';
 import { opportunities } from '../../src/lib/db/schema';
-import { normalizeSlug, proposeOpportunities, type ScoutConstraints } from '../../src/lib/opportunities/engine';
+import { normalizeSlug, type ScoutConstraints } from '../../src/lib/opportunities/engine';
+import { composeLeads } from '../../src/lib/opportunities/compose';
+import { insertLeads } from '../../src/lib/opportunities/leads';
 import { persistScoutDrafts } from '../../src/lib/opportunities/persist-scout';
+import { loadPrimitives } from '../../src/lib/opportunities/primitives';
+import { refineLeads } from '../../src/lib/opportunities/refine';
 import { publicOnly } from '../../src/lib/opportunities/scope';
+import { dayKey } from '../../src/lib/opportunities/seed';
+import { loadWedges } from '../../src/lib/opportunities/wedges';
 import { getProfile } from '../../src/lib/personalization';
 import { can } from '../../src/lib/entitlements';
 import { bump, peek } from '../../src/lib/usage/counters';
@@ -157,9 +163,27 @@ export function registerScoutTools(server: McpServer, auth: AuthContext): void {
       let drafts;
       let signalCount;
       try {
-        const res = await proposeOpportunities(hasConstraints ? constraints : undefined);
-        drafts = res.drafts;
-        signalCount = res.ctx.signalCount;
+        const primitives = loadPrimitives();
+        signalCount = primitives.length;
+        if (signalCount >= 5) {
+          const composed = composeLeads({
+            primitives,
+            space: loadWedges(),
+            ownerKey: auth.rateKey,
+            day: dayKey(),
+            cursor: 0,
+            limit: 8,
+          });
+          const stored = insertLeads({ ownerKey: auth.rateKey, userId: auth.userId }, composed.leads);
+          drafts = await refineLeads({
+            leads: stored,
+            primitives,
+            ...(hasConstraints ? { constraints } : {}),
+            userId: auth.userId,
+          });
+        } else {
+          drafts = [];
+        }
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
         return respond(
