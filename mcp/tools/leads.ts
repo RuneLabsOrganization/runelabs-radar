@@ -78,7 +78,7 @@ export function registerLeadTools(server: McpServer, auth: AuthContext): void {
       if (composed.leads.length === 0) {
         const reason =
           primitives.length === 0
-            ? 'the intelligence stream has no primitives to compose from'
+            ? 'no demand signal in the last 21 days — pains come from Reddit/HN discussion, so check that those sources are ingesting'
             : composed.spaceSize === 0
               ? 'the wedge taxonomy is empty — run the seed script'
               : 'you have reached the end of your combination space for today';

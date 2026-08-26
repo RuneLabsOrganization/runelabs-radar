@@ -114,7 +114,7 @@ describe('get_leads', () => {
     const p = (await client.callTool({ name: 'get_leads', arguments: { limit: 5 } }))
       .structuredContent as unknown as LeadsPayload;
     expect(p.count).toBe(0);
-    expect(p.summary).toMatch(/no primitives|too thin|nothing/i);
+    expect(p.summary).toMatch(/no demand signal in the last 21 days/i);
     expect(p.next.length).toBeGreaterThan(0);
   });
 });

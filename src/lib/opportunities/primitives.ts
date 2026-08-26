@@ -3,9 +3,9 @@
  * happening here" units that get crossed against the wedge taxonomy.
  *
  * Deliberately wider than engine.ts's buildContext() (12 pains / 8 patterns /
- * 10 stories). That narrow, fixed window is exactly why the LLM proposer
- * converges on the same handful of ideas for everyone; composition wants the
- * broadest defensible pool so the permutation has room to differentiate.
+ * 10 stories) on the demand side. Breadth comes from the wedge combinatorics,
+ * so stories/entities are capped at half the demand set — otherwise the
+ * permutation walk is proportional to a news-heavy pool.
  */
 import { and, desc, eq, gte } from 'drizzle-orm';
 import { latestPatterns, topEntities } from '../analytics';
@@ -57,6 +57,7 @@ export function deriveTags(text: string, sector: string | null): string[] {
 
 const LOOKBACK_DAYS = 21;
 const MAX_PAINS = 40;
+/** Ceiling on the story candidate query — admission is capped by the context budget. */
 const MAX_STORIES = 30;
 
 /** Clamp an unbounded count into 1..100. */
@@ -64,11 +65,17 @@ function normalize(value: number, ceiling: number): number {
   return Math.max(1, Math.min(100, Math.round((value / ceiling) * 100)));
 }
 
-/** The composable primitive pool. Empty when the stream has nothing recent. */
+function taggedBeyondGeneral(tags: string[]): boolean {
+  return tags.some((t) => t !== 'general');
+}
+
+type ContextCandidate = Omit<Primitive, 'ref'> & { type: 'story' | 'entity' };
+
+/** The composable primitive pool. Empty when there is no demand signal. */
 export function loadPrimitives(): Primitive[] {
   const db = getDb();
   const since = new Date(Date.now() - LOOKBACK_DAYS * 864e5);
-  const out: Primitive[] = [];
+  const demand: Primitive[] = [];
 
   const pains = db
     .select()
@@ -79,7 +86,7 @@ export function loadPrimitives(): Primitive[] {
     .all();
   pains.forEach((p, i) => {
     const label = promptLine(p.summary, 160);
-    out.push({
+    demand.push({
       ref: `P${i + 1}`,
       type: 'pain',
       label,
@@ -91,7 +98,7 @@ export function loadPrimitives(): Primitive[] {
 
   latestPatterns(15).forEach((p, i) => {
     const label = promptLine(p.headline, 160);
-    out.push({
+    demand.push({
       ref: `A${i + 1}`,
       type: 'pattern',
       label,
@@ -101,17 +108,26 @@ export function loadPrimitives(): Primitive[] {
     });
   });
 
-  topEntities(20).forEach((e, i) => {
+  // Stories/entities are context. Their combined budget is half the demand set,
+  // so pains+patterns stay a strict majority. Zero demand → empty pool, not
+  // headlines crossed with business models.
+  const contextBudget = Math.floor(demand.length / 2);
+  if (contextBudget === 0) return demand;
+
+  const candidates: ContextCandidate[] = [];
+
+  for (const e of topEntities(20)) {
     const label = `${promptLine(e.name, 60)} (${e.count} mentions)`;
-    out.push({
-      ref: `E${i + 1}`,
+    const tags = deriveTags(label, null);
+    if (!taggedBeyondGeneral(tags)) continue;
+    candidates.push({
       type: 'entity',
       label,
       sector: null,
-      tags: deriveTags(label, null),
+      tags,
       intensity: normalize(e.count, 50),
     });
-  });
+  }
 
   const topStories = db
     .select()
@@ -120,17 +136,28 @@ export function loadPrimitives(): Primitive[] {
     .orderBy(desc(stories.topScore))
     .limit(MAX_STORIES)
     .all();
-  topStories.forEach((s, i) => {
+  for (const s of topStories) {
     const label = promptLine(s.title, 160);
-    out.push({
-      ref: `S${i + 1}`,
+    const tags = deriveTags(`${label} ${s.tldr ?? ''}`, null);
+    if (!taggedBeyondGeneral(tags)) continue;
+    candidates.push({
       type: 'story',
       label,
       sector: null,
-      tags: deriveTags(`${label} ${s.tldr ?? ''}`, null),
+      tags,
       intensity: normalize(s.topScore ?? 0, 100),
     });
-  });
+  }
 
-  return out;
+  candidates.sort((a, b) => b.intensity - a.intensity);
+  const admitted = candidates.slice(0, contextBudget);
+
+  let entities = 0;
+  let storyCount = 0;
+  const context: Primitive[] = admitted.map((c) => ({
+    ...c,
+    ref: c.type === 'entity' ? `E${++entities}` : `S${++storyCount}`,
+  }));
+
+  return [...demand, ...context];
 }
