@@ -31,7 +31,8 @@ const PRIMITIVES: Primitive[] = [
 
 /** Reply the model would send for one opening. */
 function modelReply(slug: string) {
-  const subScores = Object.fromEntries(SUB_KEYS.map((k) => [k, 12]));
+  // Loose value type so coercion/rejection tests can plant malformed LLM shapes.
+  const subScores: Record<string, unknown> = Object.fromEntries(SUB_KEYS.map((k) => [k, 12]));
   return {
     openings: [
       {

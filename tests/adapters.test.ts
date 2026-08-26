@@ -105,7 +105,7 @@ describe('rss adapter', () => {
   it('sends conditional headers and returns [] on 304 without erroring', async () => {
     // undici's Response constructor rejects 304 — fake the minimal shape the adapter touches
     const notModified = { status: 304, headers: new Headers(), text: async () => '' } as Response;
-    const fn = vi.fn(async () => notModified);
+    const fn = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => notModified);
     vi.stubGlobal('fetch', fn);
     const cfg = { url: 'https://example.com/feed', etag: '"abc"', lastModified: 'Wed, 01 Jul 2026 00:00:00 GMT' };
     const out = await adapters.rss.fetchItems(makeSource('rss', {}), cfg);
