@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { getDb } from '../../src/lib/db';
@@ -10,6 +10,7 @@ import { persistScoutDrafts } from '../../src/lib/opportunities/persist-scout';
 import { loadPrimitives } from '../../src/lib/opportunities/primitives';
 import { refineLeads } from '../../src/lib/opportunities/refine';
 import { dayKey } from '../../src/lib/opportunities/seed';
+import { publicOnly } from '../../src/lib/opportunities/scope';
 import { normalizeSlug } from '../../src/lib/opportunities/slug';
 import { loadWedges } from '../../src/lib/opportunities/wedges';
 import { getProfile, setProfile } from '../../src/lib/personalization';
@@ -306,9 +307,11 @@ export function registerLeadTools(server: McpServer, auth: AuthContext): void {
     'dismiss_opportunity',
     {
       description:
-        'Tell Radar a lead or opportunity is not for you, and why. Dismissed items stop appearing in your results. With avoid_sector=true the sector is added to your profile avoid list, so future composed leads steer away from it — this is how your private pool gets sharper instead of repeating itself.',
+        'Tell Radar a lead slug (from get_leads) or a private opportunity slug YOU OWN (from refine_lead or forge_opportunity) is not for you, and why. Dismissed leads leave your pool; owned private opportunities are archived and drop out of get_opportunities. Public radar opportunities can\'t be dismissed this way. With avoid_sector=true the sector is added to your profile avoid list, so future composed leads steer away from it.',
       inputSchema: {
-        target: z.string().describe('lead slug (from get_leads) or opportunity slug'),
+        target: z
+          .string()
+          .describe('lead slug from get_leads, or a private opportunity slug you own'),
         reason: z.string().max(200).describe('why it is not for you — kept on the record'),
         avoid_sector: z
           .boolean()
@@ -333,34 +336,76 @@ export function registerLeadTools(server: McpServer, auth: AuthContext): void {
         );
       }
 
+      const userId = auth.userId;
       const owner = ownerFor(auth);
-      const row = getLead(owner, target);
-      if (!row) {
+      const lead = getLead(owner, target);
+      const db = getDb();
+      // Strict ownership — never visibleTo(), which would also match public rows.
+      const owned = db
+        .select()
+        .from(opportunities)
+        .where(and(eq(opportunities.slug, target), eq(opportunities.ownerUserId, userId)))
+        .get();
+
+      if (!lead && !owned) {
+        const pub = db
+          .select()
+          .from(opportunities)
+          .where(and(eq(opportunities.slug, target), publicOnly()))
+          .get();
+        if (pub) {
+          return respond(
+            {
+              ok: false,
+              error:
+                "Public radar opportunities can't be dismissed — they're shared. Use avoid_sector on a lead instead, or filter sector on get_opportunities.",
+            },
+            {
+              summary: `"${target}" is on the public radar and can't be dismissed.`,
+              economy: withUserEconomy(userId, 'read'),
+              next: [
+                {
+                  tool: 'get_leads',
+                  arguments: { limit: 10 },
+                  reason: 'dismiss a lead instead, optionally with avoid_sector',
+                },
+              ],
+            },
+          );
+        }
         return respond(
-          { ok: false, error: `No lead "${target}" in your pool.` },
+          { ok: false, error: `No lead/opportunity "${target}" in your pool.` },
           {
             summary: `Nothing called "${target}" in your pool to dismiss.`,
-            economy: withUserEconomy(auth.userId, 'read'),
+            economy: withUserEconomy(userId, 'read'),
             next: [{ tool: 'get_leads', arguments: { limit: 10 }, reason: 'list your current leads' }],
           },
         );
       }
 
-      dismissLead(owner, target, reason);
+      if (lead) dismissLead(owner, target, reason);
+      if (owned) {
+        db.update(opportunities)
+          .set({ status: 'archived' })
+          .where(and(eq(opportunities.slug, target), eq(opportunities.ownerUserId, userId)))
+          .run();
+      }
 
-      let avoided: string[] = getProfile(auth.userId)?.avoidedSectors ?? [];
-      if (avoid_sector && row.sector && can({ id: auth.userId }, 'personalize').ok) {
-        if (!avoided.some((s) => s.toLowerCase() === row.sector!.toLowerCase())) {
-          avoided = [...avoided, row.sector];
-          setProfile(auth.userId, { avoidedSectors: avoided });
+      const item = { sector: (lead ?? owned)!.sector, title: (lead ?? owned)!.title };
+
+      let avoided: string[] = getProfile(userId)?.avoidedSectors ?? [];
+      if (avoid_sector && item.sector && can({ id: userId }, 'personalize').ok) {
+        if (!avoided.some((s) => s.toLowerCase() === item.sector!.toLowerCase())) {
+          avoided = [...avoided, item.sector];
+          setProfile(userId, { avoidedSectors: avoided });
         }
       }
 
       return respond(
         { ok: true, avoided_sectors: avoided },
         {
-          summary: `Dismissed "${row.title}".${
-            avoid_sector && row.sector ? ` Future leads will steer away from ${row.sector}.` : ''
+          summary: `Dismissed "${item.title}".${
+            avoid_sector && item.sector ? ` Future leads will steer away from ${item.sector}.` : ''
           }`,
           economy: withUserEconomy(auth.userId, 'read'),
           next: [
