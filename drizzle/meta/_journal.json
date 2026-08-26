@@ -232,6 +232,13 @@
       "when": 1787706000000,
       "tag": "0032_lazy_microbe",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "6",
+      "when": 1787707000000,
+      "tag": "0033_same_major_mapleleaf",
+      "breakpoints": true
     }
   ]
 }

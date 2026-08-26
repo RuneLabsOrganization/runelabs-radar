@@ -744,3 +744,47 @@ export const wedgeValues = sqliteTable(
     index('wedge_values_axis_active').on(t.axis, t.active),
   ],
 );
+
+/**
+ * Rung-0 composed leads, owner-scoped.
+ *
+ * Separate from `opportunities` on purpose: a lead is a heuristic hypothesis
+ * with no verdict and no flip score, and an agent must never be able to mistake
+ * one for a reviewed dossier. Refining a lead creates an `opportunities` row
+ * and back-links it via opportunityId.
+ *
+ * ownerUserId NULL + ownerKey set = anonymous caller; those rows carry an
+ * expiresAt and are swept periodically.
+ */
+export const leads = sqliteTable(
+  'leads',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    // AuthContext.rateKey — 'user:123' or 'ip:1.2.3.4'
+    ownerKey: text('owner_key').notNull(),
+    ownerUserId: integer('owner_user_id'),
+    slug: text('slug').notNull(),
+    title: text('title').notNull(),
+    thesisSkeleton: text('thesis_skeleton').notNull(),
+    sector: text('sector'),
+    // JSON string[] of primitive refs (P1, A2, ...)
+    primitiveRefs: text('primitive_refs').notNull().default('[]'),
+    // JSON Record<axis, wedge value slug>
+    wedge: text('wedge').notNull().default('{}'),
+    heuristicScore: integer('heuristic_score').notNull().default(0),
+    combinationIndex: integer('combination_index').notNull().default(0),
+    // 'composed' → 'refined'
+    stage: text('stage', { enum: ['composed', 'refined'] }).notNull().default('composed'),
+    opportunityId: integer('opportunity_id'),
+    createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+    // set for anonymous callers only; NULL means keep
+    expiresAt: integer('expires_at', { mode: 'timestamp' }),
+    dismissedAt: integer('dismissed_at', { mode: 'timestamp' }),
+    dismissReason: text('dismiss_reason'),
+  },
+  (t) => [
+    uniqueIndex('leads_owner_slug').on(t.ownerKey, t.slug),
+    index('leads_owner_created').on(t.ownerKey, t.createdAt),
+    index('leads_expires').on(t.expiresAt),
+  ],
+);
