@@ -134,6 +134,7 @@ describe('mcp server', () => {
         'create_batch',
         'debate_idea',
         'decide',
+        'forge_opportunity',
         'generate_plan',
         'get_accuracy',
         'get_agent_stack_for',

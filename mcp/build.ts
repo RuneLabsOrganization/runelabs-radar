@@ -19,6 +19,7 @@ import { registerCompTools } from './tools/comps';
 import { registerMetaTools } from './tools/meta';
 import { registerUsageTools } from './tools/usage';
 import { registerDebateTools } from './tools/debate';
+import { registerForgeTools } from './tools/forge';
 import { registerScoutTools } from './tools/scout';
 import { registerWeeklyTools } from './tools/weekly';
 import { registerBatchTools } from './tools/batches';
@@ -58,6 +59,7 @@ export function buildServer(auth: AuthContext): McpServer {
   registerMetaTools(server, auth);
   registerUsageTools(server, auth);
   registerDebateTools(server, auth);
+  registerForgeTools(server, auth);
   registerScoutTools(server, auth);
   registerWeeklyTools(server, auth);
   registerBatchTools(server, auth);
