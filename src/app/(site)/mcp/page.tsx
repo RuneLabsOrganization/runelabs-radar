@@ -8,17 +8,18 @@ import { SectionHeader } from '@/components/ui/section-header';
 import CopyButton from '@/components/CopyButton';
 
 export const metadata = {
-  title: 'MCP — connect your agent',
+  title: 'Connect your agent',
   description:
-    'Radar does the research so your coding agent does not. Compact MCP lookups (~8k tokens saved vs DIY), ask_radar synthesis, plans, and a savings receipt on every call.',
+    'Connect Radar once and your coding agent stops re-researching what you have already settled — and stops spending its context reading the internet instead of your code. Two lines, no API keys.',
 };
 
+/** Grouped by the job, not by subsystem — the reader is deciding what to ask for. */
 const TOOL_GROUPS = [
-  { title: 'Jobs', tools: ['ask_radar', 'whats_relevant', 'decide', 'get_my_usage'] },
-  { title: 'News', tools: ['get_daily_brief', 'get_top_signals', 'search_stories', 'get_weekly_report'] },
-  { title: 'Ideas', tools: ['get_opportunities', 'scout_opportunities', 'debate_idea', 'get_pain_points'] },
-  { title: 'Execution', tools: ['generate_plan', 'get_plan', 'list_batches', 'run_batch'] },
-  { title: 'Workspace', tools: ['watch', 'get_since', 'set_profile', 'get_session'] },
+  { title: 'Just ask it something', tools: ['ask_radar', 'whats_relevant', 'decide', 'get_my_usage'] },
+  { title: 'Catch me up', tools: ['get_daily_brief', 'get_top_signals', 'search_stories', 'get_weekly_report'] },
+  { title: 'Find me something to build', tools: ['get_opportunities', 'scout_opportunities', 'debate_idea', 'get_pain_points'] },
+  { title: 'Turn it into a plan', tools: ['generate_plan', 'get_plan', 'list_batches', 'run_batch'] },
+  { title: 'Remember what I care about', tools: ['watch', 'get_since', 'set_profile', 'get_session'] },
 ];
 
 export default function McpMarketingPage() {
@@ -31,33 +32,32 @@ export default function McpMarketingPage() {
 
   return (
     <div className="mx-auto max-w-[860px] px-4 py-12 sm:px-6">
-      <div className="readout text-phosphor">Agent surface</div>
-      <h1 className="type-h1 mt-2">Radar researches. Your agent codes.</h1>
+      <div className="readout text-phosphor">For people who code</div>
+      <h1 className="type-h1 mt-2">Give your agent the answers you already paid for.</h1>
       <p className="mt-3 max-w-xl text-[14px] leading-relaxed text-ink-2">
-        Connect in 60 seconds. Prefer <span className="mono text-ink">ask_radar</span> over fetching four tools: a
-        typical compact lookup returns ~{PUBLISHED_SAVINGS.compactAvgReturned} tokens and keeps ~
-        {fmtTokens(PUBLISHED_SAVINGS.compactAvgSavedVsDiy)} out of your context vs doing the research locally. Reads
-        stay compact and free; plans, debates, and asks use membership quota. Every response includes an{' '}
-        <span className="mono text-ink">economy</span> receipt.
+        Sixty seconds to connect, no API keys. After that your agent stops re-litigating decisions you settled months
+        ago, stops proposing the stack you already rejected, and stops burning its context window reading the internet
+        — so it spends that context on your code instead. Answers come back small on purpose: a typical lookup is
+        about {PUBLISHED_SAVINGS.compactAvgReturned} tokens, not a page dump.
       </p>
 
       <div className="mt-8 grid gap-3 sm:grid-cols-3">
         <Card>
           <CardHeader>
             <CardTitle className="font-mono text-[12px]">~{fmtTokens(PUBLISHED_SAVINGS.compactAvgSavedVsDiy)}</CardTitle>
-            <CardDescription>DIY tokens kept out of your agent per compact lookup</CardDescription>
+            <CardDescription>tokens your agent doesn&apos;t spend looking this up itself</CardDescription>
           </CardHeader>
         </Card>
         <Card>
           <CardHeader>
             <CardTitle className="font-mono text-[12px]">~{PUBLISHED_SAVINGS.weeklyFullVsCompact}×</CardTitle>
-            <CardDescription>smaller weekly brief vs dumping the full issue</CardDescription>
+            <CardDescription>less context eaten by the weekly read-up</CardDescription>
           </CardHeader>
         </Card>
         <Card>
           <CardHeader>
             <CardTitle className="font-mono text-[12px]">~{fmtTokens(PUBLISHED_SAVINGS.sessionDiySaved)}</CardTitle>
-            <CardDescription>saved in one ask → dossier → plan session</CardDescription>
+            <CardDescription>context left free after a full idea-to-plan session</CardDescription>
           </CardHeader>
         </Card>
       </div>
@@ -101,7 +101,9 @@ export default function McpMarketingPage() {
         </CardContent>
       </Card>
 
-      <SectionHeader label="tool catalog" count={TOOL_GROUPS.reduce((n, g) => n + g.tools.length, 0) + '+'} />
+      {/* Grouped by the job it does, deliberately not headlined with a tool
+          count — a long tool list is a context cost to the reader, not a brag. */}
+      <SectionHeader label="what your agent can ask for" />
       <div className="grid gap-3 sm:grid-cols-2">
         {TOOL_GROUPS.map((g) => (
           <Card key={g.title}>

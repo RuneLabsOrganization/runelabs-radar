@@ -40,7 +40,7 @@ export default async function ConnectPage() {
       <PageHeader
         kicker="MCP SERVER"
         title="Connect your agent"
-        description={`Radar does the research so your coding agent does not. Start with ask_radar / whats_relevant / decide (~${fmtTokens(PUBLISHED_SAVINGS.compactAvgSavedVsDiy)} DIY tokens saved per compact lookup). Flagship: opportunity → generate_plan.`}
+        description={`One paste and your agent stops re-researching what you have already decided — and stops spending its context window reading the internet instead of your code. Ask it anything in plain language; roughly ${fmtTokens(PUBLISHED_SAVINGS.compactAvgSavedVsDiy)} tokens of digging stay out of your session each time.`}
       />
 
       <Card>

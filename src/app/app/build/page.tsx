@@ -24,7 +24,9 @@ export default function BuildPage() {
       </div>
       <h1 className="type-h1 mt-1">Build</h1>
       <p className="mt-2 max-w-xl text-[13.5px] text-ink-3">
-        What to build — from detected openings to execution plans your agent can run.
+        For when you want a new project, not a new tool. Openings where somebody is already complaining about the
+        problem, argued from four sides before you commit a month to one, then written up as a plan your agent can
+        actually run.
       </p>
       <div className="mt-6 grid gap-3 sm:grid-cols-3">
         {LINKS.map((l) => (

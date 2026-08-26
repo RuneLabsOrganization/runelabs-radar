@@ -73,9 +73,9 @@ export default async function StacksPage() {
       <div className="readout text-phosphor">Decide · Stacks</div>
       <h1 className="type-h1 mt-1">Stacks</h1>
       <p className="mt-2 max-w-xl text-[13.5px] leading-relaxed text-ink-3">
-        Ready-to-ship tech stacks for common AI product types — optimized for speed to MVP with AI-assisted dev, low
-        run cost, and easy handover. Regenerated weekly from the news and the model market. Which coding IDE +
-        harness + model to run lives on Agent Stacks.
+        Skip the week of deciding what to build it on. For each kind of product: the stack that gets you to a
+        working MVP fastest, stays cheap to run, and that a model can actually write — because it has seen enough of
+        it. Which editor and coding agent to use is a different question, answered on Agent stacks.
       </p>
 
       {have.length === 0 ? (

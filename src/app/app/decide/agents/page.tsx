@@ -40,9 +40,9 @@ export default async function AgentsPage({
       <div className="readout text-phosphor">Decide · Agents · Stacks</div>
       <h1 className="type-h1 mt-1">Agent stacks</h1>
       <p className="mt-2 max-w-xl text-[13.5px] leading-relaxed text-ink-3">
-        Which editor, agent harness, and model builders actually run — ranked from survey love-rates and user-report
-        cost, with live mention heat from our own feed. Distinct from venture playbooks on Stacks and from seat
-        prices on Plans.
+        What people who code all day are actually running, and what they pay in practice rather than on the pricing
+        page. Ranked from survey data and user reports, not from vendor claims. Find the row that sounds like you,
+        copy the setup, stop reading.
       </p>
       <p className="mono mt-2 text-[10.5px] uppercase tracking-[0.06em] text-ink-4">
         {personas.length} personas &middot; {landscape.length} harnesses &middot; loved % sums to {lovedTotal}{' '}

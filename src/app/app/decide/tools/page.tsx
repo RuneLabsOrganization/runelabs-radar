@@ -132,8 +132,9 @@ export default async function BoardPage() {
       <div className="readout text-phosphor">Decide · Best tools</div>
       <h1 className="type-h1 mt-1">Best Right Now</h1>
       <p className="mt-2 max-w-xl text-[13.5px] leading-relaxed text-ink-3">
-        The best AI tool for each task, ranked on quality vs. cost — updated weekly from benchmark data, every
-        change human-approved.
+        For every job: what to use if quality matters most, what to use if you are paying for it yourself, and the
+        cheapest thing that still works. With the reasoning, what to skip, and roughly what it costs. Where we
+        don&rsquo;t have evidence we trust, the cell stays blank and says so.
       </p>
 
       <div className="mt-3">

@@ -41,8 +41,11 @@ export default function SignupPage() {
     <div className="mx-auto flex min-h-[70vh] max-w-md items-center px-4 py-12">
       <Card className="w-full">
         <CardHeader>
-          <CardTitle className="type-h1">Create account</CardTitle>
-          <CardDescription>Free tier includes 3 plans and 3 debates per month. Reads stay unlimited.</CardDescription>
+          <CardTitle className="type-h1">Stop guessing what to use</CardTitle>
+          <CardDescription>
+            Free forever: every verdict, every setup, every brief, no limits. Plus three ideas a month turned into a
+            full plan. No card.
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={onSubmit} className="space-y-3">
