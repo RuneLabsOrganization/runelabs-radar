@@ -41,10 +41,16 @@ export function persistScoutDrafts(drafts: OppDraft[], ownerUserId: number | nul
       },
       critic,
     );
+    let verdict = gate.verdict;
+    const flags = [...gate.review.flags, 'scout-persisted'];
+    if (verdict === 'watch' && gate.flipScore < 45 && gate.holdScore < 45) {
+      verdict = 'reject';
+      flags.push('weak-unverified-auto-reject');
+    }
     const evidence = d.evidenceRefs.map((label) => ({ type: 'scout', label }));
     const review = {
       ...gate.review,
-      flags: [...gate.review.flags, 'scout-persisted'],
+      flags,
     };
     const values = {
       title: d.title,
@@ -59,7 +65,7 @@ export function persistScoutDrafts(drafts: OppDraft[], ownerUserId: number | nul
       evidence: JSON.stringify(evidence),
       window: d.window,
       windowMonths: d.windowMonths,
-      verdict: gate.verdict,
+      verdict,
       confidence: gate.confidence,
       review: JSON.stringify(review),
       reviewedAt: now,
