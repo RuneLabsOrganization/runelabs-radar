@@ -28,6 +28,8 @@ import { runSweep } from '../src/lib/sweep';
 import { runMediaPricingSync } from '../src/lib/ingest/media-pricing';
 import { runKitEvidence } from '../src/lib/kits/evidence';
 import { runKitPriceBackfill, runKitGrade } from '../src/lib/kits/grade';
+import { runSourceReview } from '../src/lib/ingest/review';
+import { runVerdictGrade } from '../src/lib/science/verdicts';
 
 loadDotEnv();
 
@@ -81,6 +83,10 @@ const tasks = [
     const grades = runKitGrade();
     return Promise.resolve({ ...prices, ...grades });
   })),
+  // daily: grade kit pick verdicts while flip history is fresh (after kit-grade)
+  cron.schedule('15 7 * * *', () => void withJobRun('verdict-grade', runVerdictGrade)),
+  // weekly: source quality review over a 30-day window (Sunday 09:00)
+  cron.schedule('0 9 * * 0', () => void withJobRun('source-review', runSourceReview)),
 ];
 
 // Populate immediately on boot instead of waiting for the first tick
