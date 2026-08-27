@@ -22,6 +22,7 @@ import MetricsExplorer, { type ExplorerSeries, type MetricKey } from '@/componen
 import OverlayChart from '@/components/OverlayChart';
 import SectionHeader from '@/components/SectionHeader';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import PageHeader from '@/components/PageHeader';
 
 export const metadata = {
   title: 'Pulse — builder market',
@@ -176,11 +177,11 @@ export default async function MetricsPage({
 
   return (
     <div>
-      <div className="readout text-phosphor">Decide · Pulse</div>
-      <h1 className="type-h1 mt-1">Pulse</h1>
-      <p className="mt-2 max-w-xl text-[13.5px] leading-relaxed text-ink-3">
-        What’s moving in the builder market — launch heat, rising adoption, plan prices. Explore any series below.
-      </p>
+      <PageHeader
+        kicker="Decide · Pulse"
+        title="Pulse"
+        description="What’s moving in the builder market — launch heat, rising adoption, plan prices. Explore any series below."
+      />
 
       {/* Headline strip */}
       <div className="mt-5 grid gap-2 sm:grid-cols-3">

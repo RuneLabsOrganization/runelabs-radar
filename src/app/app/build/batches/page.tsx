@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { CreateBatchForm } from '@/components/batches/CreateBatchForm';
+import PageHeader from '@/components/PageHeader';
 
 export const metadata = {
   title: 'Batches',
@@ -22,12 +23,11 @@ export default async function BatchesPage() {
 
   return (
     <div>
-      <div className="readout text-phosphor">Build · Batches</div>
-      <h1 className="type-h1 mt-1">Batches</h1>
-      <p className="mt-2 max-w-xl text-[13.5px] text-ink-3">
-        Collect opportunities and ideas into a working set, or browse the weekly Radar Batch drop. Bulk debate and
-        plan runs are a Builder feature.
-      </p>
+      <PageHeader
+        kicker="Build · Batches"
+        title="Batches"
+        description="Collect opportunities and ideas into a working set, or browse the weekly Radar Batch drop. Bulk debate and plan runs are a Builder feature."
+      />
 
       {user && createGate.ok && (
         <div className="mt-6">

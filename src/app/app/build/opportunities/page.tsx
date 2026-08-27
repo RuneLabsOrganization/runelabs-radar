@@ -7,6 +7,7 @@ import { oppViewFromRow } from '@/lib/opportunities/view';
 import { visibleTo } from '@/lib/opportunities/scope';
 import FactoryPipeline from '@/components/FactoryPipeline';
 import OpportunityList from '@/components/OpportunityList';
+import PageHeader from '@/components/PageHeader';
 
 export const metadata = {
   title: 'Opportunities — monetizable openings',
@@ -29,14 +30,18 @@ export default async function OpportunitiesPage() {
 
   return (
     <div>
-      <div className="readout text-phosphor">Build · Opportunities</div>
-      <h1 className="type-h1 mt-1">Opportunities</h1>
-      <p className="mt-2 max-w-xl text-[13.5px] leading-relaxed text-ink-3">
-        Business gaps the scanner found in the news: real user pain, AI that just made the fix cheap, and nobody
-        good shipping it yet. Each opening is scored two ways — <span className="mono text-[11px]">flip</span> favors
-        building fast and selling into the window, <span className="mono text-[11px]">hold</span> favors keeping it for
-        monthly revenue. Open a card for the full dossier: costs, risks, evidence, launch brief.
-      </p>
+      <PageHeader
+        kicker="Build · Opportunities"
+        title="Opportunities"
+        description={
+          <>
+            Business gaps the scanner found in the news: real user pain, AI that just made the fix cheap, and nobody
+            good shipping it yet. Each opening is scored two ways — <span className="mono text-[11px]">flip</span> favors
+            building fast and selling into the window, <span className="mono text-[11px]">hold</span> favors keeping it for
+            monthly revenue. Open a card for the full dossier: costs, risks, evidence, launch brief.
+          </>
+        }
+      />
 
       <div className="mt-5">
         <FactoryPipeline funnel={factoryFunnel()} />
