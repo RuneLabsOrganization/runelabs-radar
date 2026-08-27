@@ -386,9 +386,9 @@ export default async function AccuracyPage() {
             <thead>
               <tr>
                 <th>Date</th>
-                <th className="text-right">Predicted</th>
-                <th className="text-right">Realized</th>
-                <th className="text-right">Error</th>
+                <th className="num">Predicted</th>
+                <th className="num">Realized</th>
+                <th className="num">Error</th>
               </tr>
             </thead>
             <tbody>
