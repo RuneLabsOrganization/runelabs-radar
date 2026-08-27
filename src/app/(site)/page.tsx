@@ -4,6 +4,7 @@ import { ArrowRight, Radar, Layers, Sparkles, Cable } from 'lucide-react';
 import { getDb } from '@/lib/db';
 import { boardEntries, items, sources, stories } from '@/lib/db/schema';
 import { getIdentity } from '@/lib/identity';
+import { landingJsonLd } from '@/lib/seo';
 import { paths } from '@/lib/urls';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -148,6 +149,10 @@ export default function LandingPage() {
   ];
   return (
     <div>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(landingJsonLd()) }}
+      />
       <section className="relative isolate flex min-h-[600px] items-center overflow-hidden border-b border-grat lg:min-h-[680px]">
         <div aria-hidden className="pointer-events-none absolute inset-0">
           <HeroScope intensity={0.92} />

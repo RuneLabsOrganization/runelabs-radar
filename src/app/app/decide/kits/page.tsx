@@ -1,13 +1,14 @@
 import Link from 'next/link';
 import { requireViewer } from '@/lib/auth/user';
 import { KIT_PERSONAS } from '@/lib/kits/personas';
+import { siteMeta } from '@/lib/seo';
 import { paths } from '@/lib/urls';
 
-export const metadata = {
-  title: 'Kits — what to actually run',
-  description:
-    'A costed tool kit per role: one pick per job, a monthly total, and the cells not yet covered.',
-};
+export const metadata = siteMeta(
+  'Kits — what to actually run',
+  'A costed tool kit per role: one pick per job, a monthly total, and the cells not yet covered.',
+  paths.kits,
+);
 
 export default async function KitsPage() {
   await requireViewer();

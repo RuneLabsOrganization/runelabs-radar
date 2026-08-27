@@ -4,6 +4,7 @@ import { requireUser } from '@/lib/auth/user';
 import { entitlementFor, usageThisCycle, TIER_PRICES, quotaFor } from '@/lib/billing';
 import { can, TIER_CAPS } from '@/lib/entitlements';
 import { economyThisCycle, economyLifetimeSaved } from '@/lib/mcp-economy';
+import { siteMeta } from '@/lib/seo';
 import { paths } from '@/lib/urls';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -13,7 +14,9 @@ import { AutoCheckout } from '@/components/account/AutoCheckout';
 import { BillingPortalButton } from '@/components/account/BillingPortalButton';
 import { CheckoutButtons } from '@/components/account/CheckoutButtons';
 
-export const metadata = { title: 'Account' };
+export const metadata = siteMeta('Account', 'Your Radar account and billing.', paths.account, {
+  index: false,
+});
 
 export default async function AccountPage() {
   const user = await requireUser();

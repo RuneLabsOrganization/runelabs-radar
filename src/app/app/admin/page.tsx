@@ -13,7 +13,10 @@ import { jobHistory, llmUsageHistory, llmUsageTodayByJob, pipelineFunnel, source
 import { requireAdmin } from '@/lib/auth/user';
 import { getDb } from '@/lib/db';
 import { boardProposals, jobRuns, sources } from '@/lib/db/schema';
+import { siteMeta } from '@/lib/seo';
 import { paths } from '@/lib/urls';
+
+export const metadata = siteMeta('Admin', 'Radar admin console.', paths.admin, { index: false });
 
 function parseProposed(json: string): ProposedFields {
   const empty: ProposedFields = {

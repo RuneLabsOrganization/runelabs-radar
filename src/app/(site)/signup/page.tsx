@@ -1,6 +1,12 @@
 import { Suspense } from 'react';
 import { Card, CardHeader, CardTitle } from '@/components/ui/card';
+import { siteMeta } from '@/lib/seo';
+import { paths } from '@/lib/urls';
 import { SignupForm } from './signup-form';
+
+export const metadata = siteMeta('Sign up', 'Create a Radar account.', paths.signup, {
+  index: false,
+});
 
 export default function SignupPage() {
   const google = Boolean(process.env.GOOGLE_CLIENT_ID);

@@ -2,7 +2,11 @@ import { Suspense } from 'react';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import RadarBackdrop from '@/components/RadarBackdrop';
+import { siteMeta } from '@/lib/seo';
+import { paths } from '@/lib/urls';
 import { LoginForm } from './login-form';
+
+export const metadata = siteMeta('Sign in', 'Sign in to Radar.', paths.login, { index: false });
 
 function LoginFallback() {
   return (

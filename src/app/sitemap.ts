@@ -5,6 +5,7 @@ import { opportunities, stories } from '@/lib/db/schema';
 import { publicOnly } from '@/lib/opportunities/scope';
 import { DOMAINS } from '@/lib/domains';
 import { topEntitySlugs } from '@/lib/entity';
+import { KIT_PERSONAS } from '@/lib/kits/personas';
 import { urls } from '@/lib/urls';
 
 export const dynamic = 'force-dynamic';
@@ -14,11 +15,19 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { url: urls.home(), changeFrequency: 'hourly' as const, priority: 1 },
     { url: urls.mcp(), changeFrequency: 'weekly' as const, priority: 0.9 },
     { url: urls.pricing(), changeFrequency: 'weekly' as const, priority: 0.9 },
+    { url: urls.privacy(), changeFrequency: 'monthly' as const, priority: 0.4 },
+    { url: urls.terms(), changeFrequency: 'monthly' as const, priority: 0.4 },
     { url: urls.trust(), changeFrequency: 'weekly' as const, priority: 0.8 },
     { url: urls.changelog(), changeFrequency: 'daily' as const, priority: 0.7 },
     { url: urls.reports(), changeFrequency: 'weekly' as const, priority: 0.7 },
     { url: urls.app(), changeFrequency: 'hourly' as const, priority: 0.9 },
     { url: urls.tools(), changeFrequency: 'hourly' as const, priority: 0.8 },
+    { url: urls.kits(), changeFrequency: 'weekly' as const, priority: 0.8 },
+    ...KIT_PERSONAS.map((p) => ({
+      url: urls.kit(p.slug),
+      changeFrequency: 'weekly' as const,
+      priority: 0.7,
+    })),
     { url: urls.stacks(), changeFrequency: 'weekly' as const, priority: 0.7 },
     { url: urls.agents(), changeFrequency: 'weekly' as const, priority: 0.7 },
     { url: urls.opportunities(), changeFrequency: 'hourly' as const, priority: 0.8 },
