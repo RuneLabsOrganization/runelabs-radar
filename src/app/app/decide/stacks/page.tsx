@@ -9,6 +9,7 @@ import VerdictEditor from '@/components/VerdictEditor';
 import CopyButton from '@/components/CopyButton';
 import { Card, CardContent } from '@/components/ui/card';
 import { paths } from '@/lib/urls';
+import PageHeader from '@/components/PageHeader';
 
 interface Layer {
   layer: string;
@@ -70,13 +71,11 @@ export default async function StacksPage() {
 
   return (
     <div>
-      <div className="readout text-phosphor">Decide · Stacks</div>
-      <h1 className="type-h1 mt-1">Stacks</h1>
-      <p className="mt-2 max-w-xl text-[13.5px] leading-relaxed text-ink-3">
-        Skip the week of deciding what to build it on. For each kind of product: the stack that gets you to a
-        working MVP fastest, stays cheap to run, and that a model can actually write — because it has seen enough of
-        it. Which editor and coding agent to use is a different question, answered on Agent stacks.
-      </p>
+      <PageHeader
+        kicker="Decide · Stacks"
+        title="Stacks"
+        description="Skip the week of deciding what to build it on. For each kind of product: the stack that gets you to a working MVP fastest, stays cheap to run, and that a model can actually write — because it has seen enough of it. Which editor and coding agent to use is a different question, answered on Agent stacks."
+      />
 
       {have.length === 0 ? (
         <p className="mono mt-8 text-[12px] text-ink-4">

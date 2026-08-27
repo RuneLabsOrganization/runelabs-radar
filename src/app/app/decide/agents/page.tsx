@@ -5,6 +5,7 @@ import { AGENT_PLANS } from '@/lib/agent-plans';
 import { timeAgo } from '@/lib/feed';
 import { paths } from '@/lib/urls';
 import SectionHeader from '@/components/SectionHeader';
+import PageHeader from '@/components/PageHeader';
 import { AgentsTabs } from './AgentsTabs';
 
 export const metadata = {
@@ -37,9 +38,8 @@ export default async function AgentsPage({
 
   const stacks = (
     <>
-      <div className="readout text-phosphor">Decide · Agents · Stacks</div>
-      <h1 className="type-h1 mt-1">Agent stacks</h1>
-      <p className="mt-2 max-w-xl text-[13.5px] leading-relaxed text-ink-3">
+      <h2 className="type-h2">Agent stacks</h2>
+      <p className="mt-1.5 max-w-[640px] text-[13px] leading-relaxed text-ink-3">
         What people who code all day are actually running, and what they pay in practice rather than on the pricing
         page. Ranked from survey data and user reports, not from vendor claims. Find the row that sounds like you,
         copy the setup, stop reading.
@@ -59,34 +59,32 @@ export default async function AgentsPage({
       </p>
 
       <SectionHeader label="who should use what" count={personas.length} />
-      <div className="overflow-x-auto">
-        <table className="table">
-          <thead>
-            <tr>
-              <th>You are</th>
-              <th>Run this</th>
-              <th className="text-right">Typical $</th>
-              <th>Skip</th>
+      <table className="table table-cards">
+        <thead>
+          <tr>
+            <th>You are</th>
+            <th>Run this</th>
+            <th className="num">Typical $</th>
+            <th>Skip</th>
+          </tr>
+        </thead>
+        <tbody>
+          {personas.map((p) => (
+            <tr key={p.slug} id={p.slug}>
+              <td data-label="you are" className="whitespace-nowrap">
+                <span className="text-ink">{p.label}</span>
+              </td>
+              <td data-label="run this" className="text-[11.5px] leading-snug text-ink-2">
+                {p.stack}
+              </td>
+              <td data-label="typical $" className="num mono whitespace-nowrap text-[11.5px]">{costBand(p)}</td>
+              <td data-label="skip" className="text-[11.5px] leading-snug text-ink-3">
+                {p.skip}
+              </td>
             </tr>
-          </thead>
-          <tbody>
-            {personas.map((p) => (
-              <tr key={p.slug} id={p.slug}>
-                <td className="whitespace-nowrap">
-                  <span className="text-ink">{p.label}</span>
-                </td>
-                <td className="text-[11.5px] leading-snug text-ink-2">
-                  {p.stack}
-                </td>
-                <td className="mono whitespace-nowrap text-right text-[11.5px]">{costBand(p)}</td>
-                <td className="text-[11.5px] leading-snug text-ink-3">
-                  {p.skip}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+          ))}
+        </tbody>
+      </table>
       <p className="mono mt-2 text-[10px] text-ink-4">
         typical spend, not sticker &middot; seat prices live on the Plans tab
       </p>
@@ -111,60 +109,58 @@ export default async function AgentsPage({
       </div>
 
       <SectionHeader label="what developers actually love" count={landscape.length} />
-      <div className="overflow-x-auto">
-        <table className="table">
-          <thead>
-            <tr>
-              <th>Harness</th>
-              <th>Kind</th>
-              <th className="text-right">Loved %</th>
-              <th className="text-right">7d mentions</th>
-              <th>Kept for</th>
-              <th>Loses</th>
-            </tr>
-          </thead>
-          <tbody>
-            {landscape.map((h) => (
-              <tr key={h.name}>
-                <td className="whitespace-nowrap text-ink">
-                  {h.name}
-                  {h.lovedSource === 'remainder' && (
-                    <span className="ml-1 text-ink-4">
-                      *
-                    </span>
-                  )}
-                </td>
-                <td className="mono text-[10.5px] uppercase text-ink-4">
-                  {h.kind}
-                </td>
-                <td className="mono text-right text-[11.5px]">{h.lovedPct}%</td>
-                <td className="mono text-right text-[11.5px]">
-                  {h.mentions7d > 0 ? h.mentions7d : <span className="text-ink-4">—</span>}
-                </td>
-                <td className="text-[11.5px] leading-snug text-ink-3">
-                  {h.role}
-                </td>
-                <td className="text-[11.5px] leading-snug text-ink-3">
-                  {h.loses}
-                </td>
-              </tr>
-            ))}
-            <tr>
-              <td className="mono text-[10.5px] uppercase text-ink-4">
-                total
+      <table className="table table-cards">
+        <thead>
+          <tr>
+            <th>Harness</th>
+            <th>Kind</th>
+            <th className="num">Loved %</th>
+            <th className="num">7d mentions</th>
+            <th>Kept for</th>
+            <th>Loses</th>
+          </tr>
+        </thead>
+        <tbody>
+          {landscape.map((h) => (
+            <tr key={h.name}>
+              <td data-label="harness" className="whitespace-nowrap text-ink">
+                {h.name}
+                {h.lovedSource === 'remainder' && (
+                  <span className="ml-1 text-ink-4">
+                    *
+                  </span>
+                )}
               </td>
-              <td />
-              <td className="mono text-right text-[11.5px] text-phosphor">
-                {lovedTotal}%
+              <td data-label="kind" className="mono text-[10.5px] uppercase text-ink-4">
+                {h.kind}
               </td>
-              <td />
-              <td colSpan={2} className="mono text-[10px] text-ink-4">
-                single-choice favorite · closes to 100
+              <td data-label="loved %" className="num mono text-[11.5px]">{h.lovedPct}%</td>
+              <td data-label="7d mentions" className="num mono text-[11.5px]">
+                {h.mentions7d > 0 ? h.mentions7d : <span className="text-ink-4">—</span>}
+              </td>
+              <td data-label="kept for" className="text-[11.5px] leading-snug text-ink-3">
+                {h.role}
+              </td>
+              <td data-label="loses" className="text-[11.5px] leading-snug text-ink-3">
+                {h.loses}
               </td>
             </tr>
-          </tbody>
-        </table>
-      </div>
+          ))}
+          <tr>
+            <td data-label="harness" className="mono text-[10.5px] uppercase text-ink-4">
+              total
+            </td>
+            <td data-label="kind" />
+            <td data-label="loved %" className="num mono text-[11.5px] text-phosphor">
+              {lovedTotal}%
+            </td>
+            <td data-label="7d mentions" />
+            <td data-label="kept for" colSpan={2} className="mono text-[10px] text-ink-4">
+              single-choice favorite · closes to 100
+            </td>
+          </tr>
+        </tbody>
+      </table>
       <p className="mono mt-2 text-[10px] text-ink-4">
         loved % = Pragmatic Engineer Feb 2026, n=906, single-choice favorite — not install base. 46 / 19 / 9
         are the published top three; * rows split the unpublished 26% remainder from PE usage rank (Codex) and
@@ -173,30 +169,28 @@ export default async function AgentsPage({
       </p>
 
       <SectionHeader label="model + harness pairing" count={pairings.length} />
-      <div className="overflow-x-auto">
-        <table className="table">
-          <thead>
-            <tr>
-              <th>Job</th>
-              <th>Model people reach for</th>
-              <th>Where they run it</th>
+      <table className="table table-cards">
+        <thead>
+          <tr>
+            <th>Job</th>
+            <th>Model people reach for</th>
+            <th>Where they run it</th>
+          </tr>
+        </thead>
+        <tbody>
+          {pairings.map((row) => (
+            <tr key={row.job}>
+              <td data-label="job" className="text-[11.5px] leading-snug">{row.job}</td>
+              <td data-label="model people reach for" className="text-[11.5px] leading-snug text-ink-2">
+                {row.model}
+              </td>
+              <td data-label="where they run it" className="text-[11.5px] leading-snug text-ink-3">
+                {row.harness}
+              </td>
             </tr>
-          </thead>
-          <tbody>
-            {pairings.map((row) => (
-              <tr key={row.job}>
-                <td className="text-[11.5px] leading-snug">{row.job}</td>
-                <td className="text-[11.5px] leading-snug text-ink-2">
-                  {row.model}
-                </td>
-                <td className="text-[11.5px] leading-snug text-ink-3">
-                  {row.harness}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+          ))}
+        </tbody>
+      </table>
       <p className="mono mt-2 text-[10px] text-ink-4">
         native harness + native model &middot; mixing frontier models inside Cursor is the expensive path
       </p>
@@ -254,8 +248,7 @@ export default async function AgentsPage({
 
   const plans = (
     <>
-      <div className="readout text-phosphor">Decide · Agents · Plans</div>
-      <h1 className="type-h1 mt-1">Coding-agent plans</h1>
+      <h2 className="type-h2">Coding-agent plans</h2>
       <p className="mt-2 max-w-xl text-[13.5px] leading-relaxed text-ink-3">
         List prices and headline limits for the coding-agent subscriptions builders actually ask us about — IDE
         agents, CLI agents, and the platform add-ons. Hand-maintained and reviewed quarterly (last review: 2026-08);
@@ -268,41 +261,39 @@ export default async function AgentsPage({
       </p>
 
       <SectionHeader label="the landscape" count={PLANS.length} />
-      <div className="overflow-x-auto">
-        <table className="table">
-          <thead>
-            <tr>
-              <th>Plan</th>
-              <th className="text-right">$/mo</th>
-              <th>The limit that bites</th>
-              <th>Verdict</th>
+      <table className="table table-cards">
+        <thead>
+          <tr>
+            <th>Plan</th>
+            <th className="num">$/mo</th>
+            <th>The limit that bites</th>
+            <th>Verdict</th>
+          </tr>
+        </thead>
+        <tbody>
+          {PLANS.map((p) => (
+            <tr key={`${p.vendor} ${p.name}`}>
+              <td data-label="plan" className="whitespace-nowrap">
+                <span className="text-ink">{p.vendor}</span>{' '}
+                <span className="text-ink-3">{p.name}</span>
+              </td>
+              <td data-label="$/mo" className="num mono text-[11.5px]">
+                {p.priceUsdMo === 0 ? (
+                  <span className="text-phosphor">free</span>
+                ) : (
+                  `$${p.priceUsdMo}`
+                )}
+              </td>
+              <td data-label="the limit that bites" className="mono text-[10.5px] leading-snug text-ink-3">
+                {p.limits}
+              </td>
+              <td data-label="verdict" className="text-[11.5px] leading-snug text-ink-3">
+                {p.verdict}
+              </td>
             </tr>
-          </thead>
-          <tbody>
-            {PLANS.map((p) => (
-              <tr key={`${p.vendor} ${p.name}`}>
-                <td className="whitespace-nowrap">
-                  <span className="text-ink">{p.vendor}</span>{' '}
-                  <span className="text-ink-3">{p.name}</span>
-                </td>
-                <td className="mono text-right text-[11.5px]">
-                  {p.priceUsdMo === 0 ? (
-                    <span className="text-phosphor">free</span>
-                  ) : (
-                    `$${p.priceUsdMo}`
-                  )}
-                </td>
-                <td className="mono text-[10.5px] leading-snug text-ink-3">
-                  {p.limits}
-                </td>
-                <td className="text-[11.5px] leading-snug text-ink-3">
-                  {p.verdict}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+          ))}
+        </tbody>
+      </table>
       <p className="mono mt-2 text-[10px] text-ink-4">
         sorted cheapest first &middot; list prices, annual-commit headline where that&rsquo;s the advertised rate
       </p>
@@ -345,6 +336,11 @@ export default async function AgentsPage({
 
   return (
     <div>
+      <PageHeader
+        kicker="Decide · Agents"
+        title="Agents"
+        description="What people who code all day are actually running, what it costs them in practice, and which subscription plan stops hurting first. Two views: the stacks people run, and the plans they run them on."
+      />
       <AgentsTabs stacks={stacks} plans={plans} defaultTab={defaultTab} />
     </div>
   );

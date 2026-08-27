@@ -30,6 +30,8 @@ import { runSweep } from '../src/lib/sweep';
 import { runMediaPricingSync } from '../src/lib/ingest/media-pricing';
 import { runKitEvidence } from '../src/lib/kits/evidence';
 import { runKitPriceBackfill, runKitGrade } from '../src/lib/kits/grade';
+import { runSourceReview } from '../src/lib/ingest/review';
+import { runVerdictGrade } from '../src/lib/science/verdicts';
 
 const jobs: Record<JobName, () => Promise<Record<string, unknown>>> = {
   ingest: runIngest,
@@ -64,6 +66,8 @@ const jobs: Record<JobName, () => Promise<Record<string, unknown>>> = {
     const grades = runKitGrade();
     return Promise.resolve({ ...prices, ...grades });
   },
+  'source-review': runSourceReview,
+  'verdict-grade': runVerdictGrade,
 };
 
 const name = process.argv[2] as JobName | undefined;

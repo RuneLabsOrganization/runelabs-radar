@@ -5,6 +5,8 @@ import { useState, type FormEvent, type ReactNode } from 'react';
 
 const SOURCE_TYPES = ['rss', 'hn', 'reddit', 'arxiv', 'huggingface', 'github', 'brave'] as const;
 
+export type SourceHealth = 'ok' | 'stale' | 'failing' | 'dead';
+
 export interface SourceRow {
   id: number;
   type: string;
@@ -15,41 +17,36 @@ export interface SourceRow {
   lastStatus: string | null;
   lastFetchedAt: string | null; // ISO string
   consecutiveFailures: number;
+  health: SourceHealth;
+  healthReason: string;
 }
 
 function truncate(s: string, n: number): string {
   return s.length > n ? `${s.slice(0, n)}…` : s;
 }
 
+const HEALTH_COLOR: Record<SourceHealth, string> = {
+  ok: 'var(--up)',
+  stale: 'var(--amber)',
+  failing: 'var(--down)',
+  dead: 'var(--down)',
+};
+
 function health(s: SourceRow): ReactNode {
-  if (s.lastFetchedAt === null) {
+  if (s.lastFetchedAt === null && s.health === 'ok') {
     return <span className="muted">never</span>;
   }
-  if (s.consecutiveFailures > 0) {
-    return (
-      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-        <span
-          className="badge"
-          style={{ color: 'var(--down)', borderColor: 'var(--down)' }}
-          title={s.lastStatus ?? undefined}
-        >
-          {s.consecutiveFailures} failure{s.consecutiveFailures === 1 ? '' : 's'}
-        </span>
-        {s.lastStatus && (
-          <span className="muted" title={s.lastStatus}>
-            {truncate(s.lastStatus, 60)}
-          </span>
-        )}
-      </span>
-    );
-  }
+  const color = HEALTH_COLOR[s.health];
   return (
-    <span
-      className="badge"
-      style={{ color: 'var(--up)', borderColor: 'var(--up)' }}
-      title={s.lastFetchedAt}
-    >
-      ok
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+      <span className="badge" style={{ color, borderColor: color }} title={s.healthReason}>
+        {s.health}
+      </span>
+      {(s.health === 'failing' || s.health === 'dead') && s.lastStatus && (
+        <span className="muted" title={s.lastStatus}>
+          {truncate(s.lastStatus, 60)}
+        </span>
+      )}
     </span>
   );
 }

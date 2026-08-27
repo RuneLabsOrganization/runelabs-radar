@@ -1,48 +1,66 @@
-import Link from 'next/link';
-import { BarChart3, Bot, Layers, LayoutGrid } from 'lucide-react';
+import { BarChart3, Bot, Briefcase, Layers, LayoutGrid } from 'lucide-react';
 import { paths } from '@/lib/urls';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { KIT_PERSONAS } from '@/lib/kits/personas';
+import { DOMAINS } from '@/lib/domains';
+import PageHeader from '@/components/PageHeader';
+import SectionHeader from '@/components/SectionHeader';
+import { HubCard } from '@/components/app/HubCard';
 
 export const metadata = {
   title: 'Decide',
   description: 'Best tools, stacks, agent playbooks, and market pulse — what to use right now.',
 };
 
-const LINKS = [
-  { href: paths.tools, title: 'Best Tools', desc: 'Cost-benefit board per domain and task.', icon: LayoutGrid },
-  { href: paths.stacks, title: 'Stacks', desc: 'Venture ship-it playbooks by layer.', icon: Layers },
-  { href: paths.agents, title: 'Agents', desc: 'IDE + harness + model pairings and subscription plans.', icon: Bot },
-  { href: paths.metrics, title: 'Pulse', desc: 'What’s moving — launch heat, rising adoption, plan prices.', icon: BarChart3 },
-] as const;
-
 export default function DecidePage() {
   return (
     <div>
-      <div className="readout flex items-center gap-2 text-phosphor">
-        <Layers className="h-3.5 w-3.5" />
-        Workspace · What to use
-      </div>
-      <h1 className="type-h1 mt-1">Decide</h1>
-      <p className="mt-2 max-w-xl text-[13.5px] text-ink-3">
-        Settle it once. What to use for each job, what to build your product on, and what to run your coding agent
-        with — with the reasoning, so you can disagree with us on purpose rather than by accident.
-      </p>
-      <div className="mt-6 grid gap-3 sm:grid-cols-2">
-        {LINKS.map((l) => (
-          <Card key={l.href} className="hover-raise">
-            <CardHeader>
-              <l.icon className="h-4 w-4 text-phosphor" />
-              <CardTitle className="mt-2">{l.title}</CardTitle>
-              <CardDescription>{l.desc}</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Button asChild variant="outline" size="sm">
-                <Link href={l.href}>Open</Link>
-              </Button>
-            </CardContent>
-          </Card>
-        ))}
+      <PageHeader
+        kicker={
+          <span className="flex items-center gap-1.5 text-phosphor">
+            <Layers className="h-3 w-3" aria-hidden />
+            Workspace · What to use
+          </span>
+        }
+        title="Decide"
+        description="Settle it once. What to use for each job, what to build your product on, and what to run your coding agent with — with the reasoning, so you can disagree with us on purpose rather than by accident."
+      />
+
+      <SectionHeader label="Answers" count={5} className="mt-6" />
+      <div className="grid gap-3 sm:grid-cols-2">
+        <HubCard
+          href={paths.tools}
+          title="Best Tools"
+          desc="The cost-benefit board: one ranked answer per domain and task, with the evidence behind each call."
+          icon={LayoutGrid}
+          meta={`${DOMAINS.length} domains`}
+          feature
+          className="sm:col-span-2"
+        />
+        <HubCard
+          href={paths.kits}
+          title="Kits"
+          desc="The whole stack for one role, costed. One pick per job, a monthly total, and honest gaps."
+          icon={Briefcase}
+          meta={`${KIT_PERSONAS.length} roles`}
+        />
+        <HubCard
+          href={paths.stacks}
+          title="Stacks"
+          desc="Venture ship-it playbooks by layer — fastest to a working MVP, cheap to run."
+          icon={Layers}
+        />
+        <HubCard
+          href={paths.agents}
+          title="Agents"
+          desc="IDE, harness and model pairings, with what each subscription plan actually buys you."
+          icon={Bot}
+        />
+        <HubCard
+          href={paths.metrics}
+          title="Pulse"
+          desc="What's moving — launch heat, rising adoption, and plan prices as they change."
+          icon={BarChart3}
+        />
       </div>
     </div>
   );

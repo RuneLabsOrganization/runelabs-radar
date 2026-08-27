@@ -1,0 +1,1 @@
+ALTER TABLE `sources` ADD `consecutive_empty` integer DEFAULT 0 NOT NULL;

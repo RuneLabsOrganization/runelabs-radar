@@ -36,7 +36,7 @@ export default async function ConnectPage() {
   const authRequired = process.env.MCP_AUTH_REQUIRED === 'true';
 
   return (
-    <main className="mx-auto max-w-[760px] space-y-6">
+    <div className="mx-auto max-w-[760px] space-y-6">
       <PageHeader
         kicker="MCP SERVER"
         title="Connect your agent"
@@ -206,6 +206,6 @@ export default async function ConnectPage() {
           </p>
         </CardContent>
       </Card>
-    </main>
+    </div>
   );
 }

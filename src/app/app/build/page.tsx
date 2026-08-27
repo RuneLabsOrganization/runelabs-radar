@@ -1,48 +1,51 @@
-import Link from 'next/link';
 import { MessageSquare, Package, Sparkles, Target } from 'lucide-react';
 import { paths } from '@/lib/urls';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import PageHeader from '@/components/PageHeader';
+import SectionHeader from '@/components/SectionHeader';
+import { HubCard } from '@/components/app/HubCard';
 
 export const metadata = {
   title: 'Build',
   description: 'Opportunities, debates, and batches — what to build next.',
 };
 
-const LINKS = [
-  { href: paths.opportunities, title: 'Opportunities', desc: 'Monetizable openings scored flip/hold with dossiers.', icon: Target },
-  { href: paths.batches, title: 'Batches', desc: 'Working sets and weekly Radar drops — debate and plan in bulk.', icon: Package },
-  { href: paths.debates, title: 'Debates', desc: 'Advocate · Skeptic · Realist · Judge transcripts.', icon: MessageSquare },
-] as const;
-
 export default function BuildPage() {
   return (
     <div>
-      <div className="readout flex items-center gap-2 text-phosphor">
-        <Sparkles className="h-3.5 w-3.5" />
-        Workspace · What to build
-      </div>
-      <h1 className="type-h1 mt-1">Build</h1>
-      <p className="mt-2 max-w-xl text-[13.5px] text-ink-3">
-        For when you want a new project, not a new tool. Openings where somebody is already complaining about the
-        problem, argued from four sides before you commit a month to one, then written up as a plan your agent can
-        actually run.
-      </p>
-      <div className="mt-6 grid gap-3 sm:grid-cols-3">
-        {LINKS.map((l) => (
-          <Card key={l.href} className="hover-raise">
-            <CardHeader>
-              <l.icon className="h-4 w-4 text-phosphor" />
-              <CardTitle className="mt-2">{l.title}</CardTitle>
-              <CardDescription>{l.desc}</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Button asChild variant="outline" size="sm">
-                <Link href={l.href}>Open</Link>
-              </Button>
-            </CardContent>
-          </Card>
-        ))}
+      <PageHeader
+        kicker={
+          <span className="flex items-center gap-1.5 text-phosphor">
+            <Sparkles className="h-3 w-3" aria-hidden />
+            Workspace · What to build
+          </span>
+        }
+        title="Build"
+        description="For when you want a new project, not a new tool. Openings where somebody is already complaining about the problem, argued from four sides before you commit a month to one, then written up as a plan your agent can actually run."
+      />
+
+      <SectionHeader label="Pipeline" count={3} className="mt-6" />
+      <div className="grid gap-3 sm:grid-cols-2">
+        <HubCard
+          href={paths.opportunities}
+          title="Opportunities"
+          desc="Monetizable openings scored flip or hold, each with a dossier of the evidence that found it."
+          icon={Target}
+          meta="start here"
+          feature
+          className="sm:col-span-2"
+        />
+        <HubCard
+          href={paths.batches}
+          title="Batches"
+          desc="Working sets and the weekly Radar drop — debate and plan a whole shortlist in bulk."
+          icon={Package}
+        />
+        <HubCard
+          href={paths.debates}
+          title="Debates"
+          desc="Advocate, Skeptic, Realist and Judge — the full transcript behind each verdict."
+          icon={MessageSquare}
+        />
       </div>
     </div>
   );

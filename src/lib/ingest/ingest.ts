@@ -105,11 +105,15 @@ export async function runIngest(): Promise<IngestStats> {
 
       newItems += inserted;
       sourcesOk += 1;
+      // A 200 with nothing new is not health: a stalled feed never errors, so
+      // consecutiveFailures would stay 0 forever. Track the empty run instead.
+      const emptyStreak = inserted > 0 ? 0 : source.consecutiveEmpty + 1;
       db.update(sources)
         .set({
           lastFetchedAt: now,
           lastStatus: `ok (${fetched.length} fetched, ${inserted} new)`,
           consecutiveFailures: 0,
+          consecutiveEmpty: emptyStreak,
           // persist adapter-mutated fetch state (etag/lastModified round-trip)
           config: JSON.stringify(cfg),
         })

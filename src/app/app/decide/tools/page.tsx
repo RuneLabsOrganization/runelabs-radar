@@ -25,6 +25,7 @@ import { boardHistory } from '@/lib/db/schema';
 import { boardRows, type BoardRow } from '@/lib/kits/board-view';
 import { DOMAIN_COLORS, DOMAIN_LABELS, DOMAINS, isDomain } from '@/lib/domains';
 import ChartFrame from '@/components/ChartFrame';
+import PageHeader from '@/components/PageHeader';
 
 type BoardEntry = BoardRow;
 
@@ -129,13 +130,17 @@ export default async function BoardPage() {
 
   return (
     <div>
-      <div className="readout text-phosphor">Decide · Best tools</div>
-      <h1 className="type-h1 mt-1">Best Right Now</h1>
-      <p className="mt-2 max-w-xl text-[13.5px] leading-relaxed text-ink-3">
-        For every job: what to use if quality matters most, what to use if you are paying for it yourself, and the
-        cheapest thing that still works. With the reasoning, what to skip, and roughly what it costs. Where we
-        don&rsquo;t have evidence we trust, the cell stays blank and says so.
-      </p>
+      <PageHeader
+        kicker="Decide · Best tools"
+        title="Best Right Now"
+        description={
+          <>
+            For every job: what to use if quality matters most, what to use if you are paying for it yourself, and the
+            cheapest thing that still works. With the reasoning, what to skip, and roughly what it costs. Where we
+            don&rsquo;t have evidence we trust, the cell stays blank and says so.
+          </>
+        }
+      />
 
       <div className="mt-3">
         <BoardNav sections={navSections} />

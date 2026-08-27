@@ -208,6 +208,7 @@ describe('applyProposal mirrors into kit_picks', () => {
     expect(swap).toBeTruthy();
     expect(swap!.toPick).toBe('Gamma');
     expect(swap!.tier).toBe('best');
+    expect(swap!.reason).toBe('test');
   });
 
   it('does not log history when the pick is unchanged', async () => {

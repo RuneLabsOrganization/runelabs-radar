@@ -10,6 +10,7 @@ import {
   pendingGrades,
   spearman,
 } from '@/lib/science/accuracy';
+import { verdictSummary } from '@/lib/science/verdict-accuracy';
 import { freshnessStats } from '@/lib/freshness';
 import { paths } from '@/lib/urls';
 
@@ -190,6 +191,7 @@ export default async function AccuracyPage() {
   const misses = accuracyMisses();
   const pending = pendingGrades();
   const freshness = freshnessStats();
+  const verdicts = verdictSummary();
   const rho = spearman(
     points.map((p) => p.score),
     points.map((p) => p.hindsight),
@@ -384,9 +386,9 @@ export default async function AccuracyPage() {
             <thead>
               <tr>
                 <th>Date</th>
-                <th className="text-right">Predicted</th>
-                <th className="text-right">Realized</th>
-                <th className="text-right">Error</th>
+                <th className="num">Predicted</th>
+                <th className="num">Realized</th>
+                <th className="num">Error</th>
               </tr>
             </thead>
             <tbody>
@@ -517,6 +519,62 @@ export default async function AccuracyPage() {
           <p>
             When prediction and outcome diverge badly, the miss is published on this page, investigated, and fed
             back into the scorer as calibration — not silently accepted.
+          </p>
+        </div>
+      </section>
+
+      <section className="mt-10">
+        <div className="readout mb-1.5">verdict accuracy</div>
+        <div className="card text-[12.5px] leading-relaxed" style={{ color: 'var(--ink-3)' }}>
+          <p className="mb-3">
+            Story scores are graded above. These grade the <em>verdicts</em> — every &ldquo;use X for Y&rdquo; on the
+            board. When a pick changes we record why, and only one of the three reasons is a miss.
+          </p>
+          <dl className="grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-4">
+            <div>
+              <dt className="mono text-[10px]" style={{ color: 'var(--ink-4)' }}>pick half-life</dt>
+              <dd className="text-[15px]">
+                {verdicts.halfLifeDays === null ? '—' : `${verdicts.halfLifeDays}d`}
+              </dd>
+            </div>
+            <div>
+              <dt className="mono text-[10px]" style={{ color: 'var(--ink-4)' }}>correction rate</dt>
+              <dd className="text-[15px]">
+                {verdicts.correction.pct}%{' '}
+                <span className="mono text-[10px]" style={{ color: 'var(--ink-4)' }}>
+                  n={verdicts.correction.graded}
+                </span>
+              </dd>
+            </div>
+            <div>
+              <dt className="mono text-[10px]" style={{ color: 'var(--ink-4)' }}>reversal rate</dt>
+              <dd className="text-[15px]">
+                {verdicts.reversal.pct}%{' '}
+                <span className="mono text-[10px]" style={{ color: 'var(--ink-4)' }}>
+                  n={verdicts.reversal.cells}
+                </span>
+              </dd>
+            </div>
+            <div>
+              <dt className="mono text-[10px]" style={{ color: 'var(--ink-4)' }}>falsifier coverage</dt>
+              <dd className="text-[15px]">
+                {verdicts.coverage.pct}%{' '}
+                <span className="mono text-[10px]" style={{ color: 'var(--ink-4)' }}>
+                  {verdicts.coverage.registered}/{verdicts.coverage.open}
+                </span>
+              </dd>
+            </div>
+          </dl>
+          <p className="mt-3">
+            <strong>Correction</strong> is the only miss: a better option was already available and we did not pick
+            it. <strong>Upgrade</strong> (something new shipped) and <strong>drift</strong> (price or licence moved)
+            are the field changing, not our judgement failing — collapsing all three into one number would make a
+            fast field look like incompetence.
+          </p>
+          <p className="mt-2">
+            <strong>Falsifier coverage</strong> is the share of live picks that state, in advance, what would prove
+            them wrong. Calls without one cannot be graded and are counted against us here rather than quietly
+            excluded.
           </p>
         </div>
       </section>

@@ -27,7 +27,39 @@ export const sources = sqliteTable('sources', {
   lastFetchedAt: integer('last_fetched_at', { mode: 'timestamp' }),
   lastStatus: text('last_status'),
   consecutiveFailures: integer('consecutive_failures').notNull().default(0),
+  /**
+   * Polls that returned zero NEW items. A feed can be 200-OK and dead: the
+   * server keeps serving the same stale payload, so consecutiveFailures never
+   * moves. This is the only signal that catches it.
+   */
+  consecutiveEmpty: integer('consecutive_empty').notNull().default(0),
 });
+
+/**
+ * A dated judgement on each source. The longitudinal record of which feeds
+ * actually earn their slot — written by the source-review job, never by hand.
+ */
+export const sourceQuality = sqliteTable(
+  'source_quality',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    sourceId: integer('source_id')
+      .notNull()
+      .references(() => sources.id, { onDelete: 'cascade' }),
+    /** UTC day the window ends (inclusive), YYYY-MM-DD. */
+    windowEnd: text('window_end').notNull(),
+    windowDays: integer('window_days').notNull(),
+    fetched: integer('fetched').notNull().default(0),
+    used: integer('used').notNull().default(0),
+    curated: integer('curated').notNull().default(0),
+    meanTopScore: real('mean_top_score'),
+    meanHindsight: real('mean_hindsight'),
+    verdict: text('verdict', { enum: ['keep', 'watch', 'demote', 'drop'] }).notNull(),
+    reason: text('reason').notNull(),
+    createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+  },
+  (t) => [uniqueIndex('source_quality_window').on(t.sourceId, t.windowEnd, t.windowDays)],
+);
 
 export const stories = sqliteTable(
   'stories',
@@ -847,6 +879,14 @@ export const kitEvidence = sqliteTable(
       .references(() => kitPicks.id, { onDelete: 'cascade' }),
     kind: text('kind', { enum: ['benchmark', 'price', 'report'] }).notNull(),
     sourceUrl: text('source_url').notNull(),
+    /**
+     * What this evidence is admissible FOR. first_party (vendor blog, changelog,
+     * pricing page) is authoritative on facts and inadmissible as opinion;
+     * community is sentiment only. Defaults to the weakest role on purpose.
+     */
+    role: text('role', { enum: ['first_party', 'independent', 'community'] })
+      .notNull()
+      .default('community'),
     excerpt: text('excerpt'),
     /** -1 negative, 0 neutral, 1 positive */
     sentiment: integer('sentiment').notNull().default(0),
@@ -870,7 +910,43 @@ export const kitPickHistory = sqliteTable(
     fromPick: text('from_pick'),
     toPick: text('to_pick').notNull(),
     reason: text('reason').notNull(),
+    /** Filled by the verdict-grade job — see src/lib/kits/flip.ts. */
+    changeKind: text('change_kind', { enum: ['upgrade', 'drift', 'correction', 'unclassified'] })
+      .notNull()
+      .default('unclassified'),
+    /** Days the previous pick stood before this change. Null when unknowable. */
+    heldDays: integer('held_days'),
     changedAt: integer('changed_at', { mode: 'timestamp' }).notNull(),
   },
   (t) => [index('kit_history_cell').on(t.category, t.task)],
+);
+
+/**
+ * A verdict, stated as a falsifiable prediction BEFORE the outcome is known.
+ *
+ * Without a pre-registered falsifier every flip can be rationalised after the
+ * fact and the accuracy number means nothing. Claims are append-only: the
+ * falsifier is never edited, only closed with an outcome.
+ */
+export const verdictClaims = sqliteTable(
+  'verdict_claims',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    category: text('category').notNull(),
+    task: text('task').notNull(),
+    tier: text('tier', { enum: ['best', 'value', 'cheapest'] }).notNull(),
+    pickName: text('pick_name').notNull(),
+    /** What would prove this call wrong. The literal 'unregistered' sentinel
+     *  means nobody stated one — such claims are EXCLUDED from accuracy stats
+     *  and counted against falsifier coverage instead of quietly passing. */
+    falsifier: text('falsifier').notNull(),
+    horizonDays: integer('horizon_days').notNull(),
+    /** JSON string[] of evidence URLs the call rested on, so a later
+     *  correction can be judged against what was knowable at the time. */
+    evidenceSnapshot: text('evidence_snapshot').notNull().default('[]'),
+    openedAt: integer('opened_at', { mode: 'timestamp_ms' }).notNull(),
+    closedAt: integer('closed_at', { mode: 'timestamp_ms' }),
+    outcome: text('outcome', { enum: ['held', 'upgrade', 'drift', 'correction'] }),
+  },
+  (t) => [index('verdict_claim_cell').on(t.category, t.task, t.tier)],
 );

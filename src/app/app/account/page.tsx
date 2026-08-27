@@ -13,6 +13,7 @@ import { SectionHeader } from '@/components/ui/section-header';
 import { AutoCheckout } from '@/components/account/AutoCheckout';
 import { BillingPortalButton } from '@/components/account/BillingPortalButton';
 import { CheckoutButtons } from '@/components/account/CheckoutButtons';
+import PageHeader from '@/components/PageHeader';
 
 export const metadata = siteMeta('Account', 'Your Radar account and billing.', paths.account, {
   index: false,
@@ -31,9 +32,11 @@ export default async function AccountPage() {
 
   return (
     <div className="mx-auto max-w-[720px]">
-      <div className="readout text-phosphor">Account</div>
-      <h1 className="type-h1 mt-1">{user.name}</h1>
-      <p className="mt-1 text-[13px] text-ink-3">{user.email ?? 'Legacy operator account'}</p>
+      <PageHeader
+        kicker="Account"
+        title={user.name}
+        description={user.email ?? 'Legacy operator account'}
+      />
 
       <SectionHeader label="plan" />
       <Card>

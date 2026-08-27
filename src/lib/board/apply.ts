@@ -1,6 +1,8 @@
 import { and, eq } from 'drizzle-orm';
 import { getDb } from '../db';
 import { boardEntries, boardHistory, boardProposals, kitPickHistory, kitPicks } from '../db/schema';
+import { buildClaim } from '../kits/claims';
+import { closeOpenClaim, openClaim } from '../kits/claims-repo';
 import { boardCellToKitCell, TIER_BY_FIELD, type BoardField } from '../kits/from-board';
 
 const FIELDS = ['bestOverall', 'bestValue', 'cheapestViable', 'costNote'] as const;
@@ -39,7 +41,13 @@ function parseProposed(json: string): ProposedFields {
  * evidence_count — clobbering those from a board cost note is how a kit ends
  * up asserting a number nobody verified.
  */
-function mirrorToKitPicks(domain: string, task: string, proposed: ProposedFields, now: Date): void {
+function mirrorToKitPicks(
+  domain: string,
+  task: string,
+  proposed: ProposedFields,
+  now: Date,
+  reason: string,
+): void {
   const cell = boardCellToKitCell(domain, task);
   if (!cell) return; // board task with no kit cell (e.g. a retired task) — board write still stands
 
@@ -91,10 +99,17 @@ function mirrorToKitPicks(domain: string, task: string, proposed: ProposedFields
         tier,
         fromPick: existing?.pickName ?? null,
         toPick: pickName,
-        reason: 'board proposal approved',
+        reason: reason.trim() || 'board proposal approved',
         changedAt: now,
       })
       .run();
+
+    // A pick change ends the previous claim and opens a new one. The falsifier
+    // stays unregistered until a reviewer states one — coverage is reported
+    // rather than faked (see src/lib/kits/claims.ts).
+    const claimCell = { category: cell.category, task: cell.task, tier };
+    closeOpenClaim(claimCell, now);
+    openClaim(buildClaim({ ...claimCell, pickName, openedAt: now }));
   }
 }
 
@@ -159,7 +174,7 @@ export async function applyProposal(proposalId: number): Promise<{ ok: boolean }
     .values({ domain: proposal.domain, task: proposal.task, change, appliedAt: now })
     .run();
 
-  mirrorToKitPicks(proposal.domain, proposal.task, proposed, now);
+  mirrorToKitPicks(proposal.domain, proposal.task, proposed, now, proposal.rationale);
 
   db.update(boardProposals).set({ status: 'approved' }).where(eq(boardProposals.id, proposalId)).run();
   return { ok: true };
