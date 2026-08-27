@@ -35,6 +35,32 @@ export const sources = sqliteTable('sources', {
   consecutiveEmpty: integer('consecutive_empty').notNull().default(0),
 });
 
+/**
+ * A dated judgement on each source. The longitudinal record of which feeds
+ * actually earn their slot — written by the source-review job, never by hand.
+ */
+export const sourceQuality = sqliteTable(
+  'source_quality',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    sourceId: integer('source_id')
+      .notNull()
+      .references(() => sources.id, { onDelete: 'cascade' }),
+    /** UTC day the window ends (inclusive), YYYY-MM-DD. */
+    windowEnd: text('window_end').notNull(),
+    windowDays: integer('window_days').notNull(),
+    fetched: integer('fetched').notNull().default(0),
+    used: integer('used').notNull().default(0),
+    curated: integer('curated').notNull().default(0),
+    meanTopScore: real('mean_top_score'),
+    meanHindsight: real('mean_hindsight'),
+    verdict: text('verdict', { enum: ['keep', 'watch', 'demote', 'drop'] }).notNull(),
+    reason: text('reason').notNull(),
+    createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+  },
+  (t) => [uniqueIndex('source_quality_window').on(t.sourceId, t.windowEnd, t.windowDays)],
+);
+
 export const stories = sqliteTable(
   'stories',
   {
