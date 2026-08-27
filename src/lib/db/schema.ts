@@ -27,6 +27,12 @@ export const sources = sqliteTable('sources', {
   lastFetchedAt: integer('last_fetched_at', { mode: 'timestamp' }),
   lastStatus: text('last_status'),
   consecutiveFailures: integer('consecutive_failures').notNull().default(0),
+  /**
+   * Polls that returned zero NEW items. A feed can be 200-OK and dead: the
+   * server keeps serving the same stale payload, so consecutiveFailures never
+   * moves. This is the only signal that catches it.
+   */
+  consecutiveEmpty: integer('consecutive_empty').notNull().default(0),
 });
 
 export const stories = sqliteTable(

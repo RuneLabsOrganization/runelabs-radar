@@ -24,6 +24,7 @@ function makeSource(type: Source['type'], config: Record<string, unknown> = {}):
     lastFetchedAt: null,
     lastStatus: null,
     consecutiveFailures: 0,
+    consecutiveEmpty: 0,
   };
 }
 
