@@ -910,6 +910,12 @@ export const kitPickHistory = sqliteTable(
     fromPick: text('from_pick'),
     toPick: text('to_pick').notNull(),
     reason: text('reason').notNull(),
+    /** Filled by the verdict-grade job — see src/lib/kits/flip.ts. */
+    changeKind: text('change_kind', { enum: ['upgrade', 'drift', 'correction', 'unclassified'] })
+      .notNull()
+      .default('unclassified'),
+    /** Days the previous pick stood before this change. Null when unknowable. */
+    heldDays: integer('held_days'),
     changedAt: integer('changed_at', { mode: 'timestamp' }).notNull(),
   },
   (t) => [index('kit_history_cell').on(t.category, t.task)],
