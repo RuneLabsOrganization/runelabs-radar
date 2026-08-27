@@ -65,7 +65,7 @@ export default async function AgentsPage({
             <tr>
               <th>You are</th>
               <th>Run this</th>
-              <th className="text-right">Typical $</th>
+              <th className="num">Typical $</th>
               <th>Skip</th>
             </tr>
           </thead>
@@ -117,8 +117,8 @@ export default async function AgentsPage({
             <tr>
               <th>Harness</th>
               <th>Kind</th>
-              <th className="text-right">Loved %</th>
-              <th className="text-right">7d mentions</th>
+              <th className="num">Loved %</th>
+              <th className="num">7d mentions</th>
               <th>Kept for</th>
               <th>Loses</th>
             </tr>
@@ -272,7 +272,7 @@ export default async function AgentsPage({
           <thead>
             <tr>
               <th>Plan</th>
-              <th className="text-right">$/mo</th>
+              <th className="num">$/mo</th>
               <th>The limit that bites</th>
               <th>Verdict</th>
             </tr>

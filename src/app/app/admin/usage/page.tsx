@@ -123,11 +123,11 @@ export default async function AdminUsagePage() {
           <thead>
             <tr>
               <th>Tier</th>
-              <th className="text-right">Price/mo</th>
-              <th className="text-right">Quota (plans)</th>
-              <th className="text-right">Est. LLM cost/mo</th>
-              <th className="text-right">Margin</th>
-              <th className="text-right">Margin %</th>
+              <th className="num">Price/mo</th>
+              <th className="num">Quota (plans)</th>
+              <th className="num">Est. LLM cost/mo</th>
+              <th className="num">Margin</th>
+              <th className="num">Margin %</th>
             </tr>
           </thead>
           <tbody>
@@ -170,11 +170,11 @@ export default async function AdminUsagePage() {
             <thead>
               <tr>
                 <th>Feature</th>
-                <th className="text-right">Calls</th>
-                <th className="text-right">Prompt tok</th>
-                <th className="text-right">Completion tok</th>
-                <th className="text-right">Est. cost</th>
-                <th className="text-right">Avg ms</th>
+                <th className="num">Calls</th>
+                <th className="num">Prompt tok</th>
+                <th className="num">Completion tok</th>
+                <th className="num">Est. cost</th>
+                <th className="num">Avg ms</th>
               </tr>
             </thead>
             <tbody>
@@ -204,11 +204,11 @@ export default async function AdminUsagePage() {
             <thead>
               <tr>
                 <th>User</th>
-                <th className="text-right">Calls</th>
-                <th className="text-right">Prompt tok</th>
-                <th className="text-right">Completion tok</th>
-                <th className="text-right">Est. cost</th>
-                <th className="text-right">Avg ms</th>
+                <th className="num">Calls</th>
+                <th className="num">Prompt tok</th>
+                <th className="num">Completion tok</th>
+                <th className="num">Est. cost</th>
+                <th className="num">Avg ms</th>
               </tr>
             </thead>
             <tbody>
