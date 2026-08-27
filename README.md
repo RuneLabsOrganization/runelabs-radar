@@ -111,12 +111,21 @@ Backup: copy `data/radar.db` (plus `-wal`/`-shm` or run `sqlite3 data/radar.db "
 
 ## Operations
 
-- **Hosted mode — flip MCP auth (one deliberate ops step)**: set `MCP_AUTH_REQUIRED=true` in the box `.env`, then `docker compose up -d mcp`. Anonymous MCP access stops; OAuth 2.1 + `/connect` handle onboarding (no keys to copy), and the tiers shown at `/pricing` apply. Authed users default to the free tier (3 plans/mo) until granted a row in `plan_entitlements` — manual SQL until Stripe checkout lands (Phase 8c):
+- **Hosted mode — flip MCP auth (one deliberate ops step)**: set `MCP_AUTH_REQUIRED=true` in the box `.env`, then `docker compose up -d mcp`. Anonymous MCP access stops; OAuth 2.1 + `/connect` handle onboarding (no keys to copy), and the tiers shown at `/pricing` apply.
 
-  ```sql
-  INSERT INTO plan_entitlements (user_id, tier, plans_per_month) VALUES (<uid>, 'builder', 30)
-  ON CONFLICT(user_id) DO UPDATE SET tier = excluded.tier, plans_per_month = excluded.plans_per_month;
-  ```
+**Hosted billing:** Stripe Checkout (Better Auth). Tiers Builder $19/mo or $190/yr, Factory $49/mo or $490/yr. Cancel/manage via Stripe Customer Portal on `/app/account`. Webhook `https://<host>/api/auth/stripe/webhook`.
+
+**Hosted go-live checklist:**
+
+1. `npx tsx scripts/stripe-setup.ts` → paste price ids into `.env`
+2. Stripe webhook signing secret → `STRIPE_WEBHOOK_SECRET`
+3. Resend domain + `RESEND_API_KEY` + `EMAIL_FROM`
+4. Google/GitHub OAuth apps + callbacks
+5. Sentry project DSNs
+6. Plausible site for `radar.runelabs.org`
+7. `docker compose run --rm worker npx tsx scripts/seed-kit-infra.ts`
+8. Backup `data/radar.db`
+9. (Optional) box git PAT so deploys are `git pull` not bundle/scp
 - **Admin → Sources**: feed health (consecutive failures, last status), enable/disable, add/edit — no deploy needed.
 - **Admin → Proposals**: weekly board sync drafts changes; approve/reject. Approved changes land on the board and in "Changed recently".
 - **Staleness banner**: the hub warns when ingest (>2h) or curate (>3h) hasn't succeeded.
