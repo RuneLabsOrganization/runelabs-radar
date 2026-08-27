@@ -54,6 +54,7 @@ export const WORKSPACES: Workspace[] = [
     tabs: [
       { href: paths.decide, label: 'Overview' },
       { href: paths.tools, label: 'Best tools' },
+      { href: paths.kits, label: 'Kits' },
       { href: paths.stacks, label: 'Stacks' },
       { href: paths.agents, label: 'Agents' },
       { href: paths.metrics, label: 'Pulse' },

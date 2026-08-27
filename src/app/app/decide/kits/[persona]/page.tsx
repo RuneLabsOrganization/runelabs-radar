@@ -4,6 +4,7 @@ import { requireViewer } from '@/lib/auth/user';
 import { isKitTier, KIT_TIERS, type KitTier } from '@/lib/kits/grid';
 import { getKitPersona } from '@/lib/kits/personas';
 import { loadKit, loadKitPickHistory } from '@/lib/kits/repo';
+import { paths } from '@/lib/urls';
 
 export default async function KitPage({
   params,
@@ -25,7 +26,7 @@ export default async function KitPage({
 
   return (
     <main className="mx-auto max-w-4xl px-4 py-8">
-      <Link href="/app/decide/kits" className="text-sm text-ink-4 hover:underline">
+      <Link href={paths.kits} className="text-sm text-ink-4 hover:underline">
         ← All kits
       </Link>
       <h1 className="mt-2 text-2xl font-semibold">{kit.label}</h1>
@@ -50,7 +51,7 @@ export default async function KitPage({
         {KIT_TIERS.map((t) => (
           <Link
             key={t}
-            href={`/app/decide/kits/${persona.slug}?tier=${t}`}
+            href={`${paths.kit(persona.slug)}?tier=${t}`}
             className={`rounded border border-line px-2 py-1 ${t === tier ? 'font-medium' : 'text-ink-4'}`}
           >
             {t}

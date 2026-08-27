@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { requireViewer } from '@/lib/auth/user';
 import { KIT_PERSONAS } from '@/lib/kits/personas';
+import { paths } from '@/lib/urls';
 
 export const metadata = {
   title: 'Kits — what to actually run',
@@ -20,7 +21,7 @@ export default async function KitsPage() {
       <ul className="mt-6 grid gap-3 sm:grid-cols-2">
         {KIT_PERSONAS.map((p) => (
           <li key={p.slug} className="rounded-lg border border-line p-4">
-            <Link href={`/app/decide/kits/${p.slug}`} className="font-medium hover:underline">
+            <Link href={paths.kit(p.slug)} className="font-medium hover:underline">
               {p.label}
             </Link>
             <p className="mt-1 text-sm text-ink-4">{p.blurb}</p>

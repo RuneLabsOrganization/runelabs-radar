@@ -12,7 +12,15 @@ import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { buildServer } from '../mcp/build';
 import type { AuthContext } from '../mcp/lib/auth';
 import { _setFetch } from '@/lib/llm/minimax';
-import { canGeneratePlan, cycleStart, entitlementFor, quotaFor, usageThisCycle } from '@/lib/billing';
+import {
+  canGeneratePlan,
+  cycleStart,
+  entitlementFor,
+  quotaFor,
+  TIER_PRICES,
+  TIER_PRICES_ANNUAL,
+  usageThisCycle,
+} from '@/lib/billing';
 import { llmCalls, opportunities, planEntitlements, users } from '@/lib/db/schema';
 import { useTestDb } from './helpers/db';
 
@@ -23,6 +31,13 @@ describe('quotaFor', () => {
     expect(quotaFor('free')).toBe(3);
     expect(quotaFor('builder')).toBe(30);
     expect(quotaFor('factory')).toBe(100);
+  });
+});
+
+describe('TIER_PRICES_ANNUAL', () => {
+  it('is two months free vs monthly', () => {
+    expect(TIER_PRICES.builder * 10).toBe(TIER_PRICES_ANNUAL.builder);
+    expect(TIER_PRICES.factory * 10).toBe(TIER_PRICES_ANNUAL.factory);
   });
 });
 

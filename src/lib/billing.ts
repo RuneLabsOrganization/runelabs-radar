@@ -5,10 +5,13 @@ import { llmCalls, planEntitlements } from './db/schema';
 /**
  * Billing constants + quota logic (Phase 8). Artifact pricing: the user's
  * unit is a plan generation, not a token — per-call economics are enforced by
- * the Phase 7 observability built on llm_calls. Prices are placeholder
- * constants until Stripe checkout/webhooks land (8c). USD per month.
+ * the Phase 7 observability built on llm_calls. List prices in USD; Stripe
+ * checkout/webhooks are part of this go-live.
  */
 export const TIER_PRICES = { free: 0, builder: 19, factory: 49 } as const;
+
+/** Annual list prices: two months free vs paying monthly. */
+export const TIER_PRICES_ANNUAL = { builder: 190, factory: 490 } as const;
 
 export type Tier = keyof typeof TIER_PRICES;
 
