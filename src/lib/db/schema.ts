@@ -879,6 +879,14 @@ export const kitEvidence = sqliteTable(
       .references(() => kitPicks.id, { onDelete: 'cascade' }),
     kind: text('kind', { enum: ['benchmark', 'price', 'report'] }).notNull(),
     sourceUrl: text('source_url').notNull(),
+    /**
+     * What this evidence is admissible FOR. first_party (vendor blog, changelog,
+     * pricing page) is authoritative on facts and inadmissible as opinion;
+     * community is sentiment only. Defaults to the weakest role on purpose.
+     */
+    role: text('role', { enum: ['first_party', 'independent', 'community'] })
+      .notNull()
+      .default('community'),
     excerpt: text('excerpt'),
     /** -1 negative, 0 neutral, 1 positive */
     sentiment: integer('sentiment').notNull().default(0),

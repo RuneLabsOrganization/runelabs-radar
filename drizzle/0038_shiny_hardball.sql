@@ -1,0 +1,1 @@
+ALTER TABLE `kit_evidence` ADD `role` text DEFAULT 'community' NOT NULL;

@@ -16,6 +16,12 @@ export interface ConfidenceInput {
   evidenceCount: number;
   distinctSources: number;
   verifiedAt: Date | null;
+  /**
+   * Distinct registrable domains from independent-role evidence
+   * (src/lib/kits/provenance.ts). Undefined = caller has not computed it yet,
+   * in which case the gate is skipped rather than silently failing everything.
+   */
+  independentDomains?: number;
   /** Injectable for deterministic tests. */
   now?: Date;
 }
@@ -27,8 +33,12 @@ function demote(c: Confidence): Confidence {
 }
 
 export function gradeConfidence(input: ConfidenceInput): Confidence {
-  const { evidenceCount, distinctSources, verifiedAt } = input;
+  const { evidenceCount, distinctSources, verifiedAt, independentDomains } = input;
   if (!verifiedAt) return 'low';
+
+  // A verdict sourced entirely from the vendor cannot outrank 'low', however
+  // much of it there is. Volume of first-party material is not corroboration.
+  if (independentDomains !== undefined && independentDomains < 1) return 'low';
 
   const now = input.now ?? new Date();
   const ageDays = (now.getTime() - verifiedAt.getTime()) / DAY_MS;
