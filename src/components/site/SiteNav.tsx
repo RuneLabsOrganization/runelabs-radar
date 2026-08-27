@@ -33,7 +33,7 @@ export function SiteLinks() {
 }
 
 /** The public site had no menu at all below `md` — this is that menu. */
-export function SiteMobileNav() {
+export function SiteMobileNav({ signedIn }: { signedIn: boolean }) {
   const pathname = usePathname();
   const [open, setOpen] = React.useState(false);
 
@@ -69,11 +69,17 @@ export function SiteMobileNav() {
           </div>
           <div className="mt-5 flex flex-col gap-2 border-t border-grat pt-4">
             <Button asChild>
-              <Link href={paths.app}>Open the app</Link>
+              {signedIn ? (
+                <Link href={paths.app}>Open the app</Link>
+              ) : (
+                <Link href={paths.signup}>Start free</Link>
+              )}
             </Button>
-            <Button asChild variant="ghost">
-              <Link href={paths.login}>Sign in</Link>
-            </Button>
+            {!signedIn && (
+              <Button asChild variant="ghost">
+                <Link href={paths.login}>Sign in</Link>
+              </Button>
+            )}
             <p className="mt-1 text-[12px] text-ink-4">
               Browsing is free and needs no account. Sign in to run debates, plans, and batches.
             </p>

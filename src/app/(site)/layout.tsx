@@ -36,7 +36,7 @@ export default async function SiteLayout({ children }: { children: React.ReactNo
                 <Link href={paths.signup}>Start free</Link>
               )}
             </Button>
-            <SiteMobileNav />
+            <SiteMobileNav signedIn={!!user} />
           </div>
         </div>
       </header>
