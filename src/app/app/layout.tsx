@@ -16,6 +16,7 @@ import { AnonBanner } from '@/components/app/AnonBanner';
 import { HeaderOffset } from '@/components/app/HeaderOffset';
 import { CommandPalette } from '@/components/app/CommandPalette';
 import { UserMenu } from '@/components/app/UserMenu';
+import { CookiesButton } from '@/components/consent/CookieBanner';
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await requireViewer();
@@ -108,6 +109,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             <Link href={paths.terms} className="hover:text-ink-2">
               Terms
             </Link>
+            <CookiesButton className="hover:text-ink-2" />
             <a href="mailto:hello@runelabs.org" className="hover:text-ink-2 normal-case tracking-normal">
               hello@runelabs.org
             </a>

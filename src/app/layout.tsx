@@ -3,6 +3,8 @@ import { Geist, Geist_Mono, Instrument_Serif } from 'next/font/google';
 import { config } from '@/lib/config';
 import { getIdentity } from '@/lib/identity';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import { CookieBanner } from '@/components/consent/CookieBanner';
+import { ConsentScripts } from '@/components/consent/ConsentScripts';
 import './globals.css';
 
 const geistSans = Geist({
@@ -65,6 +67,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           }}
         />
         <TooltipProvider delayDuration={200}>{children}</TooltipProvider>
+        <CookieBanner />
+        <ConsentScripts />
       </body>
     </html>
   );

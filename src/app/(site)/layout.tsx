@@ -7,6 +7,7 @@ import ThemeToggle from '@/components/ThemeToggle';
 import { Logo } from '@/components/brand/Logo';
 import { Button } from '@/components/ui/button';
 import { SiteLinks, SiteMobileNav } from '@/components/site/SiteNav';
+import { CookiesButton } from '@/components/consent/CookieBanner';
 
 export default async function SiteLayout({ children }: { children: React.ReactNode }) {
   const name = getIdentity().productName;
@@ -76,6 +77,7 @@ export default async function SiteLayout({ children }: { children: React.ReactNo
             <Link href={paths.terms} className="hover:text-ink-2">
               Terms
             </Link>
+            <CookiesButton className="hover:text-ink-2" />
             <a href="mailto:hello@runelabs.org" className="hover:text-ink-2 normal-case tracking-normal">
               hello@runelabs.org
             </a>
