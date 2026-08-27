@@ -72,7 +72,12 @@ function LoginForm() {
             />
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="password">Password</Label>
+            <div className="flex items-center justify-between gap-2">
+              <Label htmlFor="password">Password</Label>
+              <Link href={paths.forgotPassword} className="text-[12px] text-phosphor hover:underline">
+                Forgot password?
+              </Link>
+            </div>
             <Input
               id="password"
               type="password"

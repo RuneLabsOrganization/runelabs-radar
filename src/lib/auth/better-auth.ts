@@ -7,6 +7,7 @@ import { getDb } from '../db';
 import * as schema from '../db/schema';
 import { config } from '../config';
 import { quotaFor, type Tier } from '../billing';
+import { sendRadarEmail } from '../email';
 
 const stripeClient =
   process.env.STRIPE_SECRET_KEY != null && process.env.STRIPE_SECRET_KEY.length > 0
@@ -121,7 +122,24 @@ export const auth = betterAuth({
   secret: process.env.BETTER_AUTH_SECRET ?? config.sessionSecret,
   emailAndPassword: {
     enabled: true,
-    requireEmailVerification: false, // enable when SMTP is configured
+    requireEmailVerification: false,
+    sendResetPassword: async ({ user, url }) => {
+      await sendRadarEmail({
+        to: user.email,
+        subject: 'Reset your Radar password',
+        html: `<p>Reset your password:</p><p><a href="${url}">${url}</a></p>`,
+      });
+    },
+  },
+  emailVerification: {
+    sendOnSignUp: true,
+    sendVerificationEmail: async ({ user, url }) => {
+      await sendRadarEmail({
+        to: user.email,
+        subject: 'Verify your Radar email',
+        html: `<p>Verify your email:</p><p><a href="${url}">${url}</a></p>`,
+      });
+    },
   },
   socialProviders: {
     ...(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET
