@@ -69,7 +69,12 @@ export default async function AccountPage() {
               </span>
             </div>
           </div>
-          {ent.tier === 'free' && <CheckoutButtons />}
+          {ent.tier === 'free' && (
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <CheckoutButtons plan="builder" />
+              <CheckoutButtons plan="factory" />
+            </div>
+          )}
           {ent.tier !== 'free' && (
             <Button asChild variant="outline" size="sm">
               <Link href={paths.pricing}>Manage billing</Link>

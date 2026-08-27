@@ -1,62 +1,14 @@
 import Link from 'next/link';
-import { Check } from 'lucide-react';
-import { TIER_PRICES, quotaFor, type Tier } from '@/lib/billing';
-import { TIER_CAPS } from '@/lib/entitlements';
 import { paths } from '@/lib/urls';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { SectionHeader } from '@/components/ui/section-header';
-import { CheckoutButtons } from '@/components/account/CheckoutButtons';
+import { PricingCards } from './pricing-cards';
 
 export const metadata = {
   title: 'Pricing',
   description:
     'Everything you need to decide what to use is free, forever. You pay when you want Radar producing work for you — plans, arguments, research. Builder $19 · Factory $49.',
 };
-
-/**
- * Tiers sell outcomes, not units. A visitor cannot value "30 debates/month"
- * because nothing has told them what a debate gives them — so every line is
- * phrased as what you get to do, with the number as supporting detail.
- */
-const TIERS: { tier: Tier; who: string; blurb: string; highlights: string[] }[] = [
-  {
-    tier: 'free',
-    who: 'Anyone tired of guessing',
-    blurb: 'Every verdict, every setup, every brief. No limits, no card.',
-    highlights: [
-      'What to use for every job — unlimited',
-      'What changed, every day you show up',
-      `Ask us ${TIER_CAPS.free.asksPerMonth} real questions a month`,
-      `Turn ${quotaFor('free')} ideas a month into a full plan`,
-      'One project workspace',
-    ],
-  },
-  {
-    tier: 'builder',
-    who: 'You ship something most months',
-    blurb: 'Everything free, plus Radar doing the work instead of just answering.',
-    highlights: [
-      'Ask as much as you want, effectively',
-      `Turn ${quotaFor('builder')} ideas a month into full plans`,
-      'Pressure-test any idea from four sides — unlimited',
-      'Radar learns what you build and filters to it',
-      `Run ${TIER_CAPS.builder.workspaceBatches} projects side by side`,
-    ],
-  },
-  {
-    tier: 'factory',
-    who: 'You ship constantly, or for clients',
-    blurb: 'Uncapped, and first in line when you are in a hurry.',
-    highlights: [
-      'Nothing metered but plans',
-      `Turn ${quotaFor('factory')} ideas a month into full plans`,
-      'Priority when the queue is busy',
-      'Watch the things you care about, get told when they move',
-      'Team seats (coming)',
-    ],
-  },
-];
 
 export default function PricingPage() {
   return (
@@ -70,46 +22,7 @@ export default function PricingPage() {
         when you want Radar producing work for you: plans, arguments, research you would otherwise do yourself.
       </p>
 
-      <div className="mt-8 grid gap-4 md:grid-cols-3">
-        {TIERS.map(({ tier, who, blurb, highlights }) => (
-          <Card key={tier} className={tier === 'builder' ? 'border-phosphor/40 shadow-glow' : undefined}>
-            <CardHeader>
-              <div className="readout capitalize text-phosphor">{tier}</div>
-              <CardTitle className="mt-2 flex items-baseline gap-1">
-                <span className="text-[28px] font-semibold tracking-tight">${TIER_PRICES[tier]}</span>
-                <span className="mono text-[10.5px] uppercase text-ink-4">/mo</span>
-              </CardTitle>
-              <p className="mt-1 text-[12px] font-medium text-ink">{who}</p>
-              <CardDescription className="mt-1">{blurb}</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <ul className="space-y-2">
-                {highlights.map((h) => (
-                  <li key={h} className="flex items-start gap-2 text-[12.5px] text-ink-2">
-                    <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-phosphor" />
-                    {h}
-                  </li>
-                ))}
-              </ul>
-            </CardContent>
-            <CardFooter>
-              {tier === 'free' ? (
-                <Button asChild variant="outline" className="w-full">
-                  <Link href={paths.signup}>Start free</Link>
-                </Button>
-              ) : tier === 'builder' ? (
-                <div className="w-full">
-                  <CheckoutButtons />
-                </div>
-              ) : (
-                <Button asChild className="w-full">
-                  <Link href={paths.account}>Choose Factory</Link>
-                </Button>
-              )}
-            </CardFooter>
-          </Card>
-        ))}
-      </div>
+      <PricingCards />
 
       <SectionHeader label="what you get for $19" />
       <Card>

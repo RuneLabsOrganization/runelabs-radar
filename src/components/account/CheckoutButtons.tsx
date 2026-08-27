@@ -1,40 +1,53 @@
 'use client';
 
 import { paths } from '@/lib/urls';
+import { TIER_PRICES, TIER_PRICES_ANNUAL } from '@/lib/billing';
 import { Button } from '@/components/ui/button';
 
-export function CheckoutButtons() {
-  async function upgrade(plan: 'builder' | 'factory') {
+export function CheckoutButtons({
+  plan,
+  annual = false,
+}: {
+  plan: 'builder' | 'factory';
+  annual?: boolean;
+}) {
+  const price = annual ? TIER_PRICES_ANNUAL[plan] : TIER_PRICES[plan];
+  const suffix = annual ? '/yr' : '/mo';
+
+  async function upgrade() {
     try {
-      // Dynamic import keeps the stripe client optional
       const { authClient } = await import('@/lib/auth/client');
       const client = authClient as {
         subscription?: {
-          upgrade: (opts: { plan: string; successUrl: string; cancelUrl: string }) => Promise<unknown>;
+          upgrade: (opts: {
+            plan: string;
+            annual?: boolean;
+            successUrl: string;
+            cancelUrl: string;
+          }) => Promise<{ error?: { message?: string } }>;
         };
       };
       if (client.subscription?.upgrade) {
-        await client.subscription.upgrade({
+        const result = await client.subscription.upgrade({
           plan,
+          annual,
           successUrl: `${window.location.origin}${paths.account}?upgraded=1`,
           cancelUrl: `${window.location.origin}${paths.pricing}`,
         });
-        return;
+        if (!result?.error) return;
       }
     } catch {
       /* fall through */
     }
-    window.location.href = `${paths.signup}?plan=${plan}`;
+    const interval = annual ? 'annual' : 'monthly';
+    window.location.href = `${paths.signup}?plan=${plan}&interval=${interval}`;
   }
 
+  const label = plan === 'builder' ? 'Builder' : 'Factory';
   return (
-    <div className="flex flex-wrap gap-2">
-      <Button size="sm" onClick={() => upgrade('builder')}>
-        Upgrade to Builder · $19
-      </Button>
-      <Button size="sm" variant="outline" onClick={() => upgrade('factory')}>
-        Factory · $49
-      </Button>
-    </div>
+    <Button className="w-full" onClick={() => void upgrade()}>
+      Choose {label} · ${price}
+      {suffix}
+    </Button>
   );
 }
