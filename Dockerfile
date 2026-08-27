@@ -15,6 +15,7 @@ COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
 # next build sets NODE_ENV=production; config requires SESSION_SECRET then
 ENV SESSION_SECRET=build-time-placeholder
+ENV DATABASE_PATH=/tmp/radar-build.db
 RUN npm run build
 
 # --- web: Next.js standalone server ---
