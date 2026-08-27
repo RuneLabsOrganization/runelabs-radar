@@ -9,6 +9,7 @@
     "worker": "tsx worker/index.ts",
     "job": "tsx worker/run.ts",
     "seed": "tsx scripts/seed.ts",
+    "seed:kits": "tsx scripts/seed-kit-infra.ts",
     "test": "vitest run",
     "db:generate": "drizzle-kit generate",
     "mcp": "tsx mcp/server.ts"

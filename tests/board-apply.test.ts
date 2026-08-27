@@ -252,6 +252,32 @@ describe('applyProposal mirrors into kit_picks', () => {
     expect(row.pickName).toBe('Gamma');
     expect(row.priceNote).toBe('Alpha $20/mo');
   });
+
+  it('mirrors an infra hosting proposal into kit_picks', async () => {
+    await approve(
+      {
+        bestOverall: 'Vercel',
+        bestValue: 'Railway',
+        cheapestViable: 'Hetzner',
+        costNote: 'Vercel/Railway are usage-priced — excluded from kit total when priceModel is usage.',
+      },
+      'infra',
+      'hosting',
+    );
+
+    const rows = db
+      .select()
+      .from(kitPicks)
+      .where(and(eq(kitPicks.category, 'infra'), eq(kitPicks.task, 'hosting')))
+      .all();
+    expect(rows).toHaveLength(3);
+    expect(rows.map((r) => `${r.tier}:${r.pickName}`).sort()).toEqual([
+      'best:Vercel',
+      'cheapest:Hetzner',
+      'value:Railway',
+    ]);
+    expect(boardCellToKitCell('infra', 'hosting')).toEqual({ category: 'infra', task: 'hosting' });
+  });
 });
 
 describe('applyProposal auto-fills the board verdict from the reviewed rationale', () => {
