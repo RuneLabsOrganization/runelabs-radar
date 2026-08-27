@@ -4,7 +4,7 @@ import * as React from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { authClient } from '@/lib/auth/client';
-import { accountCheckoutPath, paths } from '@/lib/urls';
+import { accountCheckoutPath, loginHrefForSignup, paths } from '@/lib/urls';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -20,17 +20,17 @@ export function SignupForm({ google, github }: { google: boolean; github: boolea
   const [error, setError] = React.useState<string | null>(null);
   const [pending, setPending] = React.useState(false);
   const [agreed, setAgreed] = React.useState(false);
+  const plan = params.get('plan');
+  const next =
+    plan === 'builder' || plan === 'factory'
+      ? accountCheckoutPath(plan, params.get('interval') === 'annual')
+      : paths.app;
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!agreed) return;
     setPending(true);
     setError(null);
-    const plan = params.get('plan');
-    const next =
-      plan === 'builder' || plan === 'factory'
-        ? accountCheckoutPath(plan, params.get('interval') === 'annual')
-        : paths.app;
     const { error: err } = await authClient.signUp.email({
       name: name.trim() || email.split('@')[0],
       email: email.trim(),
@@ -59,7 +59,7 @@ export function SignupForm({ google, github }: { google: boolean; github: boolea
         <CardContent>
           {(google || github) && (
             <div className="mb-4 space-y-3">
-              <SocialButtons google={google} github={github} callbackURL={paths.app} />
+              <SocialButtons google={google} github={github} callbackURL={next} disabled={!agreed} />
               <div className="flex items-center gap-3">
                 <div className="h-px flex-1 bg-grat" />
                 <span className="text-[12px] text-ink-3">or</span>
@@ -121,7 +121,7 @@ export function SignupForm({ google, github }: { google: boolean; github: boolea
           </form>
           <p className="mt-4 text-center text-[12.5px] text-ink-3">
             Already have an account?{' '}
-            <Link href={paths.login} className="text-phosphor hover:underline">
+            <Link href={loginHrefForSignup(plan, params.get('interval'))} className="text-phosphor hover:underline">
               Sign in
             </Link>
           </p>

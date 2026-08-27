@@ -7,6 +7,7 @@ import { getDb } from '../db';
 import * as schema from '../db/schema';
 import { config } from '../config';
 import { quotaFor, type Tier } from '../billing';
+import { tierFromStripeStatus } from '../billing-stripe';
 import { sendRadarEmail } from '../email';
 
 const stripeClient =
@@ -94,12 +95,20 @@ if (stripeClient && process.env.STRIPE_WEBHOOK_SECRET) {
           setTierForAuthUser(subscription.referenceId, tier);
         },
         onSubscriptionUpdate: async ({ subscription }) => {
-          if (subscription.status === 'active' || subscription.status === 'trialing') {
+          const action = tierFromStripeStatus(subscription.status);
+          if (action === 'keep-paid') {
             const tier = (subscription.plan === 'factory' ? 'factory' : 'builder') as Tier;
             setTierForAuthUser(subscription.referenceId, tier);
+          } else if (action === 'free') {
+            setTierForAuthUser(subscription.referenceId, 'free');
           }
         },
         onSubscriptionCancel: async ({ subscription }) => {
+          if (tierFromStripeStatus(subscription.status) === 'free') {
+            setTierForAuthUser(subscription.referenceId, 'free');
+          }
+        },
+        onSubscriptionDeleted: async ({ subscription }) => {
           setTierForAuthUser(subscription.referenceId, 'free');
         },
       },

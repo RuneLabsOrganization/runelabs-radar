@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { REDIRECTS, accountCheckoutPath, paths, urls } from '../src/lib/urls';
+import {
+  REDIRECTS,
+  accountCheckoutPath,
+  loginHrefForSignup,
+  paths,
+  safeNextPath,
+  signupHrefFromLogin,
+  urls,
+} from '../src/lib/urls';
 
 describe('urls route module', () => {
   it('exports absolute and relative builders for every workspace', () => {
@@ -50,5 +58,55 @@ describe('urls route module', () => {
     expect(dests).not.toContain('/');
     expect(dests).not.toContain('/pricing');
     expect(dests).not.toContain('/mcp');
+  });
+});
+
+describe('safeNextPath', () => {
+  it('allows same-origin relative paths', () => {
+    expect(safeNextPath('/app')).toBe('/app');
+    expect(safeNextPath('/app/account?checkout=builder&annual=1')).toBe(
+      '/app/account?checkout=builder&annual=1',
+    );
+  });
+
+  it('rejects open redirects and missing values', () => {
+    expect(safeNextPath(null)).toBe(paths.app);
+    expect(safeNextPath('https://evil.example/phish')).toBe(paths.app);
+    expect(safeNextPath('//evil.example/phish')).toBe(paths.app);
+    expect(safeNextPath('app')).toBe(paths.app);
+  });
+});
+
+describe('loginHrefForSignup', () => {
+  it('sends priced-plan signup to login with encoded checkout next', () => {
+    expect(loginHrefForSignup('builder', 'monthly')).toBe(
+      `/login?next=${encodeURIComponent(accountCheckoutPath('builder', false))}`,
+    );
+    expect(loginHrefForSignup('factory', 'annual')).toBe(
+      `/login?next=${encodeURIComponent(accountCheckoutPath('factory', true))}`,
+    );
+  });
+
+  it('keeps bare login when there is no paid plan', () => {
+    expect(loginHrefForSignup(null)).toBe(paths.login);
+    expect(loginHrefForSignup('free')).toBe(paths.login);
+  });
+});
+
+describe('signupHrefFromLogin', () => {
+  it('preserves plan and interval query params', () => {
+    expect(signupHrefFromLogin('builder', 'annual', null)).toBe('/signup?plan=builder&interval=annual');
+    expect(signupHrefFromLogin('factory', 'monthly', null)).toBe('/signup?plan=factory&interval=monthly');
+  });
+
+  it('reconstructs plan intent from a checkout next path', () => {
+    expect(signupHrefFromLogin(null, null, accountCheckoutPath('builder', true))).toBe(
+      '/signup?plan=builder&interval=annual',
+    );
+  });
+
+  it('falls back to signup with no plan', () => {
+    expect(signupHrefFromLogin(null, null, '/app')).toBe(paths.signup);
+    expect(signupHrefFromLogin(null, null, 'https://evil.example')).toBe(paths.signup);
   });
 });

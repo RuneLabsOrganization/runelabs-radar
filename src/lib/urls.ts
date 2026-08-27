@@ -111,6 +111,46 @@ export function accountCheckoutPath(plan: 'builder' | 'factory', annual: boolean
   return `${paths.account}?checkout=${plan}&annual=${annual ? 1 : ''}`;
 }
 
+/** Same-origin relative path only. Rejects protocol-relative and absolute URLs. */
+export function safeNextPath(next: string | null | undefined): string {
+  if (!next || !next.startsWith('/') || next.startsWith('//')) return paths.app;
+  return next;
+}
+
+/** Signup “Sign in” link: carry paid-plan checkout intent via `next`. */
+export function loginHrefForSignup(plan: string | null, interval?: string | null): string {
+  if (plan === 'builder' || plan === 'factory') {
+    const next = accountCheckoutPath(plan, interval === 'annual');
+    return `${paths.login}?next=${encodeURIComponent(next)}`;
+  }
+  return paths.login;
+}
+
+/** Login “Create a free account”: keep plan/interval, or reconstruct from checkout `next`. */
+export function signupHrefFromLogin(
+  plan: string | null,
+  interval: string | null,
+  next: string | null,
+): string {
+  if (plan === 'builder' || plan === 'factory') {
+    return `${paths.signup}?plan=${plan}&interval=${interval === 'annual' ? 'annual' : 'monthly'}`;
+  }
+  const safe = safeNextPath(next);
+  if (safe.startsWith(`${paths.account}?checkout=`)) {
+    try {
+      const u = new URL(safe, 'http://local.invalid');
+      const checkout = u.searchParams.get('checkout');
+      if (checkout === 'builder' || checkout === 'factory') {
+        const annual = u.searchParams.get('annual') === '1';
+        return `${paths.signup}?plan=${checkout}&interval=${annual ? 'annual' : 'monthly'}`;
+      }
+    } catch {
+      /* fall through */
+    }
+  }
+  return paths.signup;
+}
+
 /**
  * Old → new permanent redirects. Used by next.config.ts and the redirect
  * assertion test. Keep in sync with the IA consolidation map.

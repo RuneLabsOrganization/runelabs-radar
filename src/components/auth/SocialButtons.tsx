@@ -7,10 +7,12 @@ export function SocialButtons({
   google,
   github,
   callbackURL,
+  disabled = false,
 }: {
   google: boolean;
   github: boolean;
   callbackURL: string;
+  disabled?: boolean;
 }) {
   if (!google && !github) return null;
   return (
@@ -20,6 +22,7 @@ export function SocialButtons({
           type="button"
           variant="outline"
           className="w-full"
+          disabled={disabled}
           onClick={() => void authClient.signIn.social({ provider: 'google', callbackURL })}
         >
           Continue with Google
@@ -30,6 +33,7 @@ export function SocialButtons({
           type="button"
           variant="outline"
           className="w-full"
+          disabled={disabled}
           onClick={() => void authClient.signIn.social({ provider: 'github', callbackURL })}
         >
           Continue with GitHub
