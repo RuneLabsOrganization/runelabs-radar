@@ -914,3 +914,33 @@ export const kitPickHistory = sqliteTable(
   },
   (t) => [index('kit_history_cell').on(t.category, t.task)],
 );
+
+/**
+ * A verdict, stated as a falsifiable prediction BEFORE the outcome is known.
+ *
+ * Without a pre-registered falsifier every flip can be rationalised after the
+ * fact and the accuracy number means nothing. Claims are append-only: the
+ * falsifier is never edited, only closed with an outcome.
+ */
+export const verdictClaims = sqliteTable(
+  'verdict_claims',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    category: text('category').notNull(),
+    task: text('task').notNull(),
+    tier: text('tier', { enum: ['best', 'value', 'cheapest'] }).notNull(),
+    pickName: text('pick_name').notNull(),
+    /** What would prove this call wrong. The literal 'unregistered' sentinel
+     *  means nobody stated one — such claims are EXCLUDED from accuracy stats
+     *  and counted against falsifier coverage instead of quietly passing. */
+    falsifier: text('falsifier').notNull(),
+    horizonDays: integer('horizon_days').notNull(),
+    /** JSON string[] of evidence URLs the call rested on, so a later
+     *  correction can be judged against what was knowable at the time. */
+    evidenceSnapshot: text('evidence_snapshot').notNull().default('[]'),
+    openedAt: integer('opened_at', { mode: 'timestamp_ms' }).notNull(),
+    closedAt: integer('closed_at', { mode: 'timestamp_ms' }),
+    outcome: text('outcome', { enum: ['held', 'upgrade', 'drift', 'correction'] }),
+  },
+  (t) => [index('verdict_claim_cell').on(t.category, t.task, t.tier)],
+);
