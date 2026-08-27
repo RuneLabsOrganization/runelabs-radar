@@ -1,6 +1,10 @@
 import Link from 'next/link';
 import { requireViewer } from '@/lib/auth/user';
+import { KIT_CATEGORY_LABELS, isKitCategory } from '@/lib/kits/grid';
 import { KIT_PERSONAS } from '@/lib/kits/personas';
+import { paths } from '@/lib/urls';
+import PageHeader from '@/components/PageHeader';
+import SectionHeader from '@/components/SectionHeader';
 
 export const metadata = {
   title: 'Kits — what to actually run',
@@ -8,28 +12,65 @@ export const metadata = {
     'A costed tool kit per role: one pick per job, a monthly total, and the cells not yet covered.',
 };
 
+/** The categories a persona routes through, in grid order, deduped. */
+function coverage(routes: { category: string }[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const r of routes) {
+    if (seen.has(r.category)) continue;
+    seen.add(r.category);
+    out.push(isKitCategory(r.category) ? KIT_CATEGORY_LABELS[r.category] : r.category);
+  }
+  return out;
+}
+
 export default async function KitsPage() {
   await requireViewer();
+
   return (
-    <main className="mx-auto max-w-4xl px-4 py-8">
-      <h1 className="text-2xl font-semibold">Kits</h1>
-      <p className="mt-2 text-ink-4">
-        Pick the role that fits. Each kit is one pick per job at a cost tier, with a monthly total
-        and honest gaps where nothing is verified yet.
-      </p>
-      <ul className="mt-6 grid gap-3 sm:grid-cols-2">
-        {KIT_PERSONAS.map((p) => (
-          <li key={p.slug} className="rounded-lg border border-line p-4">
-            <Link href={`/app/decide/kits/${p.slug}`} className="font-medium hover:underline">
-              {p.label}
+    <div>
+      <PageHeader
+        kicker="Decide · Kits"
+        title="Kits"
+        description="Pick the role that fits and get the whole stack costed in one screen — one pick per job, a monthly total that never quietly counts an unknown price as zero, and honest gaps where nothing is verified yet."
+      />
+
+      <SectionHeader label="Roles" count={KIT_PERSONAS.length} className="mt-6" />
+
+      <ul className="grid gap-3 sm:grid-cols-2">
+        {KIT_PERSONAS.map((p, i) => (
+          <li key={p.slug} className="anim-in" style={{ animationDelay: `${i * 40}ms` }}>
+            {/*
+              The whole cell is the target. A card that is one link needs no
+              button inside it — the button was just a second name for the card.
+            */}
+            <Link
+              href={paths.kit(p.slug)}
+              className="hover-raise group flex h-full flex-col rounded-[6px] border border-grat-soft bg-scope-1 p-4 hover:border-grat-strong focus-visible:border-phosphor focus-visible:outline-none"
+            >
+              <h2 className="type-h3 text-ink">{p.label}</h2>
+              <p className="mt-1.5 flex-1 text-[12.5px] leading-relaxed text-ink-3">{p.blurb}</p>
+
+              <div className="mt-3 border-t border-grat-soft pt-2.5">
+                <div className="mono flex items-baseline gap-2 text-[10px] uppercase tracking-[0.1em] text-ink-4">
+                  <span className="text-ink-3">{p.routes.length} jobs</span>
+                  <span aria-hidden>·</span>
+                  <span>{p.defaultTier}</span>
+                  <span
+                    aria-hidden
+                    className="ml-auto text-ink-4 transition-colors group-hover:text-phosphor"
+                  >
+                    →
+                  </span>
+                </div>
+                <div className="mono mt-1 truncate text-[10px] uppercase tracking-[0.1em] text-ink-4">
+                  {coverage(p.routes).join(' · ')}
+                </div>
+              </div>
             </Link>
-            <p className="mt-1 text-sm text-ink-4">{p.blurb}</p>
-            <p className="mt-2 text-xs text-ink-4">
-              {p.routes.length} jobs · default {p.defaultTier}
-            </p>
           </li>
         ))}
       </ul>
-    </main>
+    </div>
   );
 }

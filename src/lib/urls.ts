@@ -38,6 +38,9 @@ export const urls = {
   decide: () => abs('/app/decide'),
   tools: (domain?: string) => abs(domain ? `/app/decide/tools?domain=${domain}` : '/app/decide/tools'),
   stacks: () => abs('/app/decide/stacks'),
+  kits: () => abs('/app/decide/kits'),
+  kit: (persona: string, tier?: string) =>
+    abs(tier ? `/app/decide/kits/${persona}?tier=${tier}` : `/app/decide/kits/${persona}`),
   agents: () => abs('/app/decide/agents'),
   metrics: () => abs('/app/decide/metrics'),
 
@@ -78,6 +81,9 @@ export const paths = {
   decide: '/app/decide',
   tools: '/app/decide/tools',
   stacks: '/app/decide/stacks',
+  kits: '/app/decide/kits',
+  kit: (persona: string, tier?: string) =>
+    tier ? `/app/decide/kits/${persona}?tier=${tier}` : `/app/decide/kits/${persona}`,
   agents: '/app/decide/agents',
   metrics: '/app/decide/metrics',
 

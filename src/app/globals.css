@@ -588,6 +588,12 @@ a {
   color: var(--ink-2);
 }
 
+/* Numeric columns hang off the right edge so monospace figures line up. */
+.table th.num,
+.table td.num {
+  text-align: right;
+}
+
 .muted {
   color: var(--ink-3);
 }
