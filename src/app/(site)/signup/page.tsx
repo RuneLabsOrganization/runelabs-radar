@@ -1,17 +1,19 @@
 'use client';
 
 import * as React from 'react';
+import { Suspense } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { authClient } from '@/lib/auth/client';
-import { paths } from '@/lib/urls';
+import { accountCheckoutPath, paths } from '@/lib/urls';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 
-export default function SignupPage() {
+function SignupForm() {
   const router = useRouter();
+  const params = useSearchParams();
   const [name, setName] = React.useState('');
   const [email, setEmail] = React.useState('');
   const [password, setPassword] = React.useState('');
@@ -24,18 +26,23 @@ export default function SignupPage() {
     if (!agreed) return;
     setPending(true);
     setError(null);
+    const plan = params.get('plan');
+    const next =
+      plan === 'builder' || plan === 'factory'
+        ? accountCheckoutPath(plan, params.get('interval') === 'annual')
+        : paths.app;
     const { error: err } = await authClient.signUp.email({
       name: name.trim() || email.split('@')[0],
       email: email.trim(),
       password,
-      callbackURL: paths.app,
+      callbackURL: next,
     });
     setPending(false);
     if (err) {
       setError(err.message ?? 'Sign up failed');
       return;
     }
-    router.push(paths.app);
+    router.push(next);
     router.refresh();
   }
 
@@ -111,5 +118,23 @@ export default function SignupPage() {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+export default function SignupPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="mx-auto flex min-h-[70vh] max-w-md items-center px-4 py-12">
+          <Card className="w-full">
+            <CardHeader>
+              <CardTitle className="type-h1">Stop guessing what to use</CardTitle>
+            </CardHeader>
+          </Card>
+        </div>
+      }
+    >
+      <SignupForm />
+    </Suspense>
   );
 }

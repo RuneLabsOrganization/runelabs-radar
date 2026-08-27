@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { REDIRECTS, paths, urls } from '../src/lib/urls';
+import { REDIRECTS, accountCheckoutPath, paths, urls } from '../src/lib/urls';
 
 describe('urls route module', () => {
   it('exports absolute and relative builders for every workspace', () => {
@@ -12,6 +12,11 @@ describe('urls route module', () => {
     expect(urls.story(42)).toMatch(/\/app\/story\/42$/);
     expect(urls.opportunity('bulk-bg')).toMatch(/\/app\/build\/opportunities\/bulk-bg$/);
     expect(urls.entity('Claude')).toMatch(/\/app\/entity\//);
+  });
+
+  it('builds the post-signup auto-checkout account path', () => {
+    expect(accountCheckoutPath('builder', false)).toBe('/app/account?checkout=builder&annual=');
+    expect(accountCheckoutPath('factory', true)).toBe('/app/account?checkout=factory&annual=1');
   });
 
   it('covers every legacy hub path with a permanent redirect', () => {

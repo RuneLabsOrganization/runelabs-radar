@@ -106,6 +106,11 @@ export const paths = {
   adminUsage: '/app/admin/usage',
 } as const;
 
+/** After signup, send a priced plan intent to account auto-checkout. */
+export function accountCheckoutPath(plan: 'builder' | 'factory', annual: boolean): string {
+  return `${paths.account}?checkout=${plan}&annual=${annual ? 1 : ''}`;
+}
+
 /**
  * Old → new permanent redirects. Used by next.config.ts and the redirect
  * assertion test. Keep in sync with the IA consolidation map.

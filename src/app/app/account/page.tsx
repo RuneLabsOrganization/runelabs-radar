@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { Suspense } from 'react';
 import { requireUser } from '@/lib/auth/user';
 import { entitlementFor, usageThisCycle, TIER_PRICES, quotaFor } from '@/lib/billing';
 import { can, TIER_CAPS } from '@/lib/entitlements';
@@ -8,6 +9,8 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Meter } from '@/components/ui/meter';
 import { SectionHeader } from '@/components/ui/section-header';
+import { AutoCheckout } from '@/components/account/AutoCheckout';
+import { BillingPortalButton } from '@/components/account/BillingPortalButton';
 import { CheckoutButtons } from '@/components/account/CheckoutButtons';
 
 export const metadata = { title: 'Account' };
@@ -75,11 +78,10 @@ export default async function AccountPage() {
               <CheckoutButtons plan="factory" />
             </div>
           )}
-          {ent.tier !== 'free' && (
-            <Button asChild variant="outline" size="sm">
-              <Link href={paths.pricing}>Manage billing</Link>
-            </Button>
-          )}
+          {ent.tier !== 'free' && <BillingPortalButton />}
+          <Suspense fallback={null}>
+            <AutoCheckout />
+          </Suspense>
         </CardContent>
       </Card>
 
