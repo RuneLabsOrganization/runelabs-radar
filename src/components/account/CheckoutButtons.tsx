@@ -1,7 +1,7 @@
 'use client';
 
 import { paths } from '@/lib/urls';
-import { TIER_PRICES, TIER_PRICES_ANNUAL } from '@/lib/billing';
+import { TIER_PRICES, TIER_PRICES_ANNUAL } from '@/lib/billing-prices';
 import { Button } from '@/components/ui/button';
 
 export function CheckoutButtons({

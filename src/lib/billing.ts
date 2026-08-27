@@ -1,27 +1,16 @@
 import { and, eq, gte, sql } from 'drizzle-orm';
 import { getDb } from './db';
 import { llmCalls, planEntitlements } from './db/schema';
+import { quotaFor, type Tier } from './billing-prices';
+
+export { TIER_PRICES, TIER_PRICES_ANNUAL, quotaFor, type Tier } from './billing-prices';
 
 /**
- * Billing constants + quota logic (Phase 8). Artifact pricing: the user's
- * unit is a plan generation, not a token — per-call economics are enforced by
- * the Phase 7 observability built on llm_calls. List prices in USD; Stripe
- * checkout/webhooks are part of this go-live.
+ * Billing quota logic (Phase 8). Artifact pricing: the user's unit is a plan
+ * generation, not a token — per-call economics are enforced by the Phase 7
+ * observability built on llm_calls. List prices live in billing-prices.ts
+ * (client-safe); Stripe checkout/webhooks are part of this go-live.
  */
-export const TIER_PRICES = { free: 0, builder: 19, factory: 49 } as const;
-
-/** Annual list prices: two months free vs paying monthly. */
-export const TIER_PRICES_ANNUAL = { builder: 190, factory: 490 } as const;
-
-export type Tier = keyof typeof TIER_PRICES;
-
-/** Plans per month per tier (§1.4). */
-const TIER_QUOTAS: Record<Tier, number> = { free: 3, builder: 30, factory: 100 };
-
-/** Canonical tier → monthly plan quota. */
-export function quotaFor(tier: Tier): number {
-  return TIER_QUOTAS[tier];
-}
 
 /**
  * Start of the current billing cycle: the most recent day-`resetDay` at

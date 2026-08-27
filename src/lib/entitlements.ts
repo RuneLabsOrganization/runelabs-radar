@@ -6,6 +6,7 @@ import { and, eq, gte, sql } from 'drizzle-orm';
 import { getDb } from './db';
 import { batches, llmCalls, planEntitlements } from './db/schema';
 import { cycleStart, entitlementFor, quotaFor, type Tier, TIER_PRICES } from './billing';
+import { TIER_CAPS } from './entitlements-caps';
 
 export type Capability =
   | 'vote'
@@ -33,51 +34,6 @@ export interface GateResult {
   quota?: number;
   upgradeHint?: string;
 }
-
-const TIER_CAPS: Record<
-  Tier,
-  {
-    plansPerMonth: number;
-    debatesPerMonth: number;
-    asksPerMonth: number; // -1 = unlimited; ask_radar synthesis
-    workspaceBatches: number; // -1 = unlimited
-    batchRuns: boolean;
-    personalize: boolean;
-    leadRefinesPerMonth: number; // -1 = unlimited; Rung 1
-    forgesPerMonth: number; // 0 = unavailable; Rung 2 (4 llm calls each)
-  }
-> = {
-  free: {
-    plansPerMonth: 3,
-    debatesPerMonth: 3,
-    asksPerMonth: 10,
-    workspaceBatches: 1,
-    batchRuns: false,
-    personalize: false,
-    leadRefinesPerMonth: 3,
-    forgesPerMonth: 0,
-  },
-  builder: {
-    plansPerMonth: 30,
-    debatesPerMonth: -1,
-    asksPerMonth: 100,
-    workspaceBatches: 10,
-    batchRuns: true,
-    personalize: true,
-    leadRefinesPerMonth: 50,
-    forgesPerMonth: 5,
-  },
-  factory: {
-    plansPerMonth: 100,
-    debatesPerMonth: -1,
-    asksPerMonth: -1,
-    workspaceBatches: -1,
-    batchRuns: true,
-    personalize: true,
-    leadRefinesPerMonth: -1,
-    forgesPerMonth: 30,
-  },
-};
 
 function tierFor(user: EntitlementUser | null | undefined): Tier {
   if (!user) return 'free';
@@ -249,4 +205,5 @@ export function can(user: EntitlementUser | null | undefined, capability: Capabi
   }
 }
 
-export { TIER_PRICES, TIER_CAPS, quotaFor, entitlementFor, type Tier };
+export { TIER_CAPS } from './entitlements-caps';
+export { TIER_PRICES, quotaFor, entitlementFor, type Tier };
