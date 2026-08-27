@@ -5,6 +5,7 @@ import { AGENT_PLANS } from '@/lib/agent-plans';
 import { timeAgo } from '@/lib/feed';
 import { paths } from '@/lib/urls';
 import SectionHeader from '@/components/SectionHeader';
+import PageHeader from '@/components/PageHeader';
 import { AgentsTabs } from './AgentsTabs';
 
 export const metadata = {
@@ -37,9 +38,8 @@ export default async function AgentsPage({
 
   const stacks = (
     <>
-      <div className="readout text-phosphor">Decide · Agents · Stacks</div>
-      <h1 className="type-h1 mt-1">Agent stacks</h1>
-      <p className="mt-2 max-w-xl text-[13.5px] leading-relaxed text-ink-3">
+      <h2 className="type-h2">Agent stacks</h2>
+      <p className="mt-1.5 max-w-[640px] text-[13px] leading-relaxed text-ink-3">
         What people who code all day are actually running, and what they pay in practice rather than on the pricing
         page. Ranked from survey data and user reports, not from vendor claims. Find the row that sounds like you,
         copy the setup, stop reading.
@@ -254,8 +254,7 @@ export default async function AgentsPage({
 
   const plans = (
     <>
-      <div className="readout text-phosphor">Decide · Agents · Plans</div>
-      <h1 className="type-h1 mt-1">Coding-agent plans</h1>
+      <h2 className="type-h2">Coding-agent plans</h2>
       <p className="mt-2 max-w-xl text-[13.5px] leading-relaxed text-ink-3">
         List prices and headline limits for the coding-agent subscriptions builders actually ask us about — IDE
         agents, CLI agents, and the platform add-ons. Hand-maintained and reviewed quarterly (last review: 2026-08);
@@ -345,6 +344,11 @@ export default async function AgentsPage({
 
   return (
     <div>
+      <PageHeader
+        kicker="Decide · Agents"
+        title="Agents"
+        description="What people who code all day are actually running, what it costs them in practice, and which subscription plan stops hurting first. Two views: the stacks people run, and the plans they run them on."
+      />
       <AgentsTabs stacks={stacks} plans={plans} defaultTab={defaultTab} />
     </div>
   );
