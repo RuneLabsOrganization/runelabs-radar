@@ -1,6 +1,8 @@
 import { and, eq } from 'drizzle-orm';
 import { getDb } from '../db';
 import { boardEntries, boardHistory, boardProposals, kitPickHistory, kitPicks } from '../db/schema';
+import { buildClaim } from '../kits/claims';
+import { closeOpenClaim, openClaim } from '../kits/claims-repo';
 import { boardCellToKitCell, TIER_BY_FIELD, type BoardField } from '../kits/from-board';
 
 const FIELDS = ['bestOverall', 'bestValue', 'cheapestViable', 'costNote'] as const;
@@ -95,6 +97,13 @@ function mirrorToKitPicks(domain: string, task: string, proposed: ProposedFields
         changedAt: now,
       })
       .run();
+
+    // A pick change ends the previous claim and opens a new one. The falsifier
+    // stays unregistered until a reviewer states one — coverage is reported
+    // rather than faked (see src/lib/kits/claims.ts).
+    const claimCell = { category: cell.category, task: cell.task, tier };
+    closeOpenClaim(claimCell, now);
+    openClaim(buildClaim({ ...claimCell, pickName, openedAt: now }));
   }
 }
 

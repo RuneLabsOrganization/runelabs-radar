@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { getDb } from '@/lib/db';
-import { verdictClaims } from '@/lib/db/schema';
+import { boardProposals, verdictClaims } from '@/lib/db/schema';
+import { applyProposal } from '@/lib/board/apply';
 import { DEFAULT_HORIZON_DAYS, UNREGISTERED, buildClaim } from '@/lib/kits/claims';
 import { closeOpenClaim, openClaim, openClaimFor } from '@/lib/kits/claims-repo';
 import { useTestDb } from './helpers/db';
@@ -47,5 +48,51 @@ describe('claims repo', () => {
     openClaim(buildClaim({ ...CELL, pickName: 'Tool A', falsifier: 'x', openedAt: new Date(1000) }));
     openClaim(buildClaim({ ...CELL, pickName: 'Tool B', falsifier: 'y', openedAt: new Date(2000) }));
     expect(openClaimFor(CELL)!.pickName).toBe('Tool B');
+  });
+});
+
+describe('claims are opened by the board apply path', () => {
+  beforeEach(() => useTestDb());
+
+  it('opens a claim when a pick changes and closes the prior one', async () => {
+    const db = getDb();
+    const proposalId = db
+      .insert(boardProposals)
+      .values({
+        domain: 'coding',
+        task: 'agentic-coding',
+        proposed: JSON.stringify({ bestOverall: 'Tool A', costNote: null }),
+        rationale: 'initial call',
+        status: 'pending',
+        createdAt: new Date(),
+      })
+      .returning({ id: boardProposals.id })
+      .get().id;
+
+    await applyProposal(proposalId);
+    const first = openClaimFor({ category: 'coding', task: 'agentic-coding', tier: 'best' });
+    expect(first?.pickName).toBe('Tool A');
+    expect(first?.falsifier).toBe(UNREGISTERED);
+
+    const secondId = db
+      .insert(boardProposals)
+      .values({
+        domain: 'coding',
+        task: 'agentic-coding',
+        proposed: JSON.stringify({ bestOverall: 'Tool B', costNote: null }),
+        rationale: 'Tool B overtook it',
+        status: 'pending',
+        createdAt: new Date(),
+      })
+      .returning({ id: boardProposals.id })
+      .get().id;
+
+    await applyProposal(secondId);
+
+    const all = db.select().from(verdictClaims).all();
+    expect(all).toHaveLength(2);
+    const closed = all.find((c) => c.pickName === 'Tool A')!;
+    expect(closed.closedAt).not.toBeNull();
+    expect(openClaimFor({ category: 'coding', task: 'agentic-coding', tier: 'best' })!.pickName).toBe('Tool B');
   });
 });
