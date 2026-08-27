@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getDb } from '@/lib/db';
 import { sources } from '@/lib/db/schema';
+import { classifySourceHealth } from '@/lib/ingest/health';
 import { runIngest } from '@/lib/ingest/ingest';
 import { useTestDb } from './helpers/db';
 
@@ -77,5 +78,37 @@ describe('empty-poll streak', () => {
     stubFetch(FEED_PLUS);
     await runIngest();
     expect(streak()).toBe(0);
+  });
+});
+
+function row(over: Partial<{ consecutiveFailures: number; consecutiveEmpty: number; lastFetchedAt: Date | null }>) {
+  return { consecutiveFailures: 0, consecutiveEmpty: 0, lastFetchedAt: new Date(), ...over };
+}
+
+describe('classifySourceHealth', () => {
+  it('is ok for a fetching, yielding source', () => {
+    expect(classifySourceHealth(row({})).health).toBe('ok');
+  });
+
+  it('is failing after 3 consecutive errors', () => {
+    expect(classifySourceHealth(row({ consecutiveFailures: 3 })).health).toBe('failing');
+  });
+
+  it('is dead after 10 consecutive errors', () => {
+    expect(classifySourceHealth(row({ consecutiveFailures: 10 })).health).toBe('dead');
+  });
+
+  it('is stale when fetching fine but publishing nothing', () => {
+    const v = classifySourceHealth(row({ consecutiveEmpty: 20 }));
+    expect(v.health).toBe('stale');
+    expect(v.reason).toContain('no new items');
+  });
+
+  it('ranks errors above staleness when both are tripped', () => {
+    expect(classifySourceHealth(row({ consecutiveFailures: 10, consecutiveEmpty: 40 })).health).toBe('dead');
+  });
+
+  it('treats a never-fetched source as ok, not stale', () => {
+    expect(classifySourceHealth(row({ lastFetchedAt: null })).health).toBe('ok');
   });
 });
