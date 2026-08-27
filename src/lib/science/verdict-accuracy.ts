@@ -104,3 +104,20 @@ export function falsifierCoverage(): { registered: number; open: number; pct: nu
     pct: open.length === 0 ? 0 : Math.round((registered / open.length) * 100),
   };
 }
+
+export interface VerdictSummary {
+  halfLifeDays: number | null;
+  correction: ReturnType<typeof correctionRate>;
+  reversal: ReturnType<typeof reversalRate>;
+  coverage: ReturnType<typeof falsifierCoverage>;
+}
+
+/** One call for the trust page — four numbers, each with its denominator. */
+export function verdictSummary(): VerdictSummary {
+  return {
+    halfLifeDays: pickHalfLife(),
+    correction: correctionRate(),
+    reversal: reversalRate(),
+    coverage: falsifierCoverage(),
+  };
+}

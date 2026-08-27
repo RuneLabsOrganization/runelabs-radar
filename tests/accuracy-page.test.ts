@@ -9,6 +9,7 @@ import {
   spearman,
   type CalibrationBucket,
 } from '@/lib/science/accuracy';
+import { verdictSummary } from '@/lib/science/verdict-accuracy';
 import { useTestDb } from './helpers/db';
 
 function addGraded(db: ReturnType<typeof useTestDb>, topScore: number, hindsight: number, title?: string, at?: Date) {
@@ -169,5 +170,17 @@ describe('gradingSince', () => {
     addGraded(db, 50, 20, 'later', new Date('2026-08-12T08:00:00Z'));
     addGraded(db, 60, 30, 'earlier', new Date('2026-08-10T08:00:00Z'));
     expect(gradingSince()).toBe('2026-08-10');
+  });
+});
+
+describe('verdictSummary', () => {
+  beforeEach(() => useTestDb());
+
+  it('returns every published verdict number with its denominator', () => {
+    const s = verdictSummary();
+    expect(s).toHaveProperty('halfLifeDays');
+    expect(s.correction).toEqual({ corrections: 0, graded: 0, pct: 0 });
+    expect(s.reversal).toEqual({ reversed: 0, cells: 0, pct: 0 });
+    expect(s.coverage).toEqual({ registered: 0, open: 0, pct: 0 });
   });
 });
