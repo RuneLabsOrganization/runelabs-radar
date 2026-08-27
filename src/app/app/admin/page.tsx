@@ -13,6 +13,7 @@ import { jobHistory, llmUsageHistory, llmUsageTodayByJob, pipelineFunnel, source
 import { requireAdmin } from '@/lib/auth/user';
 import { getDb } from '@/lib/db';
 import { boardProposals, jobRuns, sources } from '@/lib/db/schema';
+import { classifySourceHealth } from '@/lib/ingest/health';
 import { paths } from '@/lib/urls';
 
 function parseProposed(json: string): ProposedFields {
@@ -52,17 +53,22 @@ export default async function AdminPage() {
 
   const runs = db.select().from(jobRuns).orderBy(desc(jobRuns.startedAt)).limit(20).all();
 
-  const sourceProps: SourceRow[] = sourceRows.map((s) => ({
-    id: s.id,
-    type: s.type,
-    name: s.name,
-    config: s.config,
-    domainHints: s.domainHints,
-    enabled: s.enabled,
-    lastStatus: s.lastStatus,
-    lastFetchedAt: s.lastFetchedAt ? s.lastFetchedAt.toISOString() : null,
-    consecutiveFailures: s.consecutiveFailures,
-  }));
+  const sourceProps: SourceRow[] = sourceRows.map((s) => {
+    const verdict = classifySourceHealth(s);
+    return {
+      id: s.id,
+      type: s.type,
+      name: s.name,
+      config: s.config,
+      domainHints: s.domainHints,
+      enabled: s.enabled,
+      lastStatus: s.lastStatus,
+      lastFetchedAt: s.lastFetchedAt ? s.lastFetchedAt.toISOString() : null,
+      consecutiveFailures: s.consecutiveFailures,
+      health: verdict.health,
+      healthReason: verdict.reason,
+    };
+  });
 
   return (
     <div className="mx-auto flex max-w-[860px] flex-col gap-8 px-6 py-7">

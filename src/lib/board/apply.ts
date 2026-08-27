@@ -41,7 +41,13 @@ function parseProposed(json: string): ProposedFields {
  * evidence_count — clobbering those from a board cost note is how a kit ends
  * up asserting a number nobody verified.
  */
-function mirrorToKitPicks(domain: string, task: string, proposed: ProposedFields, now: Date): void {
+function mirrorToKitPicks(
+  domain: string,
+  task: string,
+  proposed: ProposedFields,
+  now: Date,
+  reason: string,
+): void {
   const cell = boardCellToKitCell(domain, task);
   if (!cell) return; // board task with no kit cell (e.g. a retired task) — board write still stands
 
@@ -93,7 +99,7 @@ function mirrorToKitPicks(domain: string, task: string, proposed: ProposedFields
         tier,
         fromPick: existing?.pickName ?? null,
         toPick: pickName,
-        reason: 'board proposal approved',
+        reason: reason.trim() || 'board proposal approved',
         changedAt: now,
       })
       .run();
@@ -168,7 +174,7 @@ export async function applyProposal(proposalId: number): Promise<{ ok: boolean }
     .values({ domain: proposal.domain, task: proposal.task, change, appliedAt: now })
     .run();
 
-  mirrorToKitPicks(proposal.domain, proposal.task, proposed, now);
+  mirrorToKitPicks(proposal.domain, proposal.task, proposed, now, proposal.rationale);
 
   db.update(boardProposals).set({ status: 'approved' }).where(eq(boardProposals.id, proposalId)).run();
   return { ok: true };
