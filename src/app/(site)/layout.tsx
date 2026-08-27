@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { getCurrentUser } from '@/lib/auth/user';
 import { getIdentity } from '@/lib/identity';
 import { paths } from '@/lib/urls';
 import { SITE_LINKS } from '@/lib/nav';
@@ -7,8 +8,9 @@ import { Logo } from '@/components/brand/Logo';
 import { Button } from '@/components/ui/button';
 import { SiteLinks, SiteMobileNav } from '@/components/site/SiteNav';
 
-export default function SiteLayout({ children }: { children: React.ReactNode }) {
+export default async function SiteLayout({ children }: { children: React.ReactNode }) {
   const name = getIdentity().productName;
+  const user = await getCurrentUser();
   return (
     <div className="min-h-screen">
       <header className="sticky top-0 z-20 border-b border-grat bg-[var(--header-bg)] backdrop-blur">
@@ -19,15 +21,20 @@ export default function SiteLayout({ children }: { children: React.ReactNode }) 
           </div>
           <div className="ml-auto flex items-center gap-2 sm:gap-3">
             <ThemeToggle />
-            {/* Sign in stays a quiet text link so the free entry point reads as the destination. */}
-            <Link
-              href={paths.login}
-              className="mono hidden text-[10.5px] uppercase tracking-[0.1em] text-ink-3 transition-colors hover:text-ink-2 sm:inline"
-            >
-              Sign in
-            </Link>
+            {!user && (
+              <Link
+                href={paths.login}
+                className="mono hidden text-[10.5px] uppercase tracking-[0.1em] text-ink-3 transition-colors hover:text-ink-2 sm:inline"
+              >
+                Sign in
+              </Link>
+            )}
             <Button asChild size="sm" className="hidden sm:inline-flex">
-              <Link href={paths.app}>Open the app</Link>
+              {user ? (
+                <Link href={paths.app}>Open the app</Link>
+              ) : (
+                <Link href={paths.signup}>Start free</Link>
+              )}
             </Button>
             <SiteMobileNav />
           </div>
@@ -62,6 +69,15 @@ export default function SiteLayout({ children }: { children: React.ReactNode }) 
               rel="noreferrer"
             >
               Self-host
+            </a>
+            <Link href={paths.privacy} className="hover:text-ink-2">
+              Privacy
+            </Link>
+            <Link href={paths.terms} className="hover:text-ink-2">
+              Terms
+            </Link>
+            <a href="mailto:hello@runelabs.org" className="hover:text-ink-2 normal-case tracking-normal">
+              hello@runelabs.org
             </a>
           </div>
         </div>

@@ -17,9 +17,11 @@ export default function SignupPage() {
   const [password, setPassword] = React.useState('');
   const [error, setError] = React.useState<string | null>(null);
   const [pending, setPending] = React.useState(false);
+  const [agreed, setAgreed] = React.useState(false);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (!agreed) return;
     setPending(true);
     setError(null);
     const { error: err } = await authClient.signUp.email({
@@ -76,8 +78,27 @@ export default function SignupPage() {
                 autoComplete="new-password"
               />
             </div>
+            <div className="flex items-start gap-2 pt-1">
+              <input
+                id="agree"
+                type="checkbox"
+                checked={agreed}
+                onChange={(e) => setAgreed(e.target.checked)}
+                className="mt-0.5 h-3.5 w-3.5 shrink-0 accent-[var(--phosphor)]"
+              />
+              <Label htmlFor="agree" className="text-[12.5px] font-normal leading-snug text-ink-2">
+                I agree to the{' '}
+                <Link href={paths.terms} className="text-phosphor hover:underline">
+                  Terms
+                </Link>{' '}
+                and{' '}
+                <Link href={paths.privacy} className="text-phosphor hover:underline">
+                  Privacy Policy
+                </Link>
+              </Label>
+            </div>
             {error && <p className="text-[12.5px] text-alert">{error}</p>}
-            <Button type="submit" className="w-full" disabled={pending}>
+            <Button type="submit" className="w-full" disabled={pending || !agreed}>
               {pending ? 'Creating…' : 'Create free account'}
             </Button>
           </form>

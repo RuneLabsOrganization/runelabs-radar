@@ -102,6 +102,15 @@ export default async function AppLayout({ children }: { children: React.ReactNod
                 {l.label}
               </Link>
             ))}
+            <Link href={paths.privacy} className="hover:text-ink-2">
+              Privacy
+            </Link>
+            <Link href={paths.terms} className="hover:text-ink-2">
+              Terms
+            </Link>
+            <a href="mailto:hello@runelabs.org" className="hover:text-ink-2 normal-case tracking-normal">
+              hello@runelabs.org
+            </a>
           </div>
         </div>
       </footer>
