@@ -493,6 +493,8 @@ export const debates = sqliteTable('debates', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   opportunityId: integer('opportunity_id').references(() => opportunities.id),
   ideaText: text('idea_text'),
+  /** Who asked for the debate — free-text ideas are private to this user. */
+  ownerId: integer('owner_id').references(() => users.id),
   // JSON [{role: 'advocate'|'skeptic'|'realist'|'judge', text}]
   transcript: text('transcript').notNull(),
   verdict: text('verdict', { enum: ['pursue', 'watch', 'reject'] }).notNull(),

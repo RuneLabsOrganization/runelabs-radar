@@ -22,6 +22,7 @@ import type { Db } from '@/lib/db';
 const debateMock = vi.mocked(runDebate);
 
 const PINNED: DebateResult = {
+  id: 1,
   transcript: [
     { role: 'advocate', text: 'Demand is recurring in the pains stream.' },
     { role: 'skeptic', text: 'An incumbent ships this inside two releases.' },

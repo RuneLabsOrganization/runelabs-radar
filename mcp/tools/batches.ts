@@ -2,6 +2,8 @@ import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import {
   addToBatch,
+  canModifyBatch,
+  canViewBatch,
   createWorkspaceBatch,
   getBatchBySlug,
   getBatchItems,
@@ -9,7 +11,7 @@ import {
   runBatchOp,
 } from '../../src/lib/batches';
 import { getDb } from '../../src/lib/db';
-import { batchRuns } from '../../src/lib/db/schema';
+import { batchRuns, batches } from '../../src/lib/db/schema';
 import { can } from '../../src/lib/entitlements';
 import { urls } from '../../src/lib/urls';
 import { eq } from 'drizzle-orm';
@@ -99,7 +101,7 @@ export function registerBatchTools(server: McpServer, auth: AuthContext): void {
     },
     async ({ slug }) => {
       const batch = getBatchBySlug(slug);
-      if (!batch) {
+      if (!batch || !canViewBatch(batch, auth.userId)) {
         return respond(
           { found: false },
           {
@@ -206,7 +208,8 @@ export function registerBatchTools(server: McpServer, auth: AuthContext): void {
         return respond({ ok: false, error: 'auth required' }, { summary: 'auth required' });
       }
       const batch = getBatchBySlug(slug);
-      if (!batch || (batch.ownerId !== null && batch.ownerId !== auth.userId)) {
+      // System drops (ownerId null) are curated: read-only for everyone.
+      if (!batch || !canModifyBatch(batch, auth.userId)) {
         return respond({ ok: false, error: 'batch not found or not owned' }, { summary: 'not found' });
       }
       const item = addToBatch(batch.id, {
@@ -248,7 +251,7 @@ export function registerBatchTools(server: McpServer, auth: AuthContext): void {
         return respond({ ok: false, error: 'auth required' }, { summary: 'auth required' });
       }
       const batch = getBatchBySlug(slug);
-      if (!batch) {
+      if (!batch || !canModifyBatch(batch, auth.userId)) {
         return respond({ ok: false, error: 'not found' }, { summary: 'batch not found' });
       }
       try {
@@ -287,7 +290,10 @@ export function registerBatchTools(server: McpServer, auth: AuthContext): void {
     },
     async ({ run_id }) => {
       const run = getDb().select().from(batchRuns).where(eq(batchRuns.id, run_id)).get();
-      if (!run) {
+      const batch = run
+        ? getDb().select().from(batches).where(eq(batches.id, run.batchId)).get()
+        : null;
+      if (!run || !batch || !auth.userId || !canModifyBatch(batch, auth.userId)) {
         return respond({ found: false }, { summary: `No run ${run_id}.` });
       }
       return respond(

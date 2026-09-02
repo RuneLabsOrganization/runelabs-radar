@@ -1,6 +1,6 @@
 import { and, asc, desc, eq } from 'drizzle-orm';
 import { getDb } from './db';
-import { batchItems, batchRunItems, batchRuns, batches, debates, opportunities } from './db/schema';
+import { batchItems, batchRunItems, batchRuns, batches, opportunities } from './db/schema';
 import { can } from './entitlements';
 import { runDebate } from './opportunities/critic';
 import { proposeOpportunities, type ScoutConstraints } from './opportunities/engine';
@@ -35,6 +35,24 @@ export function listBatchesForUser(userId: number | null) {
     .all();
   const seen = new Set(mine.map((b) => b.id));
   return [...mine, ...drops.filter((d) => !seen.has(d.id))];
+}
+
+export type Batch = typeof batches.$inferSelect;
+
+/**
+ * Object-level access rules — every batch read/write surface (hub page, API
+ * routes, MCP tools) must go through these. `private` batches are owner-only;
+ * `members` drops require a signed-in user; system drops (ownerId null) are
+ * read-only for everyone and writable by no one.
+ */
+export function canViewBatch(batch: Batch, userId: number | null): boolean {
+  if (batch.visibility === 'public') return true;
+  if (batch.visibility === 'members') return userId != null;
+  return batch.ownerId != null && batch.ownerId === userId;
+}
+
+export function canModifyBatch(batch: Batch, userId: number): boolean {
+  return batch.ownerId === userId;
 }
 
 export function getBatchBySlug(slug: string) {
@@ -106,18 +124,6 @@ export function addToBatch(
 export async function runBatchOp(batchId: number, op: 'debate' | 'plan' | 'scout', userId: number) {
   const gate = can({ id: userId }, 'batch_run');
   if (!gate.ok) throw new Error(gate.reason ?? 'Bulk runs require Builder');
-  if (op === 'plan') {
-    const pg = can({ id: userId }, 'plan');
-    if (!pg.ok) throw new Error(pg.reason ?? 'Plan quota reached');
-  }
-  if (op === 'debate') {
-    const dg = can({ id: userId }, 'debate');
-    if (!dg.ok) throw new Error(dg.reason ?? 'Debate quota reached');
-  }
-  if (op === 'scout') {
-    const sg = can({ id: userId }, 'scout');
-    if (!sg.ok) throw new Error(sg.reason ?? 'Scout quota reached');
-  }
 
   const db = getDb();
   const items = getBatchItems(batchId);
@@ -142,14 +148,17 @@ export async function runBatchOp(batchId: number, op: 'debate' | 'plan' | 'scout
       .returning()
       .get();
     try {
+      // Quota is consumed per item — one pre-loop check would let a 100-item
+      // batch burn 100 generations on a single remaining unit.
+      const opGate = can({ id: userId }, op);
+      if (!opGate.ok) throw new Error(opGate.reason ?? `${op} quota reached`);
       let resultRef: string | null = null;
       if (op === 'debate') {
         const idea =
           item.ideaText ??
           (item.refType === 'opportunity' && item.refId ? undefined : item.refKey ?? 'untitled idea');
-        await runDebate(item.refType === 'opportunity' ? item.refId ?? null : null, idea, userId);
-        const last = db.select({ id: debates.id }).from(debates).orderBy(desc(debates.id)).limit(1).get();
-        resultRef = last ? String(last.id) : null;
+        const res = await runDebate(item.refType === 'opportunity' ? item.refId ?? null : null, idea, userId);
+        resultRef = String(res.id);
       } else if (op === 'plan') {
         let oppId: number | null = item.refId ?? null;
         if (!oppId && item.refKey) {

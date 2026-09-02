@@ -180,7 +180,7 @@ export default async function StacksPage() {
                       entryId={s.id}
                       verdict={s.runelabsVerdict}
                       author={s.verdictAuthor}
-                      canEdit={!!user}
+                      canEdit={user?.role === 'admin'}
                       kind="stack"
                     />
                   </div>

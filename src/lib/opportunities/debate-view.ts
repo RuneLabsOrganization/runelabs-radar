@@ -92,6 +92,10 @@ export function loadVisibleDebate(
     };
   }
 
+  // Free-text ideas are private: only the user who asked for the debate may
+  // ever read it (they contain unvetted business ideas).
+  if (userId == null || row.ownerId !== userId) return null;
+
   return {
     view: parseStoredDebate(row),
     title: cardTitle(row.ideaText, 'Free-text idea'),
@@ -106,6 +110,7 @@ export function listVisibleDebateCards(userId: number | null, limit = 40): Debat
       id: debates.id,
       opportunityId: debates.opportunityId,
       ideaText: debates.ideaText,
+      ownerId: debates.ownerId,
       verdict: debates.verdict,
       confidence: debates.confidence,
       createdAt: debates.createdAt,
@@ -139,6 +144,8 @@ export function listVisibleDebateCards(userId: number | null, limit = 40): Debat
       });
       continue;
     }
+    // Free-text idea cards are private to the user who asked for the debate.
+    if (userId == null || d.ownerId !== userId) continue;
     cards.push({
       id: d.id,
       title: cardTitle(d.ideaText, 'Free-text idea'),

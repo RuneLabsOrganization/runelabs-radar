@@ -165,6 +165,31 @@ describe('runDebate', () => {
     expect(r.ideaText).toContain('podcast');
   });
 
+  it('records the requesting user as owner and returns the row id', async () => {
+    const { seedUser } = await import('./helpers/db');
+    seedUser(db, 7);
+    mockQueue([...ROLE_PAYLOADS]);
+
+    const res = await runDebate(
+      null,
+      'A subscription service turning podcast archives into searchable, SEO-friendly show-notes pages for indie podcasters',
+      7,
+    );
+
+    const r = db.select().from(debates).all()[0]!;
+    expect(r.ownerId).toBe(7);
+    expect(res.id).toBe(r.id);
+  });
+
+  it('leaves owner null for engine-run debates', async () => {
+    const oppId = seedOpportunity();
+    mockQueue([...ROLE_PAYLOADS]);
+
+    await runDebate(oppId);
+
+    expect(db.select().from(debates).all()[0]!.ownerId).toBeNull();
+  });
+
   it('throws when a role fails mid-pipeline and persists nothing', async () => {
     const oppId = seedOpportunity();
     mockQueue([ADVOCATE, SKEPTIC, { nope: true }]); // realist returns garbage

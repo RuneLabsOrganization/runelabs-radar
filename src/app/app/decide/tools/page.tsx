@@ -212,7 +212,7 @@ export default async function BoardPage() {
                           entryId={entry.id}
                           verdict={entry.verdict}
                           author={entry.verdictAuthor}
-                          canEdit={!!user}
+                          canEdit={user?.role === 'admin'}
                         />
                       </td>
                     )}

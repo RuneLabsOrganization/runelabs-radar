@@ -11,6 +11,10 @@ export async function POST(req: Request) {
   if (!user) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   }
+  // The "RuneLabs verdict" is the site's editorial voice — admin-only.
+  if (user.role !== 'admin') {
+    return NextResponse.json({ error: 'forbidden' }, { status: 403 });
+  }
 
   let body: unknown;
   try {

@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { requireViewer } from '@/lib/auth/user';
-import { getBatchBySlug, getBatchItems } from '@/lib/batches';
+import { canViewBatch, canModifyBatch, getBatchBySlug, getBatchItems } from '@/lib/batches';
 import { can } from '@/lib/entitlements';
 import { paths } from '@/lib/urls';
 import { UpgradeWall } from '@/components/UpgradeWall';
@@ -42,6 +42,9 @@ export default async function BatchDetailPage({ params }: { params: Promise<{ sl
     );
   }
 
+  // 404 (not 403) so batch existence doesn't oracle out to other users
+  if (!canViewBatch(batch, user?.id ?? null)) notFound();
+
   return (
     <div>
       <div className="readout text-phosphor">Build · Batches</div>
@@ -76,7 +79,7 @@ export default async function BatchDetailPage({ params }: { params: Promise<{ sl
       </div>
 
       <SectionHeader label="bulk run" />
-      {runGate.ok && user ? (
+      {runGate.ok && user && canModifyBatch(batch, user.id) ? (
         <BatchRunControls batchId={batch.id} />
       ) : (
         <UpgradeWall signedIn={!!user} reason={runGate.reason} upgradeHint={runGate.upgradeHint} />

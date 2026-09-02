@@ -29,11 +29,14 @@ function limitPerWindow(): number {
   return Number.isFinite(n) && n > 0 ? Math.floor(n) : 60;
 }
 
-/** Client IP: first x-forwarded-for hop (the proxy-appended client), else 'unknown'. */
+/** Client IP: rightmost x-forwarded-for hop (appended by our own reverse proxy).
+ *  Leftmost entries are client-controlled — trusting them would let an attacker
+ *  rotate spoofed IPs and bypass the limit entirely. Mirrors the login route's
+ *  reasoning (src/app/api/auth/login/route.ts). */
 export function clientIp(req: Request): string {
   const fwd = req.headers.get('x-forwarded-for');
-  const first = fwd?.split(',')[0]?.trim();
-  return first || 'unknown';
+  const parts = fwd ? fwd.split(',') : [];
+  return (parts.length > 0 ? parts[parts.length - 1].trim() : '') || 'unknown';
 }
 
 /**

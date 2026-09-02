@@ -1,0 +1,1 @@
+ALTER TABLE `debates` ADD `owner_id` integer REFERENCES users(id);

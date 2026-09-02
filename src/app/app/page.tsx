@@ -462,14 +462,18 @@ export default async function BriefingPage() {
                   <ChevronUp className="size-2.5" aria-hidden />
                 </span>
                 <span className="min-w-0 flex-1 truncate text-ink-2">
-                  <a
-                    href={l.url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="decoration-grat-strong underline-offset-2 hover:underline"
-                  >
-                    {l.title}
-                  </a>
+                  {safeHttpUrl(l.url) ? (
+                    <a
+                      href={safeHttpUrl(l.url)!}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="decoration-grat-strong underline-offset-2 hover:underline"
+                    >
+                      {l.title}
+                    </a>
+                  ) : (
+                    l.title
+                  )}
                 </span>
                 {l.category && (
                   <span className="mono hidden shrink-0 text-[10px] uppercase text-ink-4 sm:inline">

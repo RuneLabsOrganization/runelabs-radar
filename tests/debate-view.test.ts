@@ -35,6 +35,7 @@ function seedDebate(
   opts: {
     opportunityId: number | null;
     ideaText?: string | null;
+    ownerId?: number | null;
     transcript: string;
     verdict?: 'pursue' | 'watch' | 'reject';
   },
@@ -44,6 +45,7 @@ function seedDebate(
     .values({
       opportunityId: opts.opportunityId,
       ideaText: opts.ideaText ?? null,
+      ownerId: opts.ownerId ?? null,
       transcript: opts.transcript,
       verdict: opts.verdict ?? 'watch',
       confidence: 62,
@@ -106,6 +108,7 @@ describe('debate visibility', () => {
     freeTextId = seedDebate(db, {
       opportunityId: null,
       ideaText: 'A free-text idea about local VLMs',
+      ownerId: 1,
       transcript: TRANSCRIPT,
     }).id;
   });
@@ -126,15 +129,25 @@ describe('debate visibility', () => {
     expect(loadVisibleDebate(privateDebateId, 1)?.title).toBe('SECRET PRIVATE TITLE');
   });
 
-  it('still shows free-text debates', () => {
-    expect(loadVisibleDebate(freeTextId, null)?.title).toContain('free-text idea');
+  it('hides free-text debates from anonymous viewers and other users', () => {
+    expect(loadVisibleDebate(freeTextId, null)).toBeNull();
+    expect(loadVisibleDebate(freeTextId, 2)).toBeNull();
   });
 
-  it('omits private-opportunity cards from the anonymous list', () => {
-    const cards = listVisibleDebateCards(null);
-    const titles = cards.map((c) => c.title);
-    expect(titles).toContain('Public opening');
-    expect(titles.some((t) => t.includes('free-text'))).toBe(true);
-    expect(titles.join(' ')).not.toContain('SECRET');
+  it('lets the owner read their free-text debate', () => {
+    expect(loadVisibleDebate(freeTextId, 1)?.title).toContain('free-text idea');
+  });
+
+  it('omits private cards and other users’ free-text cards from lists', () => {
+    const anon = listVisibleDebateCards(null).map((c) => c.title);
+    expect(anon).toContain('Public opening');
+    expect(anon.join(' ')).not.toContain('SECRET');
+    expect(anon.some((t) => t.includes('free-text'))).toBe(false);
+
+    const stranger = listVisibleDebateCards(2).map((c) => c.title);
+    expect(stranger.some((t) => t.includes('free-text'))).toBe(false);
+
+    const owner = listVisibleDebateCards(1).map((c) => c.title);
+    expect(owner.some((t) => t.includes('free-text'))).toBe(true);
   });
 });

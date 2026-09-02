@@ -245,9 +245,18 @@ describe('get_leads', () => {
 
     const { _setPoolDayForTests } = await import('@/lib/opportunities/pool');
     _setPoolDayForTests('2099-01-01');
-    const nextDay = (await client.callTool({ name: 'get_leads', arguments: { limit: 8, cursor: 0 } }))
-      .structuredContent as unknown as LeadsPayload;
-    expect(blob(nextDay.leads)).toMatch(/xyzzycachepain/i);
+    // The next-day pool MUST contain the new pain — but its slot in the scan
+    // window is permuted by the day seed, so page through the space instead
+    // of asserting page-1 membership (that flaked ~1 day in 4).
+    let cursor: number | null = 0;
+    let found = false;
+    for (let pages = 0; pages < 20 && cursor != null && !found; pages++) {
+      const nextDay = (await client.callTool({ name: 'get_leads', arguments: { limit: 25, cursor } }))
+        .structuredContent as unknown as LeadsPayload;
+      found = blob(nextDay.leads).match(/xyzzycachepain/i) != null;
+      cursor = nextDay.next_cursor;
+    }
+    expect(found).toBe(true);
   });
 
   it('does not claim exhaustion when a scan window is empty but more space remains', async () => {

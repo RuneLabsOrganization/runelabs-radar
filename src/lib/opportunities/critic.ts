@@ -144,6 +144,7 @@ export interface DebateTurn {
 }
 
 export interface DebateResult {
+  id: number; // debates row — callers link results without racing a global "latest id" read
   transcript: DebateTurn[];
   verdict: 'pursue' | 'watch' | 'reject';
   confidence: number; // 0-100
@@ -397,17 +398,19 @@ export async function runDebate(
     ...turns.slice(0, 3),
     { role: 'judge', text: turns[3]!.text, killRisks, conditionsToSucceed, strengthenedVariants },
   ];
-  getDb()
+  const inserted = getDb()
     .insert(debates)
     .values({
       opportunityId: oppId,
       ideaText: idea,
+      ownerId: userId ?? null,
       transcript: JSON.stringify(stored),
       verdict,
       confidence,
       createdAt: new Date(),
     })
-    .run();
+    .returning({ id: debates.id })
+    .get();
 
-  return { transcript: turns, verdict, confidence, killRisks, conditionsToSucceed, strengthenedVariants };
+  return { id: inserted!.id, transcript: turns, verdict, confidence, killRisks, conditionsToSucceed, strengthenedVariants };
 }

@@ -280,11 +280,21 @@ describe('rate limit', () => {
     expect((await signalsGet(req('/api/v1/signals', ip))).status).toBe(200);
   });
 
-  it('uses the first x-forwarded-for hop as the bucket key', async () => {
+  it('uses the rightmost x-forwarded-for hop as the bucket key', async () => {
     process.env.API_RATE_LIMIT = '1';
     const first = await boardGet(req('/api/v1/board', '198.51.100.1, 10.0.0.1'));
     expect(first.status).toBe(200);
-    const blocked = await boardGet(req('/api/v1/board', '198.51.100.1, 10.0.0.2'));
+    // same proxy hop (rightmost), different client claim (leftmost) → same bucket
+    const blocked = await boardGet(req('/api/v1/board', '198.51.100.2, 10.0.0.1'));
     expect(blocked.status).toBe(429);
+  });
+
+  it('cannot be bypassed by rotating spoofed leftmost XFF entries', async () => {
+    process.env.API_RATE_LIMIT = '2';
+    for (let i = 0; i < 2; i++) {
+      expect((await boardGet(req('/api/v1/board', `203.0.113.${i}, 10.0.0.9`))).status).toBe(200);
+    }
+    // every rotated leftmost IP still maps to the same rightmost bucket
+    expect((await boardGet(req('/api/v1/board', '203.0.113.99, 10.0.0.9'))).status).toBe(429);
   });
 });

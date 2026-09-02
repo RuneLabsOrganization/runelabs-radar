@@ -55,6 +55,7 @@ const debateMock = vi.mocked(runDebate);
 const refineLeadsMock = vi.mocked(refineLeads);
 
 const PINNED: DebateResult = {
+  id: 1,
   transcript: [
     { role: 'advocate', text: 'The demand is real and recurring in the pains stream.' },
     { role: 'skeptic', text: 'An incumbent ships this inside two releases.' },

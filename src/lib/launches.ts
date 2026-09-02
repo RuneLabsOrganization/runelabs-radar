@@ -6,6 +6,7 @@ import { launches } from './db/schema';
 import { fetchJson } from './ingest/adapters/shared';
 import { chatJSON, drainLlmUsageStats } from './llm/minimax';
 import { upsertMetric, utcDay } from './metrics';
+import { safeHttpUrl } from './safe-url';
 
 export const LAUNCH_CATEGORIES = [
   'ai-coding',
@@ -101,12 +102,17 @@ async function fetchProductHunt(): Promise<NewLaunch[]> {
   return out;
 }
 
-function upsertLaunches(list: NewLaunch[]): number {
+/** Exported for tests. */
+export function upsertLaunches(list: NewLaunch[]): number {
   const db = getDb();
   let n = 0;
   for (const l of list) {
+    // Launches come from third-party APIs and render straight into <a href> —
+    // enforce the same http(s)-only invariant the items pipeline enforces.
+    const url = safeHttpUrl(l.url);
+    if (!url) continue;
     db.insert(launches)
-      .values({ ...l, createdAt: new Date() })
+      .values({ ...l, url, createdAt: new Date() })
       .onConflictDoUpdate({
         target: launches.url,
         set: { points: l.points, comments: l.comments },
