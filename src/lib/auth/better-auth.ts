@@ -15,22 +15,30 @@ const stripeClient =
     ? new Stripe(process.env.STRIPE_SECRET_KEY)
     : null;
 
-function ensureDomainUser(authUserId: string, name: string, email: string) {
+function ensureDomainUser(authUserId: string, name: string, email: string | null, emailVerified = false) {
   const db = getDb();
   const existing = db.select().from(schema.users).where(eq(schema.users.authUserId, authUserId)).get();
   if (existing) return existing;
-  const byEmail = email
+  const emailOwner = email
     ? db.select().from(schema.users).where(eq(schema.users.email, email)).get()
     : null;
-  if (byEmail) {
-    db.update(schema.users)
-      .set({ authUserId, email, emailVerified: true })
-      .where(eq(schema.users.id, byEmail.id))
-      .run();
-    return { ...byEmail, authUserId, email, emailVerified: true };
+  if (emailOwner) {
+    // Link to a pre-existing domain user only when the provider verified the
+    // email — password signup doesn't require verification, so an unverified
+    // signup must never attach to someone else's row (account takeover).
+    if (emailVerified) {
+      db.update(schema.users)
+        .set({ authUserId, email, emailVerified: true })
+        .where(eq(schema.users.id, emailOwner.id))
+        .run();
+      return { ...emailOwner, authUserId, email, emailVerified: true };
+    }
+    // Unverified collision: create a separate profile without claiming the
+    // email (users.email is UNIQUE; the auth-side row keeps the address).
+    email = null;
   }
   // unique name: derive from email local-part or auth id
-  let base = (name || email.split('@')[0] || 'member').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 24) || 'member';
+  let base = (name || email?.split('@')[0] || 'member').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 24) || 'member';
   let candidate = base;
   let n = 0;
   while (db.select().from(schema.users).where(eq(schema.users.name, candidate)).get()) {
@@ -172,7 +180,7 @@ export const auth = betterAuth({
     user: {
       create: {
         after: async (user) => {
-          ensureDomainUser(user.id, user.name, user.email);
+          ensureDomainUser(user.id, user.name, user.email, user.emailVerified);
         },
       },
     },

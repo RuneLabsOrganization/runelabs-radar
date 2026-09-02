@@ -25,7 +25,12 @@ export const getCurrentUser = cache(async (): Promise<User | null> => {
     if (session?.user) {
       let domain = domainUserFromAuthId(session.user.id);
       if (!domain) {
-        domain = ensureDomainUser(session.user.id, session.user.name, session.user.email) as User;
+        domain = ensureDomainUser(
+          session.user.id,
+          session.user.name,
+          session.user.email,
+          session.user.emailVerified,
+        ) as User;
       }
       return domain;
     }
