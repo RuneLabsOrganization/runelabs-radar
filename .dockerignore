@@ -8,6 +8,13 @@ data
 *.db-shm
 .env
 .env.*
+*.env
+**/*.env
+.worktrees
+.claude
+.superpowers
+.interface-design
+.github
 docs
 tests
 *.log
