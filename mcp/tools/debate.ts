@@ -7,25 +7,25 @@ import { marketModels } from '../../src/lib/analytics';
 import { runDebate } from '../../src/lib/opportunities/critic';
 import { promptLine } from '../../src/lib/prompt-hygiene';
 import { envelopeSchema, respond, type NextAction, withUserEconomy } from '../lib/payload';
-import type { AuthContext } from '../lib/auth';
+import { marketVisible, type AuthContext } from '../lib/auth';
 import { can } from '../../src/lib/entitlements';
 import { estimateTokens } from '../../src/lib/mcp-economy';
 import { visibleTo } from '../../src/lib/opportunities/scope';
+import { bump, peek } from '../../src/lib/usage/counters';
 
 // --- per-caller daily cap (§9b): a debate costs 4 LLM calls and there is no
 // cache to serve repeats from, so EVERY call counts — recorded at entry,
-// which also stops N parallel calls from all passing the check first ---
+// which also stops N parallel calls from all passing the check first.
+// Persisted in usage_counters (same pattern as scout.ts), so a deploy or a
+// module reload no longer grants a fresh allowance; stale rows are reaped by
+// the hourly gcCounters() in mcp/server.ts and the daily sweep job. ---
 const DEBATE_DAILY_CAP = Number(process.env.MCP_DEBATE_DAILY_CAP ?? 10);
-const debateUsage = new Map<string, { date: string; count: number }>();
+
 function debateCapExceeded(key: string): boolean {
-  const today = new Date().toISOString().slice(0, 10);
-  const rec = debateUsage.get(key);
-  return (rec?.date === today ? rec.count : 0) >= DEBATE_DAILY_CAP;
+  return peek(key, 'debate', 'day') >= DEBATE_DAILY_CAP;
 }
 function recordDebate(key: string): void {
-  const today = new Date().toISOString().slice(0, 10);
-  const rec = debateUsage.get(key);
-  debateUsage.set(key, { date: today, count: (rec?.date === today ? rec.count : 0) + 1 });
+  bump(key, 'debate', 'day');
 }
 
 // --- deterministic idea↔evidence matching: token overlap, no embeddings ---
@@ -56,7 +56,7 @@ function overlap(a: Set<string>, b: Set<string>): number {
 }
 
 interface Grounding {
-  /** the text block passed into runDebate alongside the idea */
+  /** the text block handed to runDebate as the market realist's grounding */
   block: string;
   /** human-readable list of the sources actually used (payload `grounding`) */
   used: string[];
@@ -64,7 +64,7 @@ interface Grounding {
   closest: { slug: string; title: string }[];
 }
 
-function buildGrounding(idea: string, userId: number | null): Grounding {
+function buildGrounding(idea: string, userId: number | null, showMarket: boolean): Grounding {
   const db = getDb();
   const ideaTok = tokenSet(idea);
   const sections: string[] = [];
@@ -137,20 +137,23 @@ function buildGrounding(idea: string, userId: number | null): Grounding {
     );
   }
 
-  // model-market value picks (intelligence per dollar)
-  const market = marketModels();
-  if (market) {
-    const picks = market.models
-      .filter((m) => m.intelligence >= 25 && m.price > 0)
-      .sort((a, b) => b.intelligence / b.price - a.intelligence / a.price)
-      .slice(0, 5);
-    if (picks.length > 0) {
-      sections.push(
-        '<model-market>\n' +
-          picks.map((m) => `- ${promptLine(m.name, 60)}: intelligence ${m.intelligence}, $${m.price}/1M blended`).join('\n') +
-          '\n</model-market>',
-      );
-      used.push(`${picks.length} model-market value picks (intelligence per $)`);
+  // model-market value picks (intelligence per dollar) — AA redistribution
+  // terms: only for callers entitled to market prices (mirrors ask_radar)
+  if (showMarket) {
+    const market = marketModels();
+    if (market) {
+      const picks = market.models
+        .filter((m) => m.intelligence >= 25 && m.price > 0)
+        .sort((a, b) => b.intelligence / b.price - a.intelligence / a.price)
+        .slice(0, 5);
+      if (picks.length > 0) {
+        sections.push(
+          '<model-market>\n' +
+            picks.map((m) => `- ${promptLine(m.name, 60)}: intelligence ${m.intelligence}, $${m.price}/1M blended`).join('\n') +
+            '\n</model-market>',
+        );
+        used.push(`${picks.length} model-market value picks (intelligence per $)`);
+      }
     }
   }
 
@@ -257,13 +260,18 @@ export function registerDebateTools(server: McpServer, auth: AuthContext): void 
       // anonymous flat cap: record at entry, before the LLM run
       if (auth.userId == null) recordDebate(auth.rateKey);
 
-      const grounding = buildGrounding(idea, auth.userId);
-      const ideaText =
-        `<idea>\n${promptLine(idea, 600)}\n</idea>` + (grounding.block ? `\n\n${grounding.block}` : '');
+      const showMarket = marketVisible(auth);
+      const grounding = buildGrounding(idea, auth.userId, showMarket);
 
       let result;
       try {
-        result = await runDebate(null, ideaText, auth.userId);
+        // the idea travels clean (it is persisted as ideaText and shown as the
+        // public card title); the grounding block rides as a separate option
+        // that only the market realist sees
+        result = await runDebate(null, idea, auth.userId, 'debate', {
+          ...(grounding.block ? { grounding: grounding.block } : {}),
+          marketVisible: showMarket,
+        });
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
         return respond(

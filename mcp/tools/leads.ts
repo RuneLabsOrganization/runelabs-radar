@@ -17,7 +17,7 @@ import { normalizeSlug } from '../../src/lib/opportunities/slug';
 import { getProfile, setProfile } from '../../src/lib/personalization';
 import { can } from '../../src/lib/entitlements';
 import { envelopeSchema, respond, withUserEconomy, type NextAction } from '../lib/payload';
-import type { AuthContext } from '../lib/auth';
+import { hasScope, type AuthContext } from '../lib/auth';
 
 /** The pool identity for this caller. */
 export function ownerFor(auth: AuthContext): Owner {
@@ -60,6 +60,12 @@ export function registerLeadTools(server: McpServer, auth: AuthContext): void {
       },
     },
     async ({ limit, cursor, sector }) => {
+      if (!hasScope(auth, 'read')) {
+        return respond(
+          { count: 0, leads: [], next_cursor: null, space_size: 0 },
+          { summary: "This token has no 'read' scope — re-authorize with the read scope." },
+        );
+      }
       const owner = ownerFor(auth);
       const { primitives, space } = getStablePool();
 
@@ -207,6 +213,12 @@ export function registerLeadTools(server: McpServer, auth: AuthContext): void {
       },
     },
     async ({ lead }) => {
+      if (!hasScope(auth, 'read')) {
+        return respond(
+          { ok: false, error: "this token lacks the 'read' scope" },
+          { summary: "This token has no 'read' scope — re-authorize with the read scope." },
+        );
+      }
       if (auth.userId == null) {
         return respond(
           { ok: false, error: 'Refining a lead requires sign in — anonymous leads stay unvalidated.' },
@@ -342,6 +354,12 @@ export function registerLeadTools(server: McpServer, auth: AuthContext): void {
       },
     },
     async ({ target, reason, avoid_sector }) => {
+      if (!hasScope(auth, 'read')) {
+        return respond(
+          { ok: false, error: "this token lacks the 'read' scope" },
+          { summary: "This token has no 'read' scope — re-authorize with the read scope." },
+        );
+      }
       if (auth.userId == null) {
         return respond(
           { ok: false, error: 'Dismissing requires sign in — anonymous pools are ephemeral anyway.' },

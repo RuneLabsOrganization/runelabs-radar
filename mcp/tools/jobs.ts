@@ -8,7 +8,7 @@ import { DOMAINS } from '../../src/lib/domains';
 import { setSession } from '../../src/lib/personalization';
 import { urls } from '../../src/lib/urls';
 import { envelopeSchema, respond, withUserEconomy } from '../lib/payload';
-import { marketVisible, type AuthContext } from '../lib/auth';
+import { marketVisible, hasScope, type AuthContext } from '../lib/auth';
 import { visibleTo } from '../../src/lib/opportunities/scope';
 
 const STOPWORDS = new Set(
@@ -84,6 +84,12 @@ export function registerJobTools(server: McpServer, auth: AuthContext): void {
       },
     },
     async ({ project }) => {
+      if (!hasScope(auth, 'read')) {
+        return respond(
+          { signals: [], opportunities: [], pains: [], board_hints: [] },
+          { summary: "This token has no 'read' scope — re-authorize with the read scope." },
+        );
+      }
       const db = getDb();
       const tok = tokenSet(project);
 
@@ -106,10 +112,17 @@ export function registerJobTools(server: McpServer, auth: AuthContext): void {
         .sort((a, b) => b.overlap - a.overlap || b.score - a.score)
         .slice(0, 8);
 
+      // Bounded scan, same rationale as get_opportunities: private Rung-1
+      // rows share this table, so an unbounded .all() grows without limit.
+      // Overlap matching re-sorts anyway — the top flip-ranked window is
+      // plenty to find the relevant few.
+      const RANK_WINDOW = 200;
       const oppRows = db
         .select()
         .from(opportunities)
         .where(and(eq(opportunities.status, 'active'), visibleTo(auth.userId)))
+        .orderBy(desc(opportunities.flipScore))
+        .limit(RANK_WINDOW)
         .all();
       const opps = oppRows
         .map((o) => ({
@@ -218,6 +231,12 @@ export function registerJobTools(server: McpServer, auth: AuthContext): void {
       },
     },
     async ({ task, domain }) => {
+      if (!hasScope(auth, 'read')) {
+        return respond(
+          { board: [], recommendation: "This token has no 'read' scope — re-authorize with the read scope." },
+          { summary: "This token has no 'read' scope — re-authorize with the read scope." },
+        );
+      }
       const db = getDb();
       const tok = tokenSet(task);
       let rows = db.select().from(boardEntries).all();

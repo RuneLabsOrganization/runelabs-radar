@@ -180,10 +180,21 @@ export function meanStd(values: number[]): { mean: number; std: number } {
   return { mean, std: Math.sqrt(variance) };
 }
 
-/** z-score of value against a baseline; 0 when the baseline is degenerate. */
+/**
+ * z-score of value against a baseline.
+ *
+ * Degenerate baseline (stdev 0 — a flat rate): ANY uptick would otherwise read
+ * as "3σ", so a flat 2-stories/day sector hitting 3 was published as a spike.
+ * A constant rate is Poisson-like: a genuine jump needs real volume (mean ≥ 5)
+ * and at least a doubling, scored against Poisson noise (σ = √mean). Anything
+ * smaller on a flat baseline is indistinguishable from jitter → 0.
+ */
 export function zScore(value: number, baseline: number[]): number {
   const { mean, std } = meanStd(baseline);
-  if (std < 1e-9) return value > mean ? (value - mean > 0 ? 3 : 0) : 0;
+  if (std < 1e-9) {
+    if (value <= mean || mean < 5 || value < 2 * mean) return 0;
+    return (value - mean) / Math.sqrt(mean);
+  }
   return (value - mean) / std;
 }
 

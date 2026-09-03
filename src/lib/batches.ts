@@ -1,4 +1,4 @@
-import { and, asc, desc, eq } from 'drizzle-orm';
+import { and, asc, desc, eq, lt } from 'drizzle-orm';
 import { getDb } from './db';
 import { batchItems, batchRunItems, batchRuns, batches, opportunities } from './db/schema';
 import { can } from './entitlements';
@@ -15,6 +15,11 @@ function slugify(s: string): string {
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-|-$/g, '')
     .slice(0, 48);
+}
+
+/** better-sqlite3 surfaces constraint failures as a SqliteError with a string code; drizzle passes it through untouched. */
+function isUniqueViolation(e: unknown): boolean {
+  return typeof e === 'object' && e !== null && 'code' in e && e.code === 'SQLITE_CONSTRAINT_UNIQUE';
 }
 
 export function listBatchesForUser(userId: number | null) {
@@ -72,25 +77,33 @@ export function createWorkspaceBatch(userId: number, title: string, description?
   const gate = can({ id: userId }, 'batch_create');
   if (!gate.ok) throw new Error(gate.reason ?? 'Batch limit reached');
   const now = new Date();
-  let slug = slugify(title) || `batch-${Date.now()}`;
+  const base = slugify(title) || `batch-${Date.now()}`;
   const db = getDb();
-  if (db.select().from(batches).where(eq(batches.slug, slug)).get()) {
-    slug = `${slug}-${Date.now().toString(36)}`;
+  // Two concurrent creates with the same title race the unique batches.slug:
+  // a check-then-insert lets both pass the check and the loser 500s on the
+  // constraint. Attempt the insert and fall back to a timestamp suffix once.
+  for (const slug of [base, `${base}-${Date.now().toString(36)}`]) {
+    try {
+      return db
+        .insert(batches)
+        .values({
+          ownerId: userId,
+          kind: 'workspace',
+          slug,
+          title,
+          description: description ?? null,
+          visibility: 'private',
+          createdAt: now,
+          updatedAt: now,
+        })
+        .returning()
+        .get();
+    } catch (e) {
+      if (!isUniqueViolation(e)) throw e;
+    }
   }
-  return db
-    .insert(batches)
-    .values({
-      ownerId: userId,
-      kind: 'workspace',
-      slug,
-      title,
-      description: description ?? null,
-      visibility: 'private',
-      createdAt: now,
-      updatedAt: now,
-    })
-    .returning()
-    .get();
+  // the suffixed retry raced a third writer with the same millisecond suffix
+  throw new Error('Batch slug conflict — please retry');
 }
 
 export function addToBatch(
@@ -121,11 +134,30 @@ export function addToBatch(
   return row;
 }
 
+/** A 'running' batch run younger than this is owned by a live process — same freshness semantics as RUNNING_FRESH_MS for job_runs (jobs.ts). */
+export const BATCH_RUN_FRESH_MS = 30 * 60 * 1000;
+
+/**
+ * Reap batch_runs rows stuck 'running' because a process died mid-loop —
+ * job_runs has this reaper in withJobRun; batch_runs had none, so a crash
+ * left the row 'running' forever. Called at the top of runBatchOp.
+ */
+export function reapStaleBatchRuns(): number {
+  const db = getDb();
+  return db
+    .update(batchRuns)
+    .set({ status: 'error', finishedAt: new Date(), error: 'stale running row reaped — process died mid-run' })
+    .where(and(eq(batchRuns.status, 'running'), lt(batchRuns.createdAt, new Date(Date.now() - BATCH_RUN_FRESH_MS))))
+    .run().changes;
+}
+
 export async function runBatchOp(batchId: number, op: 'debate' | 'plan' | 'scout', userId: number) {
   const gate = can({ id: userId }, 'batch_run');
   if (!gate.ok) throw new Error(gate.reason ?? 'Bulk runs require Builder');
 
   const db = getDb();
+  // a previous run may have died mid-loop — reap it before recording this one
+  reapStaleBatchRuns();
   const items = getBatchItems(batchId);
   const run = db
     .insert(batchRuns)

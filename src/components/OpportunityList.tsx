@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { DOMAINS, DOMAIN_COLORS, DOMAIN_LABELS, isDomain, type Domain } from '@/lib/domains';
 import { fmtUsd } from '@/lib/costs';
 import { gradeBand, gradeColor } from '@/lib/opportunities/axes';
+import { paths } from '@/lib/urls';
 import OppDossier, { LaunchChecks, ScoreBar, VerdictChip, type OppView } from './OppDossier';
 import BriefSection from './BriefSection';
 import OpportunityMap from './OpportunityMap';
@@ -52,14 +53,19 @@ function Card({
         ...(opp.verdict === 'reject' ? { opacity: 0.6 } : {}),
       }}
     >
-      {/* the digest row: everything you need to triage, one glance */}
-      <button
-        type="button"
-        onClick={() => setDossier((d) => !d)}
-        aria-expanded={dossier}
-        className="block w-full cursor-pointer p-5 text-left"
-      >
-        <div className="flex items-start gap-4">
+      {/* the digest row: everything you need to triage, one glance. The expand
+          control is a stretched overlay button so the title link stays its
+          sibling — interactive elements must never nest. Content opts out of
+          pointer events so row clicks reach the overlay; the link opts back in. */}
+      <div className="relative">
+        <button
+          type="button"
+          onClick={() => setDossier((d) => !d)}
+          aria-expanded={dossier}
+          aria-label={`${dossier ? 'Collapse' : 'Expand'} dossier: ${opp.title}`}
+          className="absolute inset-0 cursor-pointer rounded-[6px] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+        />
+        <div className="pointer-events-none relative flex items-start gap-4 p-5">
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
               {opp.isNew && (
@@ -69,9 +75,8 @@ function Card({
               )}
               <h2 className="text-[15px] font-semibold tracking-[-0.01em]">
                 <Link
-                  href={`/opportunities/${opp.id}`}
-                  onClick={(e) => e.stopPropagation()}
-                  className="decoration-[var(--grat-strong)] underline-offset-2 hover:underline"
+                  href={paths.opportunity(opp.id)}
+                  className="pointer-events-auto decoration-[var(--grat-strong)] underline-offset-2 hover:underline"
                 >
                   {opp.title}
                 </Link>
@@ -118,7 +123,7 @@ function Card({
             </span>
           </div>
         </div>
-      </button>
+      </div>
 
       {dossier && (
         <div className="anim-in border-t border-[var(--grat-soft)] p-5">

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireApiUser } from '@/lib/auth/user';
 import { can } from '@/lib/entitlements';
+import { LlmError } from '@/lib/llm/minimax';
 import { runDebate } from '@/lib/opportunities/critic';
 
 export async function POST(req: Request) {
@@ -15,7 +16,11 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'idea or opportunityId required' }, { status: 400 });
   }
   try {
-    const result = await runDebate(body.opportunityId ?? null, body.idea?.trim(), user.id);
+    const result = await runDebate(body.opportunityId ?? null, body.idea?.trim(), user.id, 'debate', {
+      // a signed-in web user is entitled to AA market prices (same bar as an
+      // authenticated MCP caller)
+      marketVisible: true,
+    });
     return NextResponse.json({
       verdict: result.verdict,
       confidence: result.confidence,
@@ -24,6 +29,18 @@ export async function POST(req: Request) {
       strengthenedVariants: result.strengthenedVariants,
     });
   } catch (e) {
-    return NextResponse.json({ error: e instanceof Error ? e.message : 'failed' }, { status: 500 });
+    // Domain errors thrown by the debate pipeline itself carry stable,
+    // caller-safe messages — map them; everything else (LLM/provider/DB
+    // internals) is logged server-side and returned as a generic 500.
+    if (e instanceof LlmError && !e.retryable) {
+      if (/^opportunity \d+ not found$/.test(e.message)) {
+        return NextResponse.json({ error: e.message }, { status: 404 });
+      }
+      if (e.message.startsWith('debate needs an opportunity id')) {
+        return NextResponse.json({ error: e.message }, { status: 400 });
+      }
+    }
+    console.error('[api/debates] POST failed:', e);
+    return NextResponse.json({ error: 'internal' }, { status: 500 });
   }
 }

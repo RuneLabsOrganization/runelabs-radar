@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { exaSearch, ExaSearchError } from '@/lib/search/exa';
+import { HttpFetchError } from '@/lib/ingest/adapters/shared';
 
 function fixture(name: string): string {
   return readFileSync(fileURLToPath(new URL(`./fixtures/${name}`, import.meta.url)), 'utf8');
@@ -75,6 +76,7 @@ describe('exaSearch', () => {
   it('propagates an HTTP error so the ingest adapter can decide to fall back', async () => {
     // 403, not 429/5xx — those are retried by fetchWithTimeout and would slow the test
     stubFetch('forbidden', 403);
-    await expect(exaSearch({ query: 'AI' })).rejects.toThrow();
+    await expect(exaSearch({ query: 'AI' })).rejects.toThrow(HttpFetchError);
+    await expect(exaSearch({ query: 'AI' })).rejects.toThrow('HTTP 403 fetching https://api.exa.ai/search');
   });
 });

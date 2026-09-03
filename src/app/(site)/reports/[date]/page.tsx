@@ -3,7 +3,7 @@ import { desc, eq, ne } from 'drizzle-orm';
 import { requireViewer } from '@/lib/auth/user';
 import { getDb } from '@/lib/db';
 import { reports } from '@/lib/db/schema';
-import { renderMarkdown } from '@/lib/markdown';
+import { renderMarkdown, stripLeadingH1 } from '@/lib/markdown';
 import PageHeader from '@/components/PageHeader';
 
 /* same renderer + typography as the daily brief page (src/app/(hub)/brief/page.tsx) */
@@ -32,11 +32,6 @@ function editionLabel(date: string): string {
 /** UTC wall-clock time of the issue's last write (reruns overwrite createdAt). */
 function utcTime(d: Date): string {
   return `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`;
-}
-
-/** The issue's own H1 duplicates the edition header — drop the first heading line. */
-function stripLeadingH1(md: string): string {
-  return md.replace(/^#\s+[^\n]+\n+/, '');
 }
 
 export async function generateMetadata({ params }: { params: Promise<{ date: string }> }) {

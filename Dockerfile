@@ -22,15 +22,26 @@ RUN npm run build
 FROM node:22-slim AS web
 WORKDIR /app
 ENV NODE_ENV=production
-COPY --from=build /app/.next/standalone ./
-COPY --from=build /app/.next/static ./.next/static
-COPY --from=build /app/drizzle ./drizzle
+# chown so the node user can write the runtime .next/cache; node_modules in the
+# standalone output stays readable-only. /data (SQLite) is a mounted volume —
+# see docker-compose.yml for host ownership notes.
+COPY --from=build --chown=node:node /app/.next/standalone ./
+COPY --from=build --chown=node:node /app/.next/static ./.next/static
+COPY --from=build --chown=node:node /app/drizzle ./drizzle
+# WORKDIR itself stays root-owned after COPY; hand it to node for cache writes
+RUN chown node:node /app
+USER node
 EXPOSE 3000
 CMD ["node", "server.js"]
 
-# --- worker: cron jobs via tsx ---
+# --- worker: cron jobs via tsx (also the mcp image; compose overrides CMD) ---
 FROM base AS worker
 ENV NODE_ENV=production
 COPY --from=deps /app/node_modules ./node_modules
-COPY . .
+# chown the source tree for the node user; node_modules stays root-owned/read-only
+COPY --chown=node:node . .
+# WORKDIR itself stays root-owned after COPY; hand it to node so it can create
+# top-level artifacts (default TRANSFORMERS_CACHE=.hfcache lives under it)
+RUN chown node:node /app
+USER node
 CMD ["npx", "tsx", "worker/index.ts"]

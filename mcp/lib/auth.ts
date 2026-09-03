@@ -7,7 +7,8 @@ import { validateAccessToken } from '../../src/lib/oauth';
  *
  * - MCP_AUTH_REQUIRED=true (hosted): every /mcp call needs a valid bearer
  *   token issued by the hub's OAuth 2.1 flow; scopes gate what the token
- *   may do ('read' everywhere, 'plans' for plan generation).
+ *   may do ('read' everywhere, 'plans' for plan generation, 'batches' for
+ *   batch writes/runs).
  * - MCP_AUTH_REQUIRED unset/false (self-host default): anonymous full access,
  *   rate-limited per IP — today's behavior, unchanged.
  */
@@ -39,6 +40,30 @@ export function issuerUrl(): string {
  */
 export function marketVisible(auth: AuthContext): boolean {
   return auth.authed || config.aaPublic;
+}
+
+/**
+ * Scope gate for tool handlers — the generate_plan check, generalized.
+ * Anonymous self-host contexts hold every scope (see authenticate), so this
+ * only denies OAuth tokens that were minted without the scope.
+ */
+export function hasScope(auth: AuthContext, scope: string): boolean {
+  return auth.scopes.has(scope);
+}
+
+/**
+ * Fail-fast startup check: in production the 401 challenge MUST be built
+ * from a configured public URL — without one it would be derived from the
+ * unvalidated Host header, which is attacker-controlled. Dev falls back to
+ * the loopback-validated Host (see resourceMetadataOrigin).
+ */
+export function assertPublicUrl(): void {
+  if (process.env.NODE_ENV === 'production' && !process.env.MCP_PUBLIC_URL) {
+    throw new Error(
+      'MCP_PUBLIC_URL is required when NODE_ENV=production — ' +
+        'the 401 challenge builds resource_metadata URLs from it.',
+    );
+  }
 }
 
 export function authenticate(req: IncomingMessage): AuthContext | null {
@@ -81,18 +106,33 @@ export function authenticate(req: IncomingMessage): AuthContext | null {
 /**
  * RFC 9728 challenge header value pointing agents at THIS server's
  * protected-resource metadata. The metadata lives on the resource server
- * (this process), not the authorization server. Origin comes from
- * MCP_PUBLIC_URL when set, else from the request itself (reverse proxies set
- * x-forwarded-proto; direct self-host hits arrive on the loopback host).
+ * (this process), not the authorization server.
  */
-export function wwwAuthenticate(req: IncomingMessage): string {
-  let origin: string;
+export function wwwAuthenticate(req: Pick<IncomingMessage, 'headers'>): string {
+  return `Bearer resource_metadata="${resourceMetadataOrigin(req)}/.well-known/oauth-protected-resource"`;
+}
+
+const LOOPBACK_HOSTNAMES = new Set(['localhost', '127.0.0.1', '[::1]']);
+
+/**
+ * Origin for the metadata URL in the challenge. MCP_PUBLIC_URL always wins.
+ * The Host-header fallback (dev only — assertPublicUrl guards production) is
+ * trusted only when it is loopback, i.e. a direct hit on this machine; any
+ * other Host is attacker-controlled and falls back to the configured site
+ * URL rather than being reflected into a security header.
+ */
+export function resourceMetadataOrigin(req: Pick<IncomingMessage, 'headers'>): string {
   if (process.env.MCP_PUBLIC_URL) {
-    origin = new URL(mcpPublicUrl()).origin;
-  } else {
-    const proto = req.headers['x-forwarded-proto'] ?? 'http';
-    const host = req.headers.host ?? 'localhost';
-    origin = `${proto}://${host}`;
+    return new URL(mcpPublicUrl()).origin;
   }
-  return `Bearer resource_metadata="${origin}/.well-known/oauth-protected-resource"`;
+  const host = req.headers.host ?? 'localhost';
+  try {
+    if (LOOPBACK_HOSTNAMES.has(new URL(`http://${host}`).hostname)) {
+      const proto = req.headers['x-forwarded-proto'] ?? 'http';
+      return `${proto}://${host}`;
+    }
+  } catch {
+    /* malformed Host — fall through to the safe default */
+  }
+  return new URL(mcpPublicUrl()).origin;
 }

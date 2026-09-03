@@ -1,3 +1,4 @@
+import { cache } from 'react';
 import { sql } from 'drizzle-orm';
 import { getDb } from './db';
 
@@ -40,13 +41,26 @@ export interface EntityRow {
   mentions: number;
 }
 
-/** Resolve a slug back to the canonical entity (name, kind) from the stories graph. */
-export function resolveEntity(slug: string): EntityRow | null {
+/** Read window for entity resolution/co-mentions — same 90d bound as the other read paths. */
+export const ENTITY_WINDOW_DAYS = 90;
+
+/** Unix-seconds cutoff for the entity read window (stories.created_at is timestamp mode). */
+function entityWindowStart(): number {
+  return Math.floor((Date.now() - ENTITY_WINDOW_DAYS * 864e5) / 1000);
+}
+
+/**
+ * Resolve a slug back to the canonical entity (name, kind) from the stories
+ * graph, over the last 90d. Memoized per request: generateMetadata and the
+ * page body both resolve the same slug, and the json_each scan is the page's
+ * most expensive read — React cache() makes them share one computation.
+ */
+export const resolveEntity = cache((slug: string): EntityRow | null => {
   const db = getDb();
   const rows = db.all<EntityRow>(
     sql`SELECT e.value->>'name' AS name, e.value->>'kind' AS kind, count(DISTINCT s.id) AS mentions
         FROM stories s, json_each(s.entities) e
-        WHERE s.status = 'curated'
+        WHERE s.status = 'curated' AND s.created_at >= ${entityWindowStart()}
         GROUP BY lower(e.value->>'name')`,
   );
   const key = canonicalEntityKey(slug);
@@ -59,15 +73,18 @@ export function resolveEntity(slug: string): EntityRow | null {
   }
   if (!best) return null;
   return { name: canonicalEntityName(best.name), kind: best.kind, mentions: total };
-}
+});
 
-/** Top entities by mentions in the window — for the sitemap and watch-page links. */
+/**
+ * Top entities by mentions in the window — for the sitemap and watch-page links.
+ * Same 90d bound as resolveEntity so the sitemap never links to a slug that 404s.
+ */
 export function topEntitySlugs(limit = 200): string[] {
   const db = getDb();
   const rows = db.all<{ name: string; mentions: number }>(
     sql`SELECT e.value->>'name' AS name, count(DISTINCT s.id) AS mentions
         FROM stories s, json_each(s.entities) e
-        WHERE s.status = 'curated'
+        WHERE s.status = 'curated' AND s.created_at >= ${entityWindowStart()}
         GROUP BY lower(e.value->>'name')`,
   );
   // merge name variants ("GPT-5" / "gpt 5") into one entity before ranking;

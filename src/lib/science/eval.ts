@@ -387,7 +387,7 @@ function meterCall(target: ResolvedTarget, r: CallResult): void {
   }
 }
 
-/** Runs one task; ONE retry on network/5xx/malformed-JSON, then the task scores 0. */
+/** Runs one task; ONE retry on network/5xx/malformed-JSON, then the task is marked failed. */
 async function runTask(
   target: ResolvedTarget,
   task: EvalTask,
@@ -418,8 +418,11 @@ const pct = (v: number): number => Math.round(v * 10000) / 100;
  * Weekly micro-eval: scores every configured target on EVAL_SUITE and writes
  * metric_points rows (source 'radar-eval', entity = display name, metric
  * 'score' | 'score_coding' | 'score_extraction' | 'score_copy'). Targets with
- * no API key are skipped; per-task failures score 0 after one retry; a model
- * whose every task fails gets no rows that week (logged, in stats.failed).
+ * no API key are skipped. A task whose API CALL fails after one retry is an
+ * infrastructure failure, not a capability signal: it is EXCLUDED from the
+ * averages (only answered tasks score — a genuinely wrong answer still earns
+ * its 0). A model whose every task fails gets no rows that week (logged, in
+ * stats.failed).
  */
 export async function runRadarEval(): Promise<RadarEvalStats> {
   const stats: RadarEvalStats = { scored: 0, tasks: EVAL_SUITE.length, failed: [] };
@@ -443,18 +446,18 @@ export async function runRadarEval(): Promise<RadarEvalStats> {
     const resolved: ResolvedTarget = { ...target, apiKey, baseUrl };
 
     const results: { kind: EvalKind; score: number }[] = [];
-    let succeeded = 0;
+    let errored = 0;
     for (const task of EVAL_SUITE) {
       const r = await runTask(resolved, task);
       if (r.ok) {
-        succeeded++;
+        results.push({ kind: task.kind, score: r.score });
       } else {
-        console.error(`[radar-eval] ${target.entity} ${task.id}: scored 0 after retry (${r.error})`);
+        errored++;
+        console.error(`[radar-eval] ${target.entity} ${task.id}: call failed after retry (${r.error}) — excluded from scoring`);
       }
-      results.push({ kind: task.kind, score: r.score });
     }
 
-    if (succeeded === 0) {
+    if (results.length === 0) {
       console.error(`[radar-eval] ${target.entity}: all ${EVAL_SUITE.length} tasks failed — no metrics written this week`);
       stats.failed.push(`${target.entity}:all ${EVAL_SUITE.length} tasks failed`);
       continue;
@@ -468,18 +471,18 @@ export async function runRadarEval(): Promise<RadarEvalStats> {
         value: pct(mean(results.map((r) => r.score))),
         date,
       },
-      ...(['coding', 'extraction', 'copy'] as const).map((kind) => ({
-        source: 'radar-eval',
-        entity: target.entity,
-        metric: `score_${kind}`,
-        value: pct(mean(results.filter((r) => r.kind === kind).map((r) => r.score))),
-        date,
-      })),
+      ...(['coding', 'extraction', 'copy'] as const).flatMap((kind) => {
+        const xs = results.filter((r) => r.kind === kind).map((r) => r.score);
+        // a kind whose every task errored writes no sub-score (never NaN)
+        return xs.length === 0
+          ? []
+          : [{ source: 'radar-eval', entity: target.entity, metric: `score_${kind}`, value: pct(mean(xs)), date }];
+      }),
     ];
     recordMetrics(points);
     stats.scored++;
     console.log(
-      `[radar-eval] ${target.entity}: score=${points[0]!.value} (${succeeded}/${EVAL_SUITE.length} tasks ok)`,
+      `[radar-eval] ${target.entity}: score=${points[0]!.value} (${results.length}/${EVAL_SUITE.length} tasks ok${errored > 0 ? `, ${errored} excluded` : ''})`,
     );
   }
   return stats;

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
 import { stories, votes } from '@/lib/db/schema';
 import { getCurrentUser } from '@/lib/auth/user';
@@ -43,9 +43,14 @@ export async function POST(req: Request) {
       .run();
   }
 
-  const rows = db.select({ value: votes.value }).from(votes).where(eq(votes.storyId, sid)).all();
-  const up = rows.filter((r) => r.value === 1).length;
-  const down = rows.filter((r) => r.value === -1).length;
+  const tally = db
+    .select({
+      up: sql<number>`coalesce(sum(case when ${votes.value} = 1 then 1 else 0 end), 0)`,
+      down: sql<number>`coalesce(sum(case when ${votes.value} = -1 then 1 else 0 end), 0)`,
+    })
+    .from(votes)
+    .where(eq(votes.storyId, sid))
+    .get();
 
-  return NextResponse.json({ ok: true, up, down });
+  return NextResponse.json({ ok: true, up: tally?.up ?? 0, down: tally?.down ?? 0 });
 }

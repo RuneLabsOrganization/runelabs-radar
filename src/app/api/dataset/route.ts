@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import { Readable } from 'node:stream';
 import { NextResponse } from 'next/server';
 import { DATASET_FILENAME, datasetPath } from '@/lib/dump';
+import { rateLimited } from '@/lib/api-limit';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -9,8 +10,12 @@ export const runtime = 'nodejs';
 /**
  * Public download of the daily first-party dataset dump (see lib/dump.ts).
  * AA-sourced series are only in the file when AA_PUBLIC allows them.
+ * Multi-MB and unauthenticated — same per-IP brake as the /api/v1 JSON API.
  */
-export async function GET() {
+export async function GET(req: Request) {
+  const limited = rateLimited(req);
+  if (limited) return limited;
+
   const file = datasetPath();
   let size: number;
   try {

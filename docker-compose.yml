@@ -8,6 +8,10 @@ services:
     env_file: .env
     environment:
       DATABASE_PATH: /data/radar.db
+    # Images run as the node user (UID 1000). On a Linux host ./data must be
+    # writable by that UID: `mkdir -p data && sudo chown -R 1000:1000 data`.
+    # Docker Desktop (macOS/Windows) maps bind-mount ownership automatically.
+    user: node
     volumes:
       - ./data:/data
     restart: unless-stopped
@@ -21,6 +25,7 @@ services:
       DATABASE_PATH: /data/radar.db
       # embedding model weights must survive container recreation
       TRANSFORMERS_CACHE: /data/hfcache
+    user: node # UID 1000 — ./data needs the same chown as on web above
     volumes:
       - ./data:/data
     restart: unless-stopped
@@ -38,6 +43,7 @@ services:
     environment:
       DATABASE_PATH: /data/radar.db
       MCP_PORT: 3122
+    user: node # UID 1000 — ./data needs the same chown as on web above
     volumes:
       - ./data:/data # NOT :ro — the MCP process writes the plan cache (opportunities.plan*)
     restart: unless-stopped

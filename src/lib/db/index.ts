@@ -10,20 +10,25 @@ export type Db = BetterSQLite3Database<typeof schema>;
 
 let _db: Db | null = null;
 
+/** Lock files older than this are crash leftovers, not live migrations. */
+const STALE_LOCK_MS = 120_000;
+
 /**
  * Serialize migrate() across Next.js build workers that open the same file.
  * Without this, parallel `getDb()` during `next build` races CREATE TABLE.
- * Exported for tests.
+ * A lock left by a killed process (SIGKILL never runs the finally-unlink) is
+ * reclaimed once its mtime is older than STALE_LOCK_MS — otherwise every
+ * later boot would wait out the full timeout and crash-loop under a
+ * restarting supervisor. Exported for tests.
  */
-export function withMigrateLock(dbPath: string, fn: () => void): void {
+export function withMigrateLock(dbPath: string, fn: () => void, timeoutMs = 60_000): void {
   if (dbPath === ':memory:') {
     fn();
     return;
   }
   const lockPath = `${path.resolve(dbPath)}.migrate.lock`;
   const start = Date.now();
-  // eslint-disable-next-line no-constant-condition
-  while (true) {
+  for (;;) {
     try {
       const fd = fs.openSync(lockPath, 'wx');
       try {
@@ -44,7 +49,15 @@ export function withMigrateLock(dbPath: string, fn: () => void): void {
       // EACCES instead (more likely under antivirus/indexing) — treat those
       // as retryable contention too, not a hard failure.
       if (code !== 'EEXIST' && code !== 'EPERM' && code !== 'EACCES') throw err;
-      if (Date.now() - start > 60_000) {
+      try {
+        if (Date.now() - fs.statSync(lockPath).mtimeMs > STALE_LOCK_MS) {
+          fs.unlinkSync(lockPath);
+          continue;
+        }
+      } catch {
+        // lock vanished (released) or unlink raced the holder — retry below
+      }
+      if (Date.now() - start > timeoutMs) {
         throw new Error(`Timed out waiting for migrate lock at ${lockPath}`);
       }
       // busy-wait briefly — migrate is usually sub-second on SQLite
@@ -74,6 +87,10 @@ export function openDb(location: string): Db {
  * FTS5 search index over stories — outside drizzle migrations (virtual
  * tables aren't its territory). Idempotent and self-healing: safe at boot
  * on every process, rebuilds if the index ever drifts empty vs stories.
+ * The update trigger is dropped and recreated each boot so its WHEN clause
+ * (v2) reaches existing databases: reindexing only happens when searchable
+ * text changed, so the nightly cluster remap touching every story row no
+ * longer churns a delete+insert per row through the FTS index.
  */
 function bootstrapFts(sqlite: Database.Database): void {
   sqlite.exec(`
@@ -89,7 +106,12 @@ function bootstrapFts(sqlite: Database.Database): void {
       INSERT INTO stories_fts(stories_fts, rowid, title, tldr, why_it_matters)
       VALUES ('delete', old.id, old.title, old.tldr, old.why_it_matters);
     END;
-    CREATE TRIGGER IF NOT EXISTS stories_fts_au AFTER UPDATE ON stories BEGIN
+    DROP TRIGGER IF EXISTS stories_fts_au;
+    CREATE TRIGGER stories_fts_au AFTER UPDATE ON stories
+    WHEN old.title IS NOT new.title
+      OR old.tldr IS NOT new.tldr
+      OR old.why_it_matters IS NOT new.why_it_matters
+    BEGIN
       INSERT INTO stories_fts(stories_fts, rowid, title, tldr, why_it_matters)
       VALUES ('delete', old.id, old.title, old.tldr, old.why_it_matters);
       INSERT INTO stories_fts(rowid, title, tldr, why_it_matters)
@@ -116,4 +138,12 @@ export function getDb(): Db {
 /** Test hook: replace the singleton (e.g. with an in-memory db). */
 export function _setDb(db: Db | null): void {
   _db = db;
+}
+
+/**
+ * Raw better-sqlite3 handle behind a drizzle Db — present at runtime but not
+ * on the drizzle type. For PRAGMAs and raw SQL in tests and one-off jobs.
+ */
+export function rawSqlite(db: Db): Database.Database {
+  return (db as unknown as { $client: Database.Database }).$client;
 }

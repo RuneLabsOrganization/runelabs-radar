@@ -21,6 +21,14 @@ export default function VoteButtons({
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(false);
+  // tracked so unmount never leaves a dangling setState timer
+  const errorTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (errorTimer.current) clearTimeout(errorTimer.current);
+    },
+    [],
+  );
   // optimistic display state — resyncs when server props change after refresh
   const [view, setView] = useState({ up, down, mine: myVote });
   const propsRef = useRef({ up, down, myVote });
@@ -66,7 +74,8 @@ export default function VoteButtons({
     } catch {
       setView(prev); // rollback
       setError(true);
-      setTimeout(() => setError(false), 2500);
+      if (errorTimer.current) clearTimeout(errorTimer.current);
+      errorTimer.current = setTimeout(() => setError(false), 2500);
     } finally {
       setBusy(false);
     }

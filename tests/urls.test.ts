@@ -75,6 +75,35 @@ describe('safeNextPath', () => {
     expect(safeNextPath('//evil.example/phish')).toBe(paths.app);
     expect(safeNextPath('app')).toBe(paths.app);
   });
+
+  it('rejects backslash paths — WHATWG treats \\ as / for special schemes', () => {
+    expect(safeNextPath('/\\evil.com')).toBe(paths.app);
+    expect(safeNextPath('/\\\\evil.com')).toBe(paths.app);
+    expect(safeNextPath('/app/\\../../evil')).toBe(paths.app);
+  });
+
+  it('rejects encoded backslashes as delivered after the framework decode', () => {
+    // ?next=/%255Cevil.com in the URL bar reaches safeNextPath as '/%5Cevil.com';
+    // the decode-once re-check exposes the hidden backslash.
+    expect(safeNextPath('/%5Cevil.com')).toBe(paths.app);
+    expect(safeNextPath('/%5C%5Cevil.com')).toBe(paths.app);
+  });
+
+  it('allows a still-encoded backslash — inert literal path on our origin', () => {
+    // ?next=/%25255C... → framework decode → '/%255Cevil.com' → one more decode
+    // yields '/%5Cevil.com' (no literal backslash; nothing decodes it again).
+    expect(safeNextPath('/%255Cevil.com')).toBe('/%255Cevil.com');
+  });
+
+  it('rejects malformed percent-encoding', () => {
+    expect(safeNextPath('/app/%')).toBe(paths.app);
+    expect(safeNextPath('/app/%zz')).toBe(paths.app);
+  });
+
+  it('keeps legit percent-encoded paths untouched', () => {
+    expect(safeNextPath('/app/entity/Acme%20Inc')).toBe('/app/entity/Acme%20Inc');
+    expect(safeNextPath('/app/search?q=%2F%2Fnested')).toBe('/app/search?q=%2F%2Fnested');
+  });
 });
 
 describe('loginHrefForSignup', () => {

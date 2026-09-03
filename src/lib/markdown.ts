@@ -50,6 +50,15 @@ function renderInline(escaped: string): string {
     .join('');
 }
 
+/**
+ * The markdown's own leading H1 duplicates the surrounding page/feed title —
+ * drop the first heading line. Shared by the brief page, weekly report and
+ * the RSS feeds (all render the same brief markdown).
+ */
+export function stripLeadingH1(md: string): string {
+  return md.replace(/^#\s+[^\n]+\n+/, '');
+}
+
 export function renderMarkdown(md: string): string {
   const lines = escapeHtml(md).split(/\r?\n/);
   const html: string[] = [];

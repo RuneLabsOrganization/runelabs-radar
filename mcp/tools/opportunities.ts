@@ -17,7 +17,7 @@ import {
   type DetailLevel,
   type NextAction,
 } from '../lib/payload';
-import { marketVisible, type AuthContext } from '../lib/auth';
+import { marketVisible, hasScope, type AuthContext } from '../lib/auth';
 import { visibleTo } from '../../src/lib/opportunities/scope';
 
 type OppRow = typeof opportunities.$inferSelect;
@@ -100,8 +100,10 @@ function closestSlugs(ref: string, userId: number | null): string[] {
 //   SQL filters (status/verdict/sector/min_flip)
 //   → effectiveScore (crowdedness penalty — ordering only)
 //   → per-caller salt within equal effective scores
-//   → sector-quota walk (limit-1 slots)
-//   → exploration slot fill (last slot, quota-exempt)
+//   → sector-quota page walk (limit-1 slots per page; overflow rows are
+//     deferred to later pages, never dropped — the cursor is an offset into
+//     this fully-paginated order, so paging cannot skip deferred rows)
+//   → exploration slot fill (last slot of each page, quota-exempt)
 // Payloads always report the true flip_score; only ordering is jittered.
 
 /** Max items per sector in one response; the null sector is its own bucket. */
@@ -143,6 +145,49 @@ function rankRows(rows: OppRow[], rateKey: string, fitFor: (o: OppRow) => number
     );
 }
 
+/**
+ * Quota-walk `ranked` into pages of up to `limit` rows. Each page fills
+ * limit-1 slots with at most SECTOR_QUOTA per sector, then one exploration
+ * slot: the highest-ranked remainder row from a sector not on the page (the
+ * one deliberate quota exception), else one from a sector whose quota is not
+ * yet full. Rows that miss a page stay in the remainder for the next one —
+ * paging to the end returns every ranked row exactly once, and a short page
+ * is never padded from the next page (the per-response quota holds).
+ */
+function paginateRanked(ranked: OppRow[], limit: number): OppRow[][] {
+  const normalSlots = Math.max(limit - 1, 0);
+  const pages: OppRow[][] = [];
+  let remaining = ranked.slice();
+  while (remaining.length > 0) {
+    const picked: OppRow[] = [];
+    const rest: OppRow[] = [];
+    const buckets = new Map<string | null, number>();
+    for (const row of remaining) {
+      const sec = row.sector ?? null;
+      if (picked.length < normalSlots && (buckets.get(sec) ?? 0) < SECTOR_QUOTA) {
+        picked.push(row);
+        buckets.set(sec, (buckets.get(sec) ?? 0) + 1);
+      } else {
+        rest.push(row);
+      }
+    }
+    if (picked.length < limit && rest.length > 0) {
+      const present = new Set(picked.map((o) => o.sector ?? null));
+      let idx = rest.findIndex((o) => !present.has(o.sector ?? null));
+      if (idx < 0) idx = rest.findIndex((o) => (buckets.get(o.sector ?? null) ?? 0) < SECTOR_QUOTA);
+      if (idx >= 0) picked.push(rest.splice(idx, 1)[0]!);
+    }
+    // Progress is guaranteed: with limit >= 2 the first row always fits its
+    // bucket; with limit == 1 the exploration slot takes the first remainder
+    // row (on an empty page every sector is absent). Guard anyway — a page
+    // that emits nothing would loop forever.
+    if (picked.length === 0) picked.push(rest.shift()!);
+    pages.push(picked);
+    remaining = rest;
+  }
+  return pages;
+}
+
 export function registerOpportunityTools(server: McpServer, auth: AuthContext): void {
   server.registerTool(
     'get_opportunities',
@@ -159,7 +204,7 @@ export function registerOpportunityTools(server: McpServer, auth: AuthContext): 
           .int()
           .min(0)
           .default(0)
-          .describe('offset into the ranked list — pass next_cursor from a prior call for more'),
+          .describe('offset into the ranked list — pass next_cursor from a prior call (same limit) for more'),
       },
       outputSchema: {
         ...envelopeSchema,
@@ -186,6 +231,12 @@ export function registerOpportunityTools(server: McpServer, auth: AuthContext): 
       },
     },
     async ({ limit, sector, verdict, min_flip, cursor }) => {
+      if (!hasScope(auth, 'read')) {
+        return respond(
+          { count: 0, next_cursor: null, opportunities: [] },
+          { summary: "This token has no 'read' scope — re-authorize with the read scope." },
+        );
+      }
       const db = getDb();
       const conds = [eq(opportunities.status, 'active'), visibleTo(auth.userId)];
       if (sector) conds.push(eq(opportunities.sector, sector));
@@ -217,57 +268,25 @@ export function registerOpportunityTools(server: McpServer, auth: AuthContext): 
       const ranked = rankRows(rows, auth.rateKey, fitFor);
       const offset = cursor ?? 0;
 
-      // sector-quota walk over the salted ranking: at most SECTOR_QUOTA per
-      // sector, filling limit-1 slots. Stop once the page is full — do not
-      // scan the rest of `ranked` just to populate overflow.
-      const picked: OppRow[] = [];
-      const rest: OppRow[] = [];
-      const buckets = new Map<string | null, number>();
-      const normalSlots = Math.max(limit - 1, 0);
-      let i = offset;
-      while (i < ranked.length && picked.length < normalSlots) {
-        const row = ranked[i]!;
-        const sec = row.sector ?? null;
-        if ((buckets.get(sec) ?? 0) < SECTOR_QUOTA) {
-          picked.push(row);
-          buckets.set(sec, (buckets.get(sec) ?? 0) + 1);
-        } else {
-          rest.push(row);
+      // Pages are built over the FULL ranked window; the cursor is the offset
+      // at which the returned page starts. Quota-overflow rows deferred from
+      // an earlier page head a later one instead of being skipped (previously
+      // next_cursor resumed past their index). The page is exactly what the
+      // quota walk emitted — never padded from the next page, so a short page
+      // keeps its sector cap. Stable across calls with the same limit.
+      const pages = paginateRanked(ranked, limit);
+      let start = 0;
+      let picked: OppRow[] = [];
+      let nextCursor: number | null = null;
+      for (const p of pages) {
+        if (offset < start + p.length) {
+          picked = p.slice(offset - start); // non-boundary cursor: resume within the page
+          const end = start + p.length;
+          nextCursor = end < ranked.length ? end : null;
+          break;
         }
-        i++;
+        start += p.length;
       }
-
-      // exploration slot: highest-ranked overflow item from a sector not yet
-      // in the response — the one deliberate exception to the quota. When
-      // every sector is already present (or nothing overflows), the last
-      // slot just follows normal quota ranking.
-      const present = new Set(picked.map((o) => o.sector ?? null));
-      if (picked.length < limit) {
-        const last =
-          rest.find((o) => !present.has(o.sector ?? null)) ??
-          rest.find((o) => (buckets.get(o.sector ?? null) ?? 0) < SECTOR_QUOTA);
-        if (last) {
-          picked.push(last);
-        } else {
-          while (i < ranked.length && picked.length < limit) {
-            const row = ranked[i]!;
-            const sec = row.sector ?? null;
-            if (!present.has(sec) || (buckets.get(sec) ?? 0) < SECTOR_QUOTA) {
-              picked.push(row);
-              if ((buckets.get(sec) ?? 0) < SECTOR_QUOTA) {
-                buckets.set(sec, (buckets.get(sec) ?? 0) + 1);
-              }
-              i++;
-              break;
-            }
-            rest.push(row);
-            i++;
-          }
-        }
-      }
-
-      // One past the farthest ranked index examined to fill this page.
-      const nextCursor = i < ranked.length ? i : null;
 
       const top = picked[0];
       const filters = [sector && `sector=${sector}`, verdict && `verdict=${verdict}`, min_flip && `flip≥${min_flip}`]
@@ -334,6 +353,12 @@ export function registerOpportunityTools(server: McpServer, auth: AuthContext): 
       },
     },
     async ({ opportunity, detail }) => {
+      if (!hasScope(auth, 'read')) {
+        return respond(
+          { found: false },
+          { summary: "This token has no 'read' scope — re-authorize with the read scope." },
+        );
+      }
       const level = (detail ?? 'compact') as DetailLevel;
       const db = getDb();
       const asId = /^\d+$/.test(opportunity) ? Number(opportunity) : null;

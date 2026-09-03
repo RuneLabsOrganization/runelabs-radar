@@ -2,6 +2,18 @@ import { loadDotEnv } from '../src/lib/env';
 import { withJobRun, type JobName } from '../src/lib/jobs';
 
 loadDotEnv();
+
+// Same containment as the daemon (worker/index.ts): a stray rejection or sync
+// throw must surface with a clear message instead of an opaque exit code. The
+// withJobRun chain below owns the exit code — these only keep Node's default
+// crash handler from firing first.
+process.on('unhandledRejection', (reason) => {
+  console.error('[job] unhandledRejection:', reason);
+});
+process.on('uncaughtException', (err) => {
+  console.error('[job] uncaughtException:', err);
+});
+
 import { runIngest } from '../src/lib/ingest/ingest';
 import { runCurate } from '../src/lib/curate/curate';
 import { runGateAudit } from '../src/lib/curate/gate-audit';
@@ -76,7 +88,15 @@ if (!name || !(name in jobs)) {
   process.exit(1);
 }
 
-withJobRun(name, jobs[name]).then((stats) => {
-  console.log(`[job:${name}]`, stats ?? 'FAILED (see job_runs table)');
-  process.exit(stats ? 0 : 1);
-});
+withJobRun(name, jobs[name])
+  .then((stats) => {
+    console.log(`[job:${name}]`, stats ?? 'FAILED (see job_runs table)');
+    process.exit(stats ? 0 : 1);
+  })
+  // withJobRun can reject before its internal try/catch (first-call getDb()
+  // migrations, SQLITE_BUSY past busy_timeout) — an unhandled rejection would
+  // exit with a confusing code and no message
+  .catch((e: unknown) => {
+    console.error(`[job:${name}] crashed before the run could be recorded:`, e);
+    process.exit(1);
+  });

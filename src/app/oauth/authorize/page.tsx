@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
 import { getCurrentUser } from '@/lib/auth/user';
 import { getClient, sanitizeScopes } from '@/lib/oauth';
+import { redirectDestination } from '@/lib/urls';
 import ConsentForm from './consent';
 
 export const dynamic = 'force-dynamic';
@@ -88,6 +89,9 @@ export default async function AuthorizePage({
 
   const client = getClient(params.client_id);
   const scopes = sanitizeScopes(params.scope).split(' ');
+  // The client name is attacker-chosen (open dynamic registration) — the
+  // redirect destination is the ground truth the user must consent to.
+  const dest = redirectDestination(params.redirect_uri);
   return (
     <main className="flex min-h-screen items-center justify-center px-6">
       <div className="card w-full max-w-[420px] !p-6">
@@ -99,6 +103,23 @@ export default async function AuthorizePage({
           <strong className="text-[var(--ink)]">{client?.name ?? 'An AI agent'}</strong> wants to connect to your
           Radar intelligence feed.
         </p>
+        {dest && (
+          <div
+            className="mt-3 rounded-[4px] border px-3 py-2.5"
+            style={{ borderColor: 'var(--grat-strong)', background: 'var(--grat-soft)' }}
+          >
+            <div className="readout">access tokens go to</div>
+            <div className="mono mt-1 break-all text-[13px] font-semibold text-[var(--ink)]">
+              {!dest.https && dest.host && <span style={{ color: 'var(--alert)' }}>{dest.scheme}://</span>}
+              {dest.host || params.redirect_uri}
+            </div>
+            {!dest.https && (
+              <p className="mt-1 text-[11.5px]" style={{ color: 'var(--alert)' }}>
+                not https — the authorization code leaves this site over “{dest.scheme}”.
+              </p>
+            )}
+          </div>
+        )}
         <ul className="mt-4 space-y-2">
           {scopes.map((s) => (
             <li key={s} className="flex items-start gap-2 text-[12.5px] text-[var(--ink-3)]">

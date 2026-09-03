@@ -113,10 +113,39 @@ export function accountCheckoutPath(plan: 'builder' | 'factory', annual: boolean
   return `${paths.account}?checkout=${plan}&annual=${annual ? 1 : ''}`;
 }
 
-/** Same-origin relative path only. Rejects protocol-relative and absolute URLs. */
+/** Same-origin relative path only. Rejects protocol-relative and absolute URLs,
+ *  and anything containing a backslash — WHATWG URL parsing treats `\` as `/`
+ *  for special schemes, so `/\evil.com` would resolve off-origin. The value is
+ *  percent-decoded once and re-checked so an encoded backslash can't smuggle
+ *  through either; malformed encoding fails closed. */
 export function safeNextPath(next: string | null | undefined): string {
-  if (!next || !next.startsWith('/') || next.startsWith('//')) return paths.app;
+  if (!next || !next.startsWith('/') || next.startsWith('//') || next.includes('\\')) return paths.app;
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(next);
+  } catch {
+    return paths.app;
+  }
+  if (!decoded.startsWith('/') || decoded.startsWith('//') || decoded.includes('\\')) return paths.app;
   return next;
+}
+
+/**
+ * Where an OAuth grant actually lands, for the consent screen. Dynamic client
+ * registration (RFC 7591) accepts any https: redirect plus loopback http and
+ * custom schemes, and the client name is attacker-chosen — so the user must
+ * see the destination itself. `https` flags the only scheme that needs no
+ * warning; opaque custom schemes have no host and surface via `scheme`.
+ */
+export function redirectDestination(
+  redirectUri: string,
+): { host: string; scheme: string; https: boolean } | null {
+  try {
+    const u = new URL(redirectUri);
+    return { host: u.host, scheme: u.protocol.slice(0, -1), https: u.protocol === 'https:' };
+  } catch {
+    return null;
+  }
 }
 
 /** Signup “Sign in” link: carry paid-plan checkout intent via `next`. */

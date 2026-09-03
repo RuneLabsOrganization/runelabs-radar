@@ -42,12 +42,17 @@ export default function RadarField({ intensity = 0.15, fps = 60 }: { intensity?:
 
     // preserveDrawingBuffer keeps the canvas capturable (screenshots, screen
     // shares, e2e tooling) — some capture paths hang on a discarded buffer.
-    const renderer = new THREE.WebGLRenderer({
-      antialias: true,
-      alpha: true,
-      powerPreference: 'low-power',
-      preserveDrawingBuffer: true,
-    });
+    let renderer: THREE.WebGLRenderer;
+    try {
+      renderer = new THREE.WebGLRenderer({
+        antialias: true,
+        alpha: true,
+        powerPreference: 'low-power',
+        preserveDrawingBuffer: true,
+      });
+    } catch {
+      return; // no WebGL — the CSS canvas stays the backdrop
+    }
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
     renderer.setClearColor(0x000000, 0);
     el.appendChild(renderer.domElement);

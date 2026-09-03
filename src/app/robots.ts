@@ -11,7 +11,8 @@ export default function robots(): MetadataRoute.Robots {
         userAgent: '*',
         allow: '/',
         disallow: [
-          '/admin',
+          // the admin console lives under /app — bare /admin is just its 301
+          '/app/admin',
           '/api/',
           '/oauth',
           '/login',

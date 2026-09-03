@@ -1,20 +1,9 @@
 'use client';
 
 import * as React from 'react';
-import { CONSENT_COOKIE, parseConsent, type Consent } from '@/lib/consent';
+import { readConsent, type Consent } from '@/lib/consent';
 
 let sentryStarted = false;
-
-function readConsent(): Consent | null {
-  const prefix = `${CONSENT_COOKIE}=`;
-  for (const part of document.cookie.split(';')) {
-    const trimmed = part.trim();
-    if (trimmed.startsWith(prefix)) {
-      return parseConsent(decodeURIComponent(trimmed.slice(prefix.length)));
-    }
-  }
-  return null;
-}
 
 function injectPlausible() {
   if (document.getElementById('plausible-script')) return;

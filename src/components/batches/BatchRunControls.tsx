@@ -10,18 +10,24 @@ export function BatchRunControls({ batchId }: { batchId: number }) {
   async function run(op: 'debate' | 'plan') {
     setPending(op);
     setStatus(null);
-    const res = await fetch(`/api/batches/${batchId}/run`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ op }),
-    });
-    setPending(null);
-    const body = (await res.json().catch(() => ({}))) as { error?: string; stats?: string; status?: string };
-    if (!res.ok) {
-      setStatus(body.error ?? 'Run failed');
-      return;
+    try {
+      const res = await fetch(`/api/batches/${batchId}/run`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ op }),
+      });
+      const body = (await res.json().catch(() => ({}))) as { error?: string; stats?: string; status?: string };
+      if (!res.ok) {
+        setStatus(body.error ?? 'Run failed');
+        return;
+      }
+      setStatus(`Run ${body.status}${body.stats ? ` · ${body.stats}` : ''}`);
+    } catch {
+      // a rejected fetch is a network failure — the buttons must come back
+      setStatus('Network error — run failed');
+    } finally {
+      setPending(null);
     }
-    setStatus(`Run ${body.status}${body.stats ? ` · ${body.stats}` : ''}`);
   }
 
   return (

@@ -41,7 +41,7 @@ export function buildServer(auth: AuthContext): McpServer {
     name: 'runelabs-radar',
     version: '0.4.0',
   });
-  registerSignalTools(server);
+  registerSignalTools(server, auth);
   registerLaunchTools(server);
   registerBoardTools(server);
   registerStackTools(server);

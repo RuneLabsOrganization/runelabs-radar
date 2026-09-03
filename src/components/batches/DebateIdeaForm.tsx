@@ -14,19 +14,25 @@ export function DebateIdeaForm() {
     if (!idea.trim()) return;
     setPending(true);
     setResult(null);
-    const res = await fetch('/api/debates', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ idea: idea.trim() }),
-    });
-    setPending(false);
-    const body = (await res.json().catch(() => ({}))) as { error?: string; verdict?: string; confidence?: number };
-    if (!res.ok) {
-      setResult(body.error ?? 'Debate failed');
-      return;
+    try {
+      const res = await fetch('/api/debates', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ idea: idea.trim() }),
+      });
+      const body = (await res.json().catch(() => ({}))) as { error?: string; verdict?: string; confidence?: number };
+      if (!res.ok) {
+        setResult(body.error ?? 'Debate failed');
+        return;
+      }
+      setResult(`Verdict: ${body.verdict} (${body.confidence}%)`);
+      setIdea('');
+    } catch {
+      // a rejected fetch is a network failure — the button must come back
+      setResult('Network error — debate failed');
+    } finally {
+      setPending(false);
     }
-    setResult(`Verdict: ${body.verdict} (${body.confidence}%)`);
-    setIdea('');
   }
 
   return (

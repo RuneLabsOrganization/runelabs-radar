@@ -16,7 +16,7 @@ import { can } from '../../src/lib/entitlements';
 import { urls } from '../../src/lib/urls';
 import { eq } from 'drizzle-orm';
 import { envelopeSchema, respond } from '../lib/payload';
-import type { AuthContext } from '../lib/auth';
+import { hasScope, type AuthContext } from '../lib/auth';
 
 export function registerBatchTools(server: McpServer, auth: AuthContext): void {
   server.registerTool(
@@ -41,6 +41,12 @@ export function registerBatchTools(server: McpServer, auth: AuthContext): void {
       },
     },
     async () => {
+      if (!hasScope(auth, 'read')) {
+        return respond(
+          { count: 0, batches: [] },
+          { summary: "This token has no 'read' scope — re-authorize with the read scope." },
+        );
+      }
       if (!auth.userId) {
         return respond(
           { count: 0, batches: [] },
@@ -100,6 +106,12 @@ export function registerBatchTools(server: McpServer, auth: AuthContext): void {
       },
     },
     async ({ slug }) => {
+      if (!hasScope(auth, 'read')) {
+        return respond(
+          { found: false },
+          { summary: "This token has no 'read' scope — re-authorize with the read scope." },
+        );
+      }
       const batch = getBatchBySlug(slug);
       if (!batch || !canViewBatch(batch, auth.userId)) {
         return respond(
@@ -160,6 +172,12 @@ export function registerBatchTools(server: McpServer, auth: AuthContext): void {
       if (!auth.userId) {
         return respond({ ok: false, error: 'auth required' }, { summary: 'create_batch requires OAuth.' });
       }
+      if (!hasScope(auth, 'batches')) {
+        return respond(
+          { ok: false, error: "this token lacks the 'batches' scope" },
+          { summary: "This token has no 'batches' scope — re-authorize with the batches scope to create and run batches." },
+        );
+      }
       const gate = can({ id: auth.userId }, 'batch_create');
       if (!gate.ok) {
         return respond({ ok: false, error: gate.reason }, { summary: gate.reason ?? 'quota' });
@@ -212,6 +230,12 @@ export function registerBatchTools(server: McpServer, auth: AuthContext): void {
       if (!batch || !canModifyBatch(batch, auth.userId)) {
         return respond({ ok: false, error: 'batch not found or not owned' }, { summary: 'not found' });
       }
+      if (!hasScope(auth, 'batches')) {
+        return respond(
+          { ok: false, error: "this token lacks the 'batches' scope" },
+          { summary: "This token has no 'batches' scope — re-authorize with the batches scope to add items." },
+        );
+      }
       const item = addToBatch(batch.id, {
         refType: ref_type,
         refId: ref_id,
@@ -254,6 +278,12 @@ export function registerBatchTools(server: McpServer, auth: AuthContext): void {
       if (!batch || !canModifyBatch(batch, auth.userId)) {
         return respond({ ok: false, error: 'not found' }, { summary: 'batch not found' });
       }
+      if (!hasScope(auth, 'batches')) {
+        return respond(
+          { ok: false, error: "this token lacks the 'batches' scope" },
+          { summary: "This token has no 'batches' scope — re-authorize with the batches scope to run batches." },
+        );
+      }
       try {
         const run = await runBatchOp(batch.id, op, auth.userId);
         return respond(
@@ -289,6 +319,12 @@ export function registerBatchTools(server: McpServer, auth: AuthContext): void {
       },
     },
     async ({ run_id }) => {
+      if (!hasScope(auth, 'read')) {
+        return respond(
+          { found: false },
+          { summary: "This token has no 'read' scope — re-authorize with the read scope." },
+        );
+      }
       const run = getDb().select().from(batchRuns).where(eq(batchRuns.id, run_id)).get();
       const batch = run
         ? getDb().select().from(batches).where(eq(batches.id, run.batchId)).get()

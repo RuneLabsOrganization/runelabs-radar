@@ -1,7 +1,7 @@
 import { sql } from 'drizzle-orm';
 import { getDb } from './db';
 import { boardEntries, stories } from './db/schema';
-import { canonicalEntityKey, canonicalEntityName, entitySlug } from './entity';
+import { canonicalEntityKey, canonicalEntityName, entitySlug, ENTITY_WINDOW_DAYS } from './entity';
 
 /** Value + range-labeled change, the Stake/Yahoo delta-chip data. */
 export interface Delta {
@@ -100,15 +100,19 @@ export interface CoMentioned {
 
 /**
  * Entities that appear in the same stories as this one (canonical-key merged,
- * so "GPT-5" and "gpt 5" count once). The discovery graph behind watch pages.
+ * so "GPT-5" and "gpt 5" count once), over the last 90d — the same bound as
+ * resolveEntity. The discovery graph behind watch pages.
  */
 export function coMentioned(name: string, limit = 6): CoMentioned[] {
   const db = getDb();
   const key = canonicalEntityKey(name);
+  // created_at is unix seconds (drizzle timestamp mode)
+  const windowStart = Math.floor((Date.now() - ENTITY_WINDOW_DAYS * 864e5) / 1000);
   const rows = db.all<{ name: string; count: number }>(
     sql`SELECT e.value->>'name' AS name, count(DISTINCT s.id) AS count
         FROM stories s, json_each(s.entities) e
         WHERE s.status = 'curated'
+          AND s.created_at >= ${windowStart}
           AND EXISTS (
             SELECT 1 FROM json_each(s.entities) self
             WHERE replace(replace(replace(replace(replace(lower(self.value->>'name'),' ',''),'-',''),'.',''),'_',''),'/','') = ${key}

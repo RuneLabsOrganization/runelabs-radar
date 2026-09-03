@@ -8,24 +8,24 @@ import { planToWire, type ExecutionPlan } from '../../src/lib/plans/schema';
 import { renderPlanMarkdown } from '../../src/lib/plans/markdown';
 import { envelopeSchema, iso, respond, withUserEconomy } from '../lib/payload';
 import { marketVisible, type AuthContext } from '../lib/auth';
-import { can } from '../../src/lib/entitlements';
-import { quotaFor, type Tier } from '../../src/lib/billing';
+import { admitPlanGeneration, quotaFor, type Tier } from '../../src/lib/billing';
 import { estimateTokens } from '../../src/lib/mcp-economy';
 import { visibleTo } from '../../src/lib/opportunities/scope';
+import { bump, peek } from '../../src/lib/usage/counters';
 
 // --- plan-generation quotas (§8a): anonymous callers keep the flat per-caller
 // daily cap (plans cost 6-7 LLM calls each, and the global MiniMax cap is
 // shared with the curation worker); authed users are gated by their monthly
 // plan entitlement (src/lib/billing.ts), metered from llm_calls rows ---
 const PLAN_DAILY_CAP = Number(process.env.MCP_PLAN_DAILY_CAP ?? 10);
-const planUsage = new Map<string, { date: string; count: number }>();
 // in-flight generations count against the cap at ENTRY — otherwise N parallel
-// calls all pass the check before any of them records (N× cap, N× LLM spend)
+// calls all pass the check before any of them records (N× cap, N× LLM spend).
+// Per-process by nature: the durable usage_counters row covers completed
+// generations across processes, this map narrows the in-flight window as
+// best effort.
 const planPending = new Map<string, number>();
 function planCapExceeded(key: string): boolean {
-  const today = new Date().toISOString().slice(0, 10);
-  const rec = planUsage.get(key);
-  const used = (rec?.date === today ? rec.count : 0) + (planPending.get(key) ?? 0);
+  const used = peek(key, 'plan', 'day') + (planPending.get(key) ?? 0);
   return used >= PLAN_DAILY_CAP;
 }
 function markPlanPending(key: string): void {
@@ -37,9 +37,7 @@ function clearPlanPending(key: string): void {
   else planPending.set(key, n);
 }
 function recordPlanGeneration(key: string): void {
-  const today = new Date().toISOString().slice(0, 10);
-  const rec = planUsage.get(key);
-  planUsage.set(key, { date: today, count: (rec?.date === today ? rec.count : 0) + 1 });
+  bump(key, 'plan', 'day');
 }
 
 /** A cached plan grounded in market prices is not servable to market-restricted callers. */
@@ -134,25 +132,29 @@ export function registerPlanTools(server: McpServer, auth: AuthContext): void {
           },
         );
       }
+      // authed: monthly entitlement quota, admitted atomically — the admission
+      // row IS the reserved quota slot (billing.admitPlanGeneration), so two
+      // concurrent calls can no longer both pass the check. Usage comes from
+      // llm_calls rows written by generation itself, so cache hits (no LLM
+      // rows) stay free: generate.ts releases the admission row on cache hits
+      // and failures, and swaps it for the frame's metered row on success.
+      let admissionId: number | null = null;
       if (auth.userId != null) {
-        // authed: monthly entitlement quota. Usage comes from llm_calls rows
-        // written by generation itself, so cache hits (no LLM rows) are free.
-        // In-flight generations count at ENTRY, same rule as the daily cap.
-        const gate = can({ id: auth.userId }, 'plan');
-        const used = (gate.used ?? 0) + (planPending.get(auth.rateKey) ?? 0);
-        if (!gate.ok || (gate.quota !== undefined && used >= gate.quota)) {
+        const admission = admitPlanGeneration(auth.userId);
+        if (!admission.ok) {
+          const used = admission.used;
           const nextTier: Tier | null =
-            gate.tier === 'free' ? 'builder' : gate.tier === 'builder' ? 'factory' : null;
+            admission.tier === 'free' ? 'builder' : admission.tier === 'builder' ? 'factory' : null;
           const hint = nextTier
             ? `upgrade to ${nextTier} for ${quotaFor(nextTier)} plans/mo — see /pricing`
             : 'see /pricing for higher-volume options';
           return respond(
             {
               ok: false,
-              error: `monthly plan quota reached for tier "${gate.tier}" (${used}/${gate.quota ?? used} this cycle) — ${hint}`,
+              error: `monthly plan quota reached for tier "${admission.tier}" (${used}/${admission.quota} this cycle) — ${hint}`,
             },
             {
-              summary: `Monthly plan quota reached (${used}/${gate.quota} this cycle, tier "${gate.tier}") — ${hint}.`,
+              summary: `Monthly plan quota reached (${used}/${admission.quota} this cycle, tier "${admission.tier}") — ${hint}.`,
               next: [
                 {
                   tool: 'get_plan',
@@ -163,6 +165,7 @@ export function registerPlanTools(server: McpServer, auth: AuthContext): void {
             },
           );
         }
+        admissionId = admission.admissionId;
       } else if (planCapExceeded(auth.rateKey)) {
         return respond(
           {
@@ -202,6 +205,7 @@ export function registerPlanTools(server: McpServer, auth: AuthContext): void {
           includeMarket: canSeeMarket,
           onProgress,
           userId: auth.userId,
+          admissionId,
         });
         if (!result.ok) {
           return respond({ ok: false, error: result.error }, { summary: `Plan generation failed: ${result.error}` });

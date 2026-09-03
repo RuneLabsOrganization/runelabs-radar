@@ -1,3 +1,5 @@
+// Namespace import keeps JSX working under vitest's classic transform (jsx: preserve).
+import * as React from 'react';
 import { and, count, desc, eq, gt, inArray } from 'drizzle-orm';
 import Link from 'next/link';
 import { requireViewer } from '@/lib/auth/user';
@@ -89,7 +91,7 @@ function voteAggByStory(storyIds: number[], userId: number): Map<number, VoteAgg
 }
 
 type Contact = {
-  story: import('@/lib/feed').Story;
+  story: import('@/lib/feed').FeedStory;
   scores: Partial<Record<Domain, number>> | null;
   score: number;
   createdAt: Date;
@@ -110,8 +112,21 @@ export default async function BriefingPage() {
   const db = getDb();
   const now = Date.now();
 
+  // projected to the FeedStory slice — full rows would haul the ~1.5KB
+  // embedding blob of every story on the page
+  const feedColumns = {
+    id: stories.id,
+    title: stories.title,
+    tldr: stories.tldr,
+    whyItMatters: stories.whyItMatters,
+    whyShown: stories.whyShown,
+    domainScores: stories.domainScores,
+    topScore: stories.topScore,
+    createdAt: stories.createdAt,
+    updatedAt: stories.updatedAt,
+  };
   const curated = db
-    .select()
+    .select(feedColumns)
     .from(stories)
     .where(and(eq(stories.status, 'curated'), gt(stories.createdAt, new Date(now - 72 * 36e5))))
     .orderBy(desc(stories.topScore))
@@ -119,7 +134,7 @@ export default async function BriefingPage() {
     .all();
 
   const rawRecent = db
-    .select()
+    .select(feedColumns)
     .from(stories)
     .where(and(eq(stories.status, 'raw'), gt(stories.createdAt, new Date(now - 24 * 36e5))))
     .orderBy(desc(stories.createdAt))

@@ -1,3 +1,5 @@
+// Namespace import keeps JSX working under vitest's classic transform (jsx: preserve).
+import * as React from 'react';
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { and, desc, eq, gt, inArray } from 'drizzle-orm';
@@ -45,8 +47,20 @@ export default async function DomainPage({ params }: { params: Promise<{ slug: s
 
   // Same 72h scope as the briefing, re-scored through this sector's lens.
   // No row cap: every count on this page (strip, scan log, kicker) must be exact.
+  // Projected to the FeedStory slice — the full row hauls a ~1.5KB embedding
+  // blob per story onto this hot page.
   const curated = db
-    .select()
+    .select({
+      id: stories.id,
+      title: stories.title,
+      tldr: stories.tldr,
+      whyItMatters: stories.whyItMatters,
+      whyShown: stories.whyShown,
+      domainScores: stories.domainScores,
+      topScore: stories.topScore,
+      createdAt: stories.createdAt,
+      updatedAt: stories.updatedAt,
+    })
     .from(stories)
     .where(
       and(eq(stories.status, 'curated'), gt(stories.createdAt, new Date(Date.now() - 72 * 36e5))),

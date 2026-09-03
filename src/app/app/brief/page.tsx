@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { requireViewer } from '@/lib/auth/user';
 import { getDb } from '@/lib/db';
 import { briefs, stories } from '@/lib/db/schema';
-import { renderMarkdown } from '@/lib/markdown';
+import { renderMarkdown, stripLeadingH1 } from '@/lib/markdown';
 import PageHeader from '@/components/PageHeader';
 import { paths } from '@/lib/urls';
 
@@ -38,11 +38,6 @@ function editionLabel(date: string): string {
 /** UTC wall-clock time of the edition's last write (reruns overwrite createdAt). */
 function utcTime(d: Date): string {
   return `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`;
-}
-
-/** The brief's own H1 duplicates the edition header — drop the first heading line. */
-function stripLeadingH1(md: string): string {
-  return md.replace(/^#\s+[^\n]+\n+/, '');
 }
 
 export default async function BriefPage({

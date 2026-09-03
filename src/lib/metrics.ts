@@ -1,5 +1,5 @@
 import { and, asc, eq, gte, inArray } from 'drizzle-orm';
-import { getDb } from './db';
+import { getDb, type Db } from './db';
 import { metricPoints } from './db/schema';
 
 export function utcDay(d: Date = new Date()): string {
@@ -16,7 +16,10 @@ export interface MetricInput {
 
 /** Idempotent daily write: re-running a job the same day updates in place. */
 export function upsertMetric(p: MetricInput): void {
-  const db = getDb();
+  upsertOne(getDb(), p);
+}
+
+function upsertOne(db: Pick<Db, 'insert'>, p: MetricInput): void {
   db.insert(metricPoints)
     .values({
       source: p.source,
@@ -35,11 +38,14 @@ export function upsertMetric(p: MetricInput): void {
 
 export function recordMetrics(points: MetricInput[]): number {
   let n = 0;
-  for (const p of points) {
-    if (!Number.isFinite(p.value)) continue;
-    upsertMetric(p);
-    n++;
-  }
+  // one WAL commit for the whole batch — a job run records hundreds of points
+  getDb().transaction((tx) => {
+    for (const p of points) {
+      if (!Number.isFinite(p.value)) continue;
+      upsertOne(tx, p);
+      n++;
+    }
+  });
   return n;
 }
 

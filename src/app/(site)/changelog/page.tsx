@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { desc, eq, gt } from 'drizzle-orm';
+import { and, desc, eq, gt } from 'drizzle-orm';
 import { requireViewer } from '@/lib/auth/user';
 import { getDb } from '@/lib/db';
 import { boardHistory, stories } from '@/lib/db/schema';
@@ -47,13 +47,15 @@ export default async function ChangelogPage({
   const db = getDb();
   const cutoff = new Date(Date.now() - 30 * 24 * 36e5);
 
+  // the 30-day cutoff goes to SQL so stories_status_created does the range
+  // scan; the score ≥40 rule stays in JS — the summary counts every curated
+  // story in the window, not just the rendered ones
   const curated = db
     .select()
     .from(stories)
-    .where(eq(stories.status, 'curated'))
+    .where(and(eq(stories.status, 'curated'), gt(stories.createdAt, cutoff)))
     .orderBy(desc(stories.createdAt))
-    .all()
-    .filter((s) => s.createdAt >= cutoff);
+    .all();
 
   const history = db
     .select()

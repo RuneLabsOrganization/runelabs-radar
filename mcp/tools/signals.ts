@@ -6,6 +6,7 @@ import { items, sources, stories } from '../../src/lib/db/schema';
 import { DOMAINS } from '../../src/lib/domains';
 import { urls } from '../../src/lib/urls';
 import { envelopeSchema, hoursAgo, parseJsonColumn, respond } from '../lib/payload';
+import { hasScope, type AuthContext } from '../lib/auth';
 
 const domainEnum = z.enum(DOMAINS).optional();
 
@@ -44,7 +45,7 @@ function ftsQuery(raw: string): string | null {
   return terms.map((t) => `"${t}"`).join(' OR ');
 }
 
-export function registerSignalTools(server: McpServer): void {
+export function registerSignalTools(server: McpServer, auth?: AuthContext): void {
   server.registerTool(
     'get_top_signals',
     {
@@ -64,6 +65,12 @@ export function registerSignalTools(server: McpServer): void {
       },
     },
     async ({ domain, limit, hours }) => {
+      if (auth && !hasScope(auth, 'read')) {
+        return respond(
+          { window_hours: hours, domain: domain ?? 'all', count: 0, signals: [] },
+          { summary: "This token has no 'read' scope — re-authorize with the read scope." },
+        );
+      }
       const db = getDb();
       const rows = db
         .select()
@@ -122,6 +129,12 @@ export function registerSignalTools(server: McpServer): void {
       },
     },
     async ({ query, limit, days }) => {
+      if (auth && !hasScope(auth, 'read')) {
+        return respond(
+          { query, count: 0, results: [] },
+          { summary: "This token has no 'read' scope — re-authorize with the read scope." },
+        );
+      }
       const match = ftsQuery(query);
       if (!match) {
         return respond(
@@ -218,8 +231,20 @@ export function registerSignalTools(server: McpServer): void {
       },
     },
     async ({ id }) => {
+      if (auth && !hasScope(auth, 'read')) {
+        return respond(
+          { found: false },
+          { summary: "This token has no 'read' scope — re-authorize with the read scope." },
+        );
+      }
       const db = getDb();
-      const s = db.select().from(stories).where(eq(stories.id, id)).get();
+      // Curated only — raw/filtered stories are pre-publication and must not
+      // be reachable by id enumeration.
+      const s = db
+        .select()
+        .from(stories)
+        .where(and(eq(stories.id, id), eq(stories.status, 'curated')))
+        .get();
       if (!s) {
         return respond(
           { found: false },

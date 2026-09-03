@@ -15,6 +15,10 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      # advisory: surface dependency CVEs without blocking merges
+      - run: npm audit --audit-level=high
+        continue-on-error: true
+      - run: npx tsc --noEmit
       - run: npm test
       - run: npm run build
         env:
@@ -22,3 +26,24 @@ jobs:
           # then (page-data collection imports auth config). Runtime uses the
           # real secret from .env — same pattern as the Dockerfile build stage.
           SESSION_SECRET: build-time-placeholder
+
+  # Build-only smoke check of both runtime images (nothing is pushed). Runs on
+  # PRs too so Dockerfile breakage is caught before merge; the gha layer cache
+  # keeps repeat runs to a couple of minutes. Scope per target since only web
+  # carries the expensive `next build` stage.
+  docker:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [web, worker]
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5
+      - uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3
+      - uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6
+        with:
+          context: .
+          target: ${{ matrix.target }}
+          push: false
+          cache-from: type=gha,scope=${{ matrix.target }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.target }}

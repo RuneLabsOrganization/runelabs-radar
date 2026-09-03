@@ -16,20 +16,26 @@ export function CreateBatchForm() {
     if (!title.trim()) return;
     setPending(true);
     setError(null);
-    const res = await fetch('/api/batches', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ title: title.trim() }),
-    });
-    setPending(false);
-    if (!res.ok) {
-      const body = (await res.json().catch(() => ({}))) as { error?: string };
-      setError(body.error ?? 'Could not create batch');
-      return;
+    try {
+      const res = await fetch('/api/batches', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ title: title.trim() }),
+      });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { error?: string };
+        setError(body.error ?? 'Could not create batch');
+        return;
+      }
+      const body = (await res.json()) as { slug: string };
+      router.push(`/app/build/batches/${body.slug}`);
+      router.refresh();
+    } catch {
+      // a rejected fetch is a network failure — the button must come back
+      setError('Network error — could not create batch');
+    } finally {
+      setPending(false);
     }
-    const body = (await res.json()) as { slug: string };
-    router.push(`/app/build/batches/${body.slug}`);
-    router.refresh();
   }
 
   return (

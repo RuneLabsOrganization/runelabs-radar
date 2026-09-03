@@ -83,36 +83,31 @@ export function recordEconomy(userId: number | null | undefined, economy: Econom
   const ent = entitlementFor(userId);
   const start = cycleStart(ent.resetDay, now);
   const cycleKey = start.toISOString().slice(0, 10);
-  const db = getDb();
-  const existing = db
-    .select()
-    .from(mcpEconomy)
-    .where(and(eq(mcpEconomy.userId, userId), eq(mcpEconomy.cycleKey, cycleKey)))
-    .get();
-  if (existing) {
-    db.update(mcpEconomy)
-      .set({
-        calls: existing.calls + 1,
-        tokensReturned: existing.tokensReturned + economy.returned,
-        tokensSavedVsFull: existing.tokensSavedVsFull + economy.saved_vs_full,
-        tokensSavedVsDiy: existing.tokensSavedVsDiy + economy.saved_vs_diy,
+  // One atomic statement (usage_counters pattern): a select-then-insert pair
+  // races across processes — the loser hit the (user_id, cycle_key) unique
+  // index and its savings were silently dropped by the caller's catch.
+  getDb()
+    .insert(mcpEconomy)
+    .values({
+      userId,
+      cycleKey,
+      calls: 1,
+      tokensReturned: economy.returned,
+      tokensSavedVsFull: economy.saved_vs_full,
+      tokensSavedVsDiy: economy.saved_vs_diy,
+      updatedAt: now,
+    })
+    .onConflictDoUpdate({
+      target: [mcpEconomy.userId, mcpEconomy.cycleKey],
+      set: {
+        calls: sql`${mcpEconomy.calls} + 1`,
+        tokensReturned: sql`${mcpEconomy.tokensReturned} + ${economy.returned}`,
+        tokensSavedVsFull: sql`${mcpEconomy.tokensSavedVsFull} + ${economy.saved_vs_full}`,
+        tokensSavedVsDiy: sql`${mcpEconomy.tokensSavedVsDiy} + ${economy.saved_vs_diy}`,
         updatedAt: now,
-      })
-      .where(eq(mcpEconomy.id, existing.id))
-      .run();
-  } else {
-    db.insert(mcpEconomy)
-      .values({
-        userId,
-        cycleKey,
-        calls: 1,
-        tokensReturned: economy.returned,
-        tokensSavedVsFull: economy.saved_vs_full,
-        tokensSavedVsDiy: economy.saved_vs_diy,
-        updatedAt: now,
-      })
-      .run();
-  }
+      },
+    })
+    .run();
 }
 
 export interface CycleEconomy {

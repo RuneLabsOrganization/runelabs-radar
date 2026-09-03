@@ -15,22 +15,21 @@ import { estimateTokens } from '../../src/lib/mcp-economy';
 import { getProfile, getSession, setSession } from '../../src/lib/personalization';
 import { promptLine, stripCjkLeak } from '../../src/lib/prompt-hygiene';
 import { urls } from '../../src/lib/urls';
+import { bump, peek } from '../../src/lib/usage/counters';
 import { envelopeSchema, hoursAgo, respond, withUserEconomy, type NextAction } from '../lib/payload';
 import { marketVisible, type AuthContext } from '../lib/auth';
 import { visibleTo } from '../../src/lib/opportunities/scope';
 
 const ASK_DAILY_CAP = Number(process.env.MCP_ASK_DAILY_CAP ?? 10);
-const askUsage = new Map<string, { date: string; count: number }>();
 
+// Anonymous per-caller daily cap, persisted in usage_counters (scout pattern):
+// a deploy or a second replica no longer grants a fresh allowance, and the
+// nightly gcCounters sweep keeps stale keys from accumulating.
 function askCapExceeded(key: string): boolean {
-  const today = new Date().toISOString().slice(0, 10);
-  const rec = askUsage.get(key);
-  return (rec?.date === today ? rec.count : 0) >= ASK_DAILY_CAP;
+  return peek(key, 'ask', 'day') >= ASK_DAILY_CAP;
 }
 function recordAsk(key: string): void {
-  const today = new Date().toISOString().slice(0, 10);
-  const rec = askUsage.get(key);
-  askUsage.set(key, { date: today, count: (rec?.date === today ? rec.count : 0) + 1 });
+  bump(key, 'ask', 'day');
 }
 
 interface AskOut {

@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { type Domain } from '@/lib/domains';
 import { timeAgo, type FeedStory } from '@/lib/feed';
 import { safeHttpUrl } from '@/lib/safe-url';
+import { paths } from '@/lib/urls';
 import { parseDomainScores, topDomain } from './DomainChips';
 import DomainFingerprint from './DomainFingerprint';
 import SignalMeter from './SignalMeter';
@@ -66,7 +67,7 @@ export default function SignalEntry({
             }
           >
             <Link
-              href={`/story/${story.id}`}
+              href={paths.story(story.id)}
               className="decoration-[var(--grat-strong)] underline-offset-2 hover:underline"
             >
               {story.title}

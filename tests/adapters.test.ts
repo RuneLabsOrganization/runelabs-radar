@@ -5,6 +5,7 @@ import { eq } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
 import { items, sources } from '@/lib/db/schema';
 import { adapters } from '@/lib/ingest/adapters';
+import { _setFetchLimitsForTests, _setSleepForTests, BodyTooLargeError, fetchText } from '@/lib/ingest/adapters/shared';
 import { runIngest } from '@/lib/ingest/ingest';
 import type { Source } from '@/lib/ingest/types';
 import { useTestDb } from './helpers/db';
@@ -36,8 +37,15 @@ function stubFetch(body: string, status = 200) {
   return fn;
 }
 
+beforeEach(() => {
+  // instant backoff: retry behavior stays covered without burning wall-clock time
+  _setSleepForTests(() => Promise.resolve());
+});
+
 afterEach(() => {
   vi.unstubAllGlobals();
+  _setSleepForTests(null);
+  _setFetchLimitsForTests(null);
 });
 
 describe('rss adapter', () => {
@@ -96,7 +104,7 @@ describe('rss adapter', () => {
     expect(out[0].publishedAt).toBeNull();
   });
 
-  it('throws on HTTP errors so runIngest records the failure', { timeout: 15000 }, async () => {
+  it('throws on HTTP errors so runIngest records the failure', async () => {
     stubFetch('gone', 500);
     await expect(
       adapters.rss.fetchItems(makeSource('rss', { url: 'https://example.com/feed' })),
@@ -134,7 +142,7 @@ describe('rss adapter', () => {
     expect(cfg.lastModified).toBe('Thu, 09 Jul 2026 00:00:00 GMT');
   });
 
-  it('retries a 429 and succeeds on the next attempt', { timeout: 15000 }, async () => {
+  it('retries a 429 and succeeds on the next attempt', async () => {
     let calls = 0;
     vi.stubGlobal(
       'fetch',
@@ -268,7 +276,7 @@ describe('github adapter', () => {
     await expect(adapters.github.fetchItems(makeSource('github', {}))).rejects.toThrow(/layout changed/);
   });
 
-  it('throws on fetch failure (after retries) so the health panel sees it', { timeout: 15000 }, async () => {
+  it('throws on fetch failure (after retries) so the health panel sees it', async () => {
     stubFetch('nope', 429);
     await expect(adapters.github.fetchItems(makeSource('github', {}))).rejects.toThrow(/429/);
   });
@@ -403,7 +411,7 @@ describe('runIngest', () => {
     );
   }
 
-  it('inserts new items, dedups on rerun, and tracks per-source health', { timeout: 20000 }, async () => {
+  it('inserts new items, dedups on rerun, and tracks per-source health', async () => {
     seedSources();
     stubRoutedFetch();
     const db = getDb();
@@ -496,5 +504,58 @@ describe('runIngest', () => {
 
     const res = await runIngest();
     expect(res).toEqual({ sourcesOk: 1, sourcesFailed: 0, sourcesSkipped: 2, newItems: 3 });
+  });
+});
+
+describe('fetchWithTimeout body handling', () => {
+  function stubStream(chunks: string[]): ReadableStream<Uint8Array> {
+    const encoder = new TextEncoder();
+    return new ReadableStream({
+      start(controller) {
+        for (const c of chunks) controller.enqueue(encoder.encode(c));
+        controller.close();
+      },
+    });
+  }
+
+  it('aborts a slow-drip body that outlasts the timeout instead of hanging unbounded', async () => {
+    _setFetchLimitsForTests({ timeoutMs: 50 });
+    // enqueues one chunk then never completes — the pre-fix body read had no timer at all
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode('<rss version="2.0"><channel>'));
+      },
+    });
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(stream, { status: 200 })));
+    await expect(fetchText('https://example.com/feed')).rejects.toThrow(/abort/i);
+  });
+
+  it('rejects a body that streams past the size cap, without retrying', async () => {
+    _setFetchLimitsForTests({ maxBodyBytes: 1024 });
+    const fn = vi.fn(async () => new Response(stubStream(['x'.repeat(600), 'y'.repeat(600)]), { status: 200 }));
+    vi.stubGlobal('fetch', fn);
+    await expect(fetchText('https://example.com/feed')).rejects.toThrow(BodyTooLargeError);
+    // a poison feed is deterministic — it must not burn the jittered retry budget
+    expect(fn).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects an oversized content-length before reading the body', async () => {
+    _setFetchLimitsForTests({ maxBodyBytes: 1024 });
+    const fn = vi.fn(
+      async () => new Response('tiny', { status: 200, headers: { 'content-length': String(2 * 1024 * 1024) } }),
+    );
+    vi.stubGlobal('fetch', fn);
+    await expect(fetchText('https://example.com/feed')).rejects.toThrow(BodyTooLargeError);
+    expect(fn).toHaveBeenCalledTimes(1);
+  });
+
+  it('still serves bodies under the cap and preserves status/headers', async () => {
+    _setFetchLimitsForTests({ maxBodyBytes: 1024 });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response('hello body', { status: 200, headers: { etag: '"v1"' } })),
+    );
+    const res = await fetchText('https://example.com/feed');
+    expect(res).toBe('hello body');
   });
 });

@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { DOMAINS, DOMAIN_LABELS, type Domain } from '@/lib/domains';
 import { blipPosition, easeOutExpo, kpiFormat } from '@/lib/scope';
+import { paths } from '@/lib/urls';
 import MiniTrend from './MiniTrend';
 
 export interface ScopeBlip {
@@ -316,13 +317,15 @@ export default function ScopeHero({
     };
     const onMove = (e: MouseEvent) => {
       const hit = pick(e);
-      setHover(hit);
+      // same blip → keep the previous object: a fresh {x,y,blip} on every
+      // mousemove re-rendered the whole hero at pointer rate
+      setHover((prev) => (prev?.blip.id === hit?.blip.id ? prev : hit));
       canvas.style.cursor = hit ? 'pointer' : 'default';
     };
     const onLeave = () => setHover(null);
     const onClick = (e: MouseEvent) => {
       const hit = pick(e);
-      if (hit) router.push(`/story/${hit.blip.id}`);
+      if (hit) router.push(paths.story(hit.blip.id));
     };
     canvas.addEventListener('mousemove', onMove);
     canvas.addEventListener('mouseleave', onLeave);
@@ -375,7 +378,7 @@ export default function ScopeHero({
         <ul className="sr-only">
           {[...new Map(blips.map((b) => [b.id, b])).values()].map((b) => (
             <li key={b.id}>
-              <a href={`/story/${b.id}`}>{b.title}</a>
+              <a href={paths.story(b.id)}>{b.title}</a>
             </li>
           ))}
         </ul>

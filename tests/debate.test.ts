@@ -1,11 +1,22 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { _setFetch } from '@/lib/llm/minimax';
 import { runDebate } from '@/lib/opportunities/critic';
 import { runOpportunities, SUB_KEYS } from '@/lib/opportunities/engine';
 import { generatePlan } from '@/lib/plans/generate';
 import { debates, llmCalls, opportunities, painPoints, stories } from '@/lib/db/schema';
-import { useTestDb } from './helpers/db';
+import { seedUser, useTestDb } from './helpers/db';
+
+const authHooks = vi.hoisted(() => ({
+  currentUser: null as { id: number; name: string; role: 'admin' | 'member' } | null,
+}));
+vi.mock('@/lib/auth/user', () => ({
+  requireApiUser: vi.fn(async () => authHooks.currentUser),
+  getCurrentUser: vi.fn(async () => authHooks.currentUser),
+  requireViewer: vi.fn(async () => authHooks.currentUser),
+}));
+
+import { POST as debatesPost } from '@/app/api/debates/route';
 
 let db: ReturnType<typeof useTestDb>;
 
@@ -166,7 +177,6 @@ describe('runDebate', () => {
   });
 
   it('records the requesting user as owner and returns the row id', async () => {
-    const { seedUser } = await import('./helpers/db');
     seedUser(db, 7);
     mockQueue([...ROLE_PAYLOADS]);
 
@@ -194,14 +204,66 @@ describe('runDebate', () => {
     const oppId = seedOpportunity();
     mockQueue([ADVOCATE, SKEPTIC, { nope: true }]); // realist returns garbage
 
-    await expect(runDebate(oppId)).rejects.toThrow();
+    await expect(runDebate(oppId)).rejects.toThrow(/realist returned no usable text/);
     expect(db.select().from(debates).all()).toHaveLength(0);
   });
 
   it('rejects when neither subject is given', async () => {
-    await expect(runDebate(null)).rejects.toThrow();
-    await expect(runDebate(null, '   ')).rejects.toThrow();
-    await expect(runDebate(999)).rejects.toThrow(); // missing opportunity
+    await expect(runDebate(null)).rejects.toThrow(/substantive idea text/);
+    await expect(runDebate(null, '   ')).rejects.toThrow(/substantive idea text/);
+    await expect(runDebate(999)).rejects.toThrow('opportunity 999 not found'); // missing opportunity
+  });
+});
+
+// --- POST /api/debates error mapping (3.8a) ---
+
+describe('POST /api/debates', () => {
+  const MEMBER = { id: 1, name: 'member', role: 'member' as const };
+
+  function jsonReq(body: unknown): Request {
+    return new Request('http://localhost/api/debates', { method: 'POST', body: JSON.stringify(body) });
+  }
+
+  it('401 when signed out', async () => {
+    authHooks.currentUser = null;
+    const res = await debatesPost(jsonReq({ idea: 'A subscription service turning podcast archives into show-notes' }));
+    expect(res.status).toBe(401);
+  });
+
+  it('400 with a stable message when neither idea nor opportunityId is given', async () => {
+    authHooks.currentUser = MEMBER;
+    const res = await debatesPost(jsonReq({}));
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: 'idea or opportunityId required' });
+  });
+
+  it('400 when the idea is too thin to debate (domain validation)', async () => {
+    authHooks.currentUser = MEMBER;
+    const res = await debatesPost(jsonReq({ idea: 'short' }));
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toContain('substantive idea text');
+  });
+
+  it('404 when the opportunity does not exist', async () => {
+    authHooks.currentUser = MEMBER;
+    const res = await debatesPost(jsonReq({ opportunityId: 999 }));
+    expect(res.status).toBe(404);
+    expect((await res.json()).error).toBe('opportunity 999 not found');
+  });
+
+  it('500 with a generic body when the LLM provider fails — no internals leak', async () => {
+    authHooks.currentUser = MEMBER;
+    // provider 4xx: non-retryable LlmError whose message names provider internals
+    _setFetch((async () => ({ ok: false, status: 400 }) as Response) as unknown as typeof fetch);
+
+    const res = await debatesPost(
+      jsonReq({ idea: 'A subscription service turning podcast archives into searchable show-notes pages' }),
+    );
+    expect(res.status).toBe(500);
+    const body = await res.json();
+    expect(body).toEqual({ error: 'internal' });
+    expect(JSON.stringify(body)).not.toContain('MiniMax');
+    expect(JSON.stringify(body)).not.toContain('HTTP 400');
   });
 });
 

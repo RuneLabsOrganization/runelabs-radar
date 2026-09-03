@@ -5,7 +5,7 @@
 import { and, eq, gte, sql } from 'drizzle-orm';
 import { getDb } from './db';
 import { batches, llmCalls, planEntitlements } from './db/schema';
-import { cycleStart, entitlementFor, quotaFor, type Tier, TIER_PRICES } from './billing';
+import { cycleStart, entitlementFor, planQuota, quotaFor, type Tier, TIER_PRICES } from './billing';
 import { TIER_CAPS } from './entitlements-caps';
 
 export type Capability =
@@ -61,8 +61,22 @@ function countWorkspaceBatches(userId: number): number {
 }
 
 function countDebates(userId: number, resetDay: number, now = new Date()): number {
-  // 4 llm_calls (feature='debate') per debate generation
-  return Math.floor(countFeature(userId, 'debate', resetDay, now) / 4);
+  return countCompleteQuartets(userId, 'debate', resetDay, now);
+}
+
+/**
+ * Debates and forges meter 4 llm_calls rows per generation (one per role), so
+ * the quota unit is a complete quartet. Chosen behavior for FAILED partial
+ * generations: their leftover rows are indistinguishable from complete ones
+ * at the llm_calls level (rows carry no run id), and Math.floor only counts
+ * full groups of 4 — a lone partial quartet is dropped, but leftovers from
+ * several failed generations can still combine into a phantom counted unit
+ * (one per 4 leftover rows). A precise fix needs write-time tagging in the
+ * debate/forge generators (mcp/tools), the way plans re-tag 'plan-failed';
+ * until then this over-counts failures, never under-counts completed runs.
+ */
+function countCompleteQuartets(userId: number, feature: string, resetDay: number, now = new Date()): number {
+  return Math.floor(countFeature(userId, feature, resetDay, now) / 4);
 }
 
 export function can(user: EntitlementUser | null | undefined, capability: Capability, now = new Date()): GateResult {
@@ -111,7 +125,7 @@ export function can(user: EntitlementUser | null | undefined, capability: Capabi
 
     case 'plan': {
       const used = countFeature(user.id, 'plan', ent.resetDay, now);
-      const quota = ent.plansPerMonth || caps.plansPerMonth;
+      const quota = planQuota(ent);
       return used < quota
         ? { ok: true, tier, used, quota }
         : {
@@ -190,7 +204,7 @@ export function can(user: EntitlementUser | null | undefined, capability: Capabi
         };
       }
       // 4 llm_calls (feature='forge') per forge, same accounting as debates
-      const used = Math.floor(countFeature(user.id, 'forge', ent.resetDay, now) / 4);
+      const used = countCompleteQuartets(user.id, 'forge', ent.resetDay, now);
       return used < quota
         ? { ok: true, tier, used, quota }
         : {

@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { useId, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { exportChartAsPng } from '@/lib/export-png';
 
 /**
@@ -23,6 +23,14 @@ export default function ChartFrame({
 }) {
   const id = useId().replace(/[^a-zA-Z0-9_-]/g, '');
   const [state, setState] = useState<'idle' | 'busy' | 'copied' | 'saved' | 'error'>('idle');
+  // tracked so unmount never leaves a dangling setState timer
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (timer.current) clearTimeout(timer.current);
+    },
+    [],
+  );
 
   async function onExport() {
     const root = document.getElementById(id);
@@ -34,7 +42,8 @@ export default function ChartFrame({
     } catch {
       setState('error');
     } finally {
-      setTimeout(() => setState('idle'), 1800);
+      if (timer.current) clearTimeout(timer.current);
+      timer.current = setTimeout(() => setState('idle'), 1800);
     }
   }
 

@@ -5,7 +5,7 @@ import { getDb } from '../../src/lib/db';
 import { users } from '../../src/lib/db/schema';
 import { usageReport } from '../../src/lib/usage';
 import { can, TIER_CAPS } from '../../src/lib/entitlements';
-import { entitlementFor, usageThisCycle } from '../../src/lib/billing';
+import { entitlementFor, planQuota, usageThisCycle } from '../../src/lib/billing';
 import { economyThisCycle, economyLifetimeSaved } from '../../src/lib/mcp-economy';
 import { envelopeSchema, respond, withUserEconomy } from '../lib/payload';
 import type { AuthContext } from '../lib/auth';
@@ -205,7 +205,7 @@ export function registerUsageTools(server: McpServer, auth: AuthContext): void {
           ok: true,
           tier: ent.tier,
           cycle_key: eco.cycle_key,
-          plans: { used: plansUsed, quota: ent.plansPerMonth || caps.plansPerMonth },
+          plans: { used: plansUsed, quota: planQuota(ent) },
           debates: {
             used: debateGate.used ?? null,
             quota: caps.debatesPerMonth < 0 ? null : (debateGate.quota ?? caps.debatesPerMonth),

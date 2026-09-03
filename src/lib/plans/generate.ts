@@ -1,6 +1,6 @@
-import { and, desc, eq, gte, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, isNull, sql } from 'drizzle-orm';
 import { getDb } from '../db';
-import { boardEntries, comps, opportunities, painPoints, stacks } from '../db/schema';
+import { boardEntries, comps, llmCalls, opportunities, painPoints, stacks } from '../db/schema';
 import { aaModels, latestRadarScores, normalizeModelKey } from '../analytics';
 import { config } from '../config';
 import { chatJSON } from '../llm/minimax';
@@ -42,6 +42,13 @@ export function generatePlan(
     onProgress?: (done: number, total: number, label: string) => void;
     /** OAuth user when MCP-triggered — metered onto every llm_calls row of the generation. */
     userId?: number | null;
+    /**
+     * Admission row id from billing.admitPlanGeneration when the caller has
+     * already reserved a quota slot: released on cache hits and failures,
+     * swapped for the frame's metered row on success. Null/omitted = the
+     * caller gates separately (batches, pipeline).
+     */
+    admissionId?: number | null;
   },
 ): Promise<PlanResult> {
   const includeMarket = opts?.includeMarket ?? true;
@@ -63,12 +70,24 @@ export function generatePlan(
       }
     }
   };
-  const p = generatePlanInner(oppId, opts?.force ?? false, includeMarket, broadcast, opts?.userId ?? null).finally(
-    () => {
+  const p = generatePlanInner(
+    oppId,
+    opts?.force ?? false,
+    includeMarket,
+    broadcast,
+    opts?.userId ?? null,
+    opts?.admissionId ?? null,
+  )
+    .catch((e) => {
+      // a rejection escaped generatePlanInner's own handling (e.g. a grounding
+      // query threw before the frame) — never leave the quota slot held
+      releasePlanAdmission(opts?.admissionId ?? null);
+      throw e;
+    })
+    .finally(() => {
       // delete only our own entry — a force call may have replaced it meanwhile
       if (inflight.get(key)?.p === p) inflight.delete(key);
-    },
-  );
+    });
   inflight.set(key, { p, listeners });
   return p;
 }
@@ -86,6 +105,20 @@ export function readPlan(oppId: number, userId: number | null = null): Execution
     return planFromWire(JSON.parse(row.plan));
   } catch {
     return null;
+  }
+}
+
+/**
+ * Release a quota-admission row reserved by billing.admitPlanGeneration.
+ * Idempotent and best-effort — safe to call after generate.ts already
+ * swapped or released it (llm_calls ids are autoincrement, never reused).
+ */
+export function releasePlanAdmission(admissionId: number | null | undefined): void {
+  if (admissionId == null) return;
+  try {
+    getDb().delete(llmCalls).where(eq(llmCalls.id, admissionId)).run();
+  } catch (e) {
+    console.error('[plans] admission release failed:', e);
   }
 }
 
@@ -120,14 +153,64 @@ async function generatePlanInner(
   includeMarket: boolean,
   onProgress?: (done: number, total: number, label: string) => void,
   userId: number | null = null,
+  admissionId: number | null = null,
 ): Promise<PlanResult> {
   const db = getDb();
+  const genStart = new Date();
+  // Quota accounting for this generation: the frame's metered llm_calls row
+  // (feature='plan') is the row billing.usageThisCycle counts; a caller-
+  // supplied admission row holds the slot from gate time until the frame lands.
+  let frameRowId: number | null = null;
+  let admission = admissionId;
+  const releaseAdmission = (): void => {
+    const id = admission;
+    admission = null;
+    releasePlanAdmission(id);
+  };
+  // A failed generation must not consume plan quota: re-tag the frame's
+  // metered row feature='plan-failed' (it stays in llm_calls for cost
+  // attribution — usageThisCycle and entitlements count feature='plan'
+  // exactly) and hand the reserved admission slot back.
+  const compensateFailure = (): void => {
+    releaseAdmission();
+    const id = frameRowId;
+    if (id === null) return;
+    frameRowId = null;
+    try {
+      db.update(llmCalls).set({ feature: 'plan-failed' }).where(eq(llmCalls.id, id)).run();
+    } catch (e) {
+      console.error('[plans] failed-generation compensation failed:', e);
+    }
+  };
+  // The newest feature='plan' row for this caller at/after genStart is the
+  // frame row this generation just metered. Best-effort: chatJSON swallows
+  // metering-insert failures (→ null, nothing to compensate), and rows carry
+  // no run id, so a concurrent same-user generation whose frame lands in the
+  // same instant could be picked instead — accepted residual.
+  const locateFrameRow = (): number | null =>
+    db
+      .select({ id: llmCalls.id })
+      .from(llmCalls)
+      .where(
+        and(
+          eq(llmCalls.feature, 'plan'),
+          userId === null ? isNull(llmCalls.userId) : eq(llmCalls.userId, userId),
+          gte(llmCalls.ts, genStart),
+        ),
+      )
+      .orderBy(desc(llmCalls.id))
+      .limit(1)
+      .get()?.id ?? null;
+
   let opp = db
     .select()
     .from(opportunities)
     .where(and(eq(opportunities.id, oppId), visibleTo(userId)))
     .get();
-  if (!opp) return { ok: false, error: 'opportunity not found' };
+  if (!opp) {
+    releaseAdmission();
+    return { ok: false, error: 'opportunity not found' };
+  }
 
   // steps: (launch brief if missing) + frame + one per lifecycle phase
   const total = (opp.brief ? 0 : 1) + 1 + PLAN_PHASES.length;
@@ -137,7 +220,11 @@ async function generatePlanInner(
   if (!force && opp.plan) {
     try {
       const cached = planFromWire(JSON.parse(opp.plan));
-      if (cached) return { ok: true, plan: cached, cached: true };
+      // cache hits write no llm_calls rows — hand the reserved slot straight back
+      if (cached) {
+        releaseAdmission();
+        return { ok: true, plan: cached, cached: true };
+      }
     } catch {
       // corrupt cache — fall through and regenerate over it
     }
@@ -147,7 +234,10 @@ async function generatePlanInner(
   if (!opp.brief) {
     const briefRes = await generateBrief(oppId, { userId, allowMarket: includeMarket });
     report('launch brief');
-    if (!briefRes.ok) return { ok: false, error: `brief generation failed: ${briefRes.error}` };
+    if (!briefRes.ok) {
+      releaseAdmission();
+      return { ok: false, error: `brief generation failed: ${briefRes.error}` };
+    }
     opp = db.select().from(opportunities).where(and(eq(opportunities.id, oppId), visibleTo(userId))).get() ?? opp;
   }
   const brief = opp.brief ? (JSON.parse(opp.brief) as Record<string, unknown>) : null;
@@ -258,6 +348,10 @@ async function generatePlanInner(
         `"pricing":{"model":"e.g. subscription / usage credits / one-time","priceUsd":0,"notes":"..."},"stackVenture":"${stackVenture ?? ''}"}`,
       { maxTokens: 4000, feature: 'plan', userId },
     );
+    frameRowId = locateFrameRow();
+    // the frame's metered row holds the quota slot from here on, so the
+    // admission placeholder is redundant — release it before the phases run
+    releaseAdmission();
     report('plan frame');
 
     // calls 2-6: one task graph per lifecycle phase
@@ -265,7 +359,10 @@ async function generatePlanInner(
     for (const phase of PLAN_PHASES) {
       const draft = await generatePhase(SYSTEM, dossier, frame, phase, userId);
       report(`phase: ${phase}`);
-      if (!draft) return { ok: false, error: `phase "${phase}" failed validation — try again` };
+      if (!draft) {
+        compensateFailure();
+        return { ok: false, error: `phase "${phase}" failed validation — try again` };
+      }
       phases.push({ phase, goal: draft.goal, tasks: draft.tasks });
     }
 
@@ -284,6 +381,7 @@ async function generatePlanInner(
       const sampleTasks = phases[0]?.tasks;
       const sample = Array.isArray(sampleTasks) ? (sampleTasks as unknown[])[0] : undefined;
       if (sample) console.error('[plans] sample failed task:', JSON.stringify(sample).slice(0, 2000));
+      compensateFailure();
       return { ok: false, error: 'plan failed validation — try again' };
     }
 
@@ -299,6 +397,7 @@ async function generatePlanInner(
       .run();
     return { ok: true, plan, cached: false };
   } catch (e) {
+    compensateFailure();
     console.error('[plans] generation failed:', e);
     return { ok: false, error: 'generation failed — try again shortly' };
   }
@@ -323,7 +422,9 @@ async function generatePhase(
         `"rollback":"how to undo safely"}.\nPhase guidance: ${PHASE_BRIEFS[phase]}`,
       // phases tag as 'plan-phase', NOT 'plan': billing.usageThisCycle counts
       // feature='plan' rows and the frame call above is the only one per
-      // generation — that keeps tier quotas in plan units, not LLM-call units
+      // generation — that keeps tier quotas in plan units, not LLM-call units.
+      // When a generation fails after the frame, the frame row is re-tagged
+      // 'plan-failed' so the attempt never consumes quota.
       { maxTokens: 8000, feature: 'plan-phase', userId },
     );
     if (typeof draft.goal === 'string' && Array.isArray(draft.tasks) && draft.tasks.length >= 2) {

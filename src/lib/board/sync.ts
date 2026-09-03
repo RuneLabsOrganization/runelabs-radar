@@ -1,4 +1,4 @@
-import { and, desc, eq, gte } from 'drizzle-orm';
+import { and, desc, eq, gte, lt } from 'drizzle-orm';
 import { getDb } from '../db';
 import { benchmarkSnapshots, boardEntries, boardProposals, stories } from '../db/schema';
 import { config } from '../config';
@@ -41,6 +41,47 @@ function storeSnapshot(source: string, raw: string): void {
     .insert(benchmarkSnapshots)
     .values({ source, raw: raw.slice(0, SNAPSHOT_MAX_CHARS), fetchedAt: new Date() })
     .run();
+}
+
+/** Snapshots older than this are ignored by the weekly sync and dropped by pruneBenchmarkSnapshots. */
+export const SNAPSHOT_RETENTION_MS = 90 * 864e5;
+
+/**
+ * Latest snapshot per source, bounded to the retention window. Rows run to
+ * SNAPSHOT_MAX_CHARS and the table only shrinks via pruneBenchmarkSnapshots,
+ * so the weekly sync must never full-scan it — this reads one row per source.
+ * A source whose newest snapshot is older than the window drops out entirely:
+ * the proposal prompt treats recency as critical, and months-old benchmark
+ * data is worse than none.
+ */
+export function latestSnapshotsBySource(): Map<string, string> {
+  const db = getDb();
+  const since = new Date(Date.now() - SNAPSHOT_RETENTION_MS);
+  const sources = db
+    .selectDistinct({ source: benchmarkSnapshots.source })
+    .from(benchmarkSnapshots)
+    .where(gte(benchmarkSnapshots.fetchedAt, since))
+    .all();
+  const latest = new Map<string, string>();
+  for (const { source } of sources) {
+    const row = db
+      .select({ raw: benchmarkSnapshots.raw })
+      .from(benchmarkSnapshots)
+      .where(and(eq(benchmarkSnapshots.source, source), gte(benchmarkSnapshots.fetchedAt, since)))
+      .orderBy(desc(benchmarkSnapshots.fetchedAt), desc(benchmarkSnapshots.id))
+      .limit(1)
+      .get();
+    if (row) latest.set(source, row.raw);
+  }
+  return latest;
+}
+
+/** Drop snapshots older than the retention window; returns rows removed. */
+export function pruneBenchmarkSnapshots(): number {
+  return getDb()
+    .delete(benchmarkSnapshots)
+    .where(lt(benchmarkSnapshots.fetchedAt, new Date(Date.now() - SNAPSHOT_RETENTION_MS)))
+    .run().changes;
 }
 
 interface AaApiModel {
@@ -332,16 +373,9 @@ export async function runBoardSync(): Promise<{ snapshots: number; proposals: nu
       }
     }
   }
-  // Latest snapshot per source (includes earlier weeks when this run's fetches failed).
-  const allSnaps = db
-    .select()
-    .from(benchmarkSnapshots)
-    .orderBy(desc(benchmarkSnapshots.fetchedAt), desc(benchmarkSnapshots.id))
-    .all();
-  const latestBySource = new Map<string, string>();
-  for (const s of allSnaps) {
-    if (!latestBySource.has(s.source)) latestBySource.set(s.source, s.raw);
-  }
+  // Latest snapshot per source, bounded to the retention window (includes
+  // earlier weeks when this run's fetches failed) — never a full-table scan.
+  const latestBySource = latestSnapshotsBySource();
   const hasBenchmarks = latestBySource.size > 0;
   const perSource = Math.floor(PROMPT_SNAPSHOT_BUDGET / Math.max(1, latestBySource.size));
   const snapshotText = Array.from(latestBySource.entries())

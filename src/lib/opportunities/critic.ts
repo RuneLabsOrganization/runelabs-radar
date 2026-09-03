@@ -175,7 +175,9 @@ function debateSubject(
       throw new LlmError('debate needs an opportunity id or a substantive idea text', false);
     }
     return {
-      subject: `Idea under debate (free-text, unvetted — no scores or dossier exist yet):\n${idea}`,
+      subject:
+        'Idea under debate (free-text, unvetted — no scores or dossier exist yet):\n' +
+        `<idea>\n${idea}\n</idea>`,
       sector: null,
       idea,
     };
@@ -211,8 +213,11 @@ function debateSubject(
 /**
  * The realist's grounding block — the same sources the brief/plan generators
  * use: sector pains, 60d money comps, 7d launch activity, model-market prices.
+ * AA redistribution terms: model-market prices enter the prompt only when the
+ * caller is entitled to them (marketVisible) — otherwise the section is
+ * omitted entirely, mirroring the ask_radar gate.
  */
-function realistGrounding(sector: string | null): string {
+function realistGrounding(sector: string | null, marketVisible: boolean): string {
   const db = getDb();
   const painRows = sector
     ? db
@@ -258,25 +263,59 @@ function realistGrounding(sector: string | null): string {
       ? launchRows.map((r) => `- ${r.category ?? 'untagged'}: ${r.n} launches`).join('\n')
       : '(no launch activity recorded)';
 
-  const market = marketModels();
-  const marketText = market
-    ? market.models
-        .filter((m) => m.priceIn !== null && m.priceOut !== null)
-        .sort((a, b) => b.intelligence / b.price - a.intelligence / a.price)
-        .slice(0, 6)
-        .map(
-          (m) =>
-            `- ${promptLine(m.name, 60)}: intel ${m.intelligence}, in $${m.priceIn}/1M, out $${m.priceOut}/1M`,
-        )
-        .join('\n')
-    : '(no market data)';
+  const marketSection = marketVisible
+    ? (() => {
+        const market = marketModels();
+        const marketText = market
+          ? market.models
+              .filter((m) => m.priceIn !== null && m.priceOut !== null)
+              .sort((a, b) => b.intelligence / b.price - a.intelligence / a.price)
+              .slice(0, 6)
+              .map(
+                (m) =>
+                  `- ${promptLine(m.name, 60)}: intel ${m.intelligence}, in $${m.priceIn}/1M, out $${m.priceOut}/1M`,
+              )
+              .join('\n')
+          : '(no market data)';
+        return `\n\n<model-market>\n${marketText}\n</model-market>`;
+      })()
+    : '';
 
   return (
     `<sector-pains>\n${painsText}\n</sector-pains>\n\n` +
     `<money-comps>\n${compsText}\n</money-comps>\n\n` +
-    `<launch-activity-7d>\n${launchesText}\n</launch-activity-7d>\n\n` +
-    `<model-market>\n${marketText}\n</model-market>`
+    `<launch-activity-7d>\n${launchesText}\n</launch-activity-7d>` +
+    marketSection
   );
+}
+
+/**
+ * Structure-preserving truncation for caller-supplied grounding: promptLine
+ * would collapse the block's newlines into one mangled line (and the whole
+ * blob once got sliced into ideaText). Cut at a line boundary instead.
+ */
+function truncateBlock(s: string, max: number): string {
+  if (s.length <= max) return s;
+  const cut = s.slice(0, max);
+  const lastNl = cut.lastIndexOf('\n');
+  return `${lastNl > max / 2 ? cut.slice(0, lastNl) : cut}\n…`;
+}
+
+export interface DebateOptions {
+  /**
+   * Caller-supplied grounding for a free-text idea (pains/comps/market picks)
+   * — shown to the market realist ONLY, under its own ~2000-char budget.
+   * Never folded into the idea text, so debates.ideaText and the public card
+   * title stay the clean idea.
+   */
+  grounding?: string;
+  /**
+   * AA redistribution gate: model-market prices enter the realist's prompt
+   * only when true. Defaults to true — pipeline callers (the daily engine,
+   * batches, forge, signed-in web users) are the platform itself or entitled
+   * users; the anonymous-capable MCP layer passes marketVisible(auth).
+   */
+  marketVisible?: boolean;
 }
 
 /**
@@ -294,8 +333,10 @@ export async function runDebate(
   ideaText?: string,
   userId: number | null = null,
   feature: string = 'debate',
+  opts: DebateOptions = {},
 ): Promise<DebateResult> {
   const { subject, sector, idea } = debateSubject(oppId, ideaText, userId);
+  const grounding = opts.grounding ? truncateBlock(opts.grounding, 2000) : '';
 
   const prior = (turns: DebateTurn[]): string =>
     turns.length === 0
@@ -350,7 +391,8 @@ export async function runDebate(
       'not support — unsupported claims are the worst sin. 3-6 sentences.' +
       UNTRUSTED +
       ' Respond ONLY with JSON: {"text":"..."}',
-    `<subject>\n${subject}\n</subject>${prior(turns)}\n\n${realistGrounding(sector)}`,
+    `<subject>\n${subject}\n</subject>${prior(turns)}\n\n${realistGrounding(sector, opts.marketVisible ?? true)}` +
+      (grounding ? `\n\n${grounding}` : ''),
   );
   turns.push({ role: 'realist', text: turnText(realist, 'realist') });
 

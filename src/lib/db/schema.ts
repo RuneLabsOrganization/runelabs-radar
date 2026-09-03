@@ -115,7 +115,9 @@ export const items = sqliteTable(
     fetchedAt: integer('fetched_at', { mode: 'timestamp' }).notNull(),
     storyId: integer('story_id').references(() => stories.id),
   },
-  (t) => [index('items_story').on(t.storyId)],
+  // items_story for story→items joins; items_fetched_at for the dominant
+  // "recent items" filter (landing page runs WHERE fetched_at >= ? per request)
+  (t) => [index('items_story').on(t.storyId), index('items_fetched_at').on(t.fetchedAt)],
 );
 
 export const votes = sqliteTable(
@@ -222,9 +224,7 @@ export const metricPoints = sqliteTable(
     date: text('date').notNull(), // YYYY-MM-DD (UTC)
     createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
   },
-  (t) => ({
-    metricKey: uniqueIndex('metric_points_key').on(t.source, t.entity, t.metric, t.date),
-  }),
+  (t) => [uniqueIndex('metric_points_key').on(t.source, t.entity, t.metric, t.date)],
 );
 
 export const launches = sqliteTable('launches', {
@@ -399,7 +399,12 @@ export const jobRuns = sqliteTable(
     stats: text('stats'),
   },
   // the header's freshness indicator runs this on every navigation
-  (t) => [index('job_runs_job_status').on(t.job, t.status, t.finishedAt)],
+  (t) => [
+    index('job_runs_job_status').on(t.job, t.status, t.finishedAt),
+    // at most one live runner per job — the job-lock claim is an insert that
+    // fails on conflict instead of a check-then-insert race
+    uniqueIndex('job_runs_running_unique').on(t.job).where(sql`${t.status} = 'running'`),
+  ],
 );
 
 export const llmUsage = sqliteTable('llm_usage', {
@@ -427,7 +432,12 @@ export const llmCalls = sqliteTable(
     durationMs: integer('duration_ms').notNull().default(0), // wall time — also powers first-party speed data
     estCostUsd: real('est_cost_usd').notNull().default(0),
   },
-  (t) => [index('llm_calls_ts').on(t.ts), index('llm_calls_feature_ts').on(t.feature, t.ts)],
+  (t) => [
+    index('llm_calls_ts').on(t.ts),
+    index('llm_calls_feature_ts').on(t.feature, t.ts),
+    // per-user quota checks filter on exactly (feature, user_id, ts >= ?)
+    index('llm_calls_feature_user_ts').on(t.feature, t.userId, t.ts),
+  ],
 );
 
 /**

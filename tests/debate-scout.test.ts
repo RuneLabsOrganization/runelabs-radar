@@ -48,7 +48,8 @@ import { dismissLead, insertLeads } from '@/lib/opportunities/leads';
 import { loadPrimitives } from '@/lib/opportunities/primitives';
 import { dayKey } from '@/lib/opportunities/seed';
 import { loadWedges, seedWedges } from '@/lib/opportunities/wedges';
-import { comps, launches, llmCalls, opportunities, painPoints, stories } from '@/lib/db/schema';
+import { comps, launches, llmCalls, opportunities, painPoints, stories, usageCounters } from '@/lib/db/schema';
+import { gcCounters, peek } from '@/lib/usage/counters';
 import { seedUser, useTestDb } from './helpers/db';
 
 const debateMock = vi.mocked(runDebate);
@@ -177,19 +178,25 @@ describe('debate_idea', () => {
     const client = await wire('debate-happy');
     const res = await call(client, 'debate_idea', { idea: IDEA });
 
-    // runDebate got (null, idea + grounding block)
+    // runDebate got (null, clean idea, userId, feature, {grounding, marketVisible}) —
+    // the grounding block is a separate parameter, never folded into the idea
     expect(debateMock).toHaveBeenCalledTimes(1);
-    const [oppId, ideaText] = debateMock.mock.calls[0]!;
+    const [oppId, ideaText, userId, feature, opts] = debateMock.mock.calls[0]!;
     expect(oppId).toBeNull();
-    expect(ideaText).toContain(IDEA);
-    expect(ideaText).toContain('<grounding>');
-    expect(ideaText).toContain('<pains>');
-    expect(ideaText).toContain('tracking LLM token spend');
-    expect(ideaText).toContain('<comps>');
-    expect(ideaText).toContain('TokenSpendly');
-    expect(ideaText).toContain('<launch-activity-7d>');
-    expect(ideaText).toContain('<closest-opportunities>');
-    expect(ideaText).toContain('llm-spend-tracker');
+    expect(ideaText).toBe(IDEA);
+    expect(userId).toBeNull();
+    expect(feature).toBe('debate');
+    expect(opts?.marketVisible).toBe(false); // anonymous caller, AA_PUBLIC unset
+    const block = opts?.grounding ?? '';
+    expect(block).toContain('<grounding>');
+    expect(block).toContain('<pains>');
+    expect(block).toContain('tracking LLM token spend');
+    expect(block).toContain('<comps>');
+    expect(block).toContain('TokenSpendly');
+    expect(block).toContain('<launch-activity-7d>');
+    expect(block).toContain('<closest-opportunities>');
+    expect(block).toContain('llm-spend-tracker');
+    expect(block).not.toContain('<model-market>'); // gated off for this caller
 
     expect(res.structuredContent).toMatchObject({
       ok: true,
@@ -233,6 +240,46 @@ describe('debate_idea', () => {
     expect(third.structuredContent).toMatchObject({ ok: false });
     expect(third.structuredContent!.error as string).toContain('daily debate cap reached (2)');
     expect(debateMock).toHaveBeenCalledTimes(2); // the refusal never reaches the LLM
+  });
+
+  it('cap persists across module re-instantiation (durable counter, not module state)', async () => {
+    const client = await wire('debate-cap-persist');
+    await call(client, 'debate_idea', { idea: IDEA });
+    await call(client, 'debate_idea', { idea: IDEA });
+    expect(peek('debate-cap-persist', 'debate', 'day')).toBe(2);
+
+    // a fresh copy of the tool module — the old module-level Map would have
+    // reset to zero here and granted a third debate
+    vi.resetModules();
+    const [{ registerDebateTools: registerFresh }, freshDb] = await Promise.all([
+      import('../mcp/tools/debate'),
+      import('@/lib/db'),
+    ]);
+    freshDb._setDb(db);
+    const server = new McpServer({ name: 'debate-cap-fresh', version: '0.0.1' });
+    registerFresh(server, authFor('debate-cap-persist'));
+    const [c, s] = InMemoryTransport.createLinkedPair();
+    const freshClient = new Client({ name: 'mcp-test', version: '0.0.1' });
+    await Promise.all([freshClient.connect(c), server.connect(s)]);
+
+    const third = await call(freshClient, 'debate_idea', { idea: IDEA });
+    expect(third.structuredContent).toMatchObject({ ok: false });
+    expect(third.structuredContent!.error as string).toContain('daily debate cap reached (2)');
+  });
+
+  it('stale debate counter rows are inside the sweep GC scope', () => {
+    db.insert(usageCounters)
+      .values({
+        bucket: 'ip:stale-caller',
+        feature: 'debate',
+        windowStart: new Date(Date.now() - 3 * 864e5),
+        count: 9,
+      })
+      .run();
+    expect(gcCounters()).toBeGreaterThan(0);
+    expect(
+      db.select().from(usageCounters).where(eq(usageCounters.bucket, 'ip:stale-caller')).all(),
+    ).toHaveLength(0);
   });
 
   it('writes llm_calls rows tagged debate for the signed-in user', async () => {

@@ -19,17 +19,33 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 import { loadDotEnv } from '../src/lib/env';
 import { getIdentity } from '../src/lib/identity';
 import { urls } from '../src/lib/urls';
-import { authenticate, issuerUrl, mcpPublicUrl, wwwAuthenticate } from './lib/auth';
+import { assertPublicUrl, authenticate, issuerUrl, mcpPublicUrl, wwwAuthenticate } from './lib/auth';
 import { buildServer } from './build';
+import { contained, installProcessGuards } from './lib/contain';
+import { isAllowedOrigin } from './lib/origin';
 import { rateLimited, rateLimitPerHour } from './lib/rate';
 import { gcCounters } from '../src/lib/usage/counters';
 
 loadDotEnv();
+assertPublicUrl();
+installProcessGuards();
 
 const PORT = Number(process.env.MCP_PORT ?? 3122);
 
 const httpServer = createServer(async (req: IncomingMessage, res: ServerResponse) => {
   const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
+
+  // DNS-rebinding guard (MCP spec: validate Origin on every request). In
+  // anonymous mode there is no bearer to check, so without this any webpage
+  // could POST here and burn the machine's anonymous LLM/rate budget — CORS
+  // reflection below only hides the response, the request still runs. Token
+  // mode instead answers bad/missing bearers with the 401 challenge, so its
+  // CORS stays open to browser clients on any origin.
+  if (process.env.MCP_AUTH_REQUIRED !== 'true' && !isAllowedOrigin(req.headers.origin, process.env.MCP_PUBLIC_URL)) {
+    res.writeHead(403, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ error: 'forbidden origin' }));
+    return;
+  }
 
   // CORS: browsers only. Token mode allows any origin (the bearer is the
   // credential); anonymous self-host mode reflects loopback origins only, so
@@ -127,14 +143,17 @@ const httpServer = createServer(async (req: IncomingMessage, res: ServerResponse
   }
 
   // Stateless mode: one server+transport per request, no session persistence.
+  // contained(): a throwing handler gets a 500 JSON body, not a dead process.
   const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
   const server = buildServer(auth);
   res.on('close', () => {
     transport.close().catch(() => {});
     server.close().catch(() => {});
   });
-  await server.connect(transport);
-  await transport.handleRequest(req, res);
+  await contained(async () => {
+    await server.connect(transport);
+    await transport.handleRequest(req, res);
+  }, res);
 });
 
 // prune expired counter rows hourly; unref so it never holds the process open

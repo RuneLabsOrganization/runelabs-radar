@@ -1,3 +1,5 @@
+// Namespace import keeps JSX working under vitest's classic transform (jsx: preserve).
+import * as React from 'react';
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { desc, eq, gt, inArray, ne } from 'drizzle-orm';
@@ -57,9 +59,17 @@ export default async function StoryPage({ params }: { params: Promise<{ id: stri
   const scores = parseDomainScores(story.domainScores);
   const primary = topDomain(scores);
 
-  // related: same primary domain, recent, excluding self
+  // related: same primary domain, recent, excluding self — projected to the
+  // fields the rail reads; 200 full rows would haul the embedding blobs along
   const recent = db
-    .select()
+    .select({
+      id: stories.id,
+      title: stories.title,
+      status: stories.status,
+      domainScores: stories.domainScores,
+      topScore: stories.topScore,
+      createdAt: stories.createdAt,
+    })
     .from(stories)
     .where(
       gt(stories.createdAt, new Date(Date.now() - 14 * 24 * 36e5)),

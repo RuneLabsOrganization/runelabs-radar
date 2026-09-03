@@ -5,23 +5,12 @@ import Link from 'next/link';
 import {
   CONSENT_COOKIE,
   CONSENT_MAX_AGE,
-  parseConsent,
+  readConsent,
   serializeConsent,
   type Consent,
 } from '@/lib/consent';
 import { paths } from '@/lib/urls';
 import { Button } from '@/components/ui/button';
-
-function readConsent(): Consent | null {
-  const prefix = `${CONSENT_COOKIE}=`;
-  for (const part of document.cookie.split(';')) {
-    const trimmed = part.trim();
-    if (trimmed.startsWith(prefix)) {
-      return parseConsent(decodeURIComponent(trimmed.slice(prefix.length)));
-    }
-  }
-  return null;
-}
 
 function writeConsent(c: Consent) {
   document.cookie = `${CONSENT_COOKIE}=${encodeURIComponent(serializeConsent(c))}; max-age=${CONSENT_MAX_AGE}; path=/; samesite=lax`;

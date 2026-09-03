@@ -16,37 +16,52 @@ export function AddToBatchButton({
 }) {
   const [state, setState] = React.useState<'idle' | 'pending' | 'ok' | 'err'>('idle');
   const [msg, setMsg] = React.useState('');
+  // tracked so unmount never leaves a dangling setState timer
+  const resetTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  React.useEffect(
+    () => () => {
+      if (resetTimer.current) clearTimeout(resetTimer.current);
+    },
+    [],
+  );
 
   async function add() {
     setState('pending');
-    const list = await fetch('/api/batches/mine').then((r) => r.json()).catch(() => null);
-    let slug: string | undefined = list?.batches?.[0]?.slug;
-    if (!slug) {
-      const created = await fetch('/api/batches', {
+    try {
+      const list = await fetch('/api/batches/mine').then((r) => r.json()).catch(() => null);
+      let slug: string | undefined = list?.batches?.[0]?.slug;
+      if (!slug) {
+        const created = await fetch('/api/batches', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ title: 'My workspace' }),
+        });
+        if (!created.ok) {
+          setState('err');
+          setMsg('Sign in to save batches');
+          return;
+        }
+        slug = ((await created.json()) as { slug: string }).slug;
+      }
+      const res = await fetch(`/api/batches/${encodeURIComponent(slug!)}/items`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ title: 'My workspace' }),
+        body: JSON.stringify({ refType, refId, refKey }),
       });
-      if (!created.ok) {
+      if (!res.ok) {
         setState('err');
-        setMsg('Sign in to save batches');
+        setMsg('Could not add');
         return;
       }
-      slug = ((await created.json()) as { slug: string }).slug;
-    }
-    const res = await fetch(`/api/batches/${encodeURIComponent(slug!)}/items`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ refType, refId, refKey }),
-    });
-    if (!res.ok) {
+      setState('ok');
+      setMsg('Added');
+      if (resetTimer.current) clearTimeout(resetTimer.current);
+      resetTimer.current = setTimeout(() => setState('idle'), 2000);
+    } catch {
+      // a rejected fetch is a network failure — the button must come back
       setState('err');
-      setMsg('Could not add');
-      return;
+      setMsg('Network error');
     }
-    setState('ok');
-    setMsg('Added');
-    setTimeout(() => setState('idle'), 2000);
   }
 
   return (
