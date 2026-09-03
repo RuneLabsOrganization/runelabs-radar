@@ -105,7 +105,7 @@ async function main() {
     ['/board', '', ''],
     ['/stacks', '', ''],
     ['/brief', '', ''],
-    ['/login', 'operator access', '#login-name'],
+    ['/login', 'sign in', '#email'],
   ] as const) {
     const res = await page.goto(`${WEB}${path}`, { waitUntil: 'domcontentloaded' });
     if (waitSel) await page.waitForSelector(waitSel, { timeout: 8000 }).catch(() => {});
@@ -133,8 +133,8 @@ async function main() {
   await page.goto(authorizeUrl, { waitUntil: 'domcontentloaded' });
   check('authorize redirects to login when signed out', page.url().includes('/login?next='), page.url());
 
-  await page.fill('#login-name', USER);
-  await page.fill('#login-password', PASS);
+  await page.fill('#email', USER);
+  await page.fill('#password', PASS);
   await page.click('button[type=submit]');
   await page.waitForURL(/\/oauth\/authorize/, { timeout: 10000 });
   const consentText = (await page.evaluate(() => document.body.innerText)).toLowerCase();
