@@ -136,7 +136,9 @@ export async function refineLeads(
       userId,
       maxTokens: 12000,
     });
-  } catch {
+  } catch (e) {
+    // an LLM outage must not be indistinguishable from "the model scored nothing"
+    console.error('[refine] LLM call failed — returning no drafts:', e);
     return { drafts: [], rejects: [] };
   }
 

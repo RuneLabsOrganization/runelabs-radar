@@ -243,10 +243,13 @@ export function registerAskTools(server: McpServer, auth: AuthContext): void {
       try {
         out = await chatJSON<AskOut>(system, user, { feature: 'ask', userId: auth.userId });
       } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
+        // provider errors carry internals (endpoints, keys, retry detail) —
+        // log the real error server-side, answer with a stable message
+        // (same mapping as the phase-3 /api/debates route)
+        console.error('[mcp/ask_radar] synthesis call failed:', e);
         return respond(
-          { ok: false, error: `ask failed: ${msg}`, citations: [] },
-          { summary: `Ask could not run: ${msg}.`, economy: withUserEconomy(auth.userId, 'ask') },
+          { ok: false, error: 'ask failed — try again shortly', citations: [] },
+          { summary: 'Ask could not run — try again shortly.', economy: withUserEconomy(auth.userId, 'ask') },
         );
       }
 

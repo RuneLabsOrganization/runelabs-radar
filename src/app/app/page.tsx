@@ -1,10 +1,10 @@
 // Namespace import keeps JSX working under vitest's classic transform (jsx: preserve).
 import * as React from 'react';
-import { and, count, desc, eq, gt, inArray } from 'drizzle-orm';
+import { and, count, desc, eq, gt } from 'drizzle-orm';
 import Link from 'next/link';
 import { requireViewer } from '@/lib/auth/user';
 import { getDb } from '@/lib/db';
-import { items, launches, sources, stories, votes } from '@/lib/db/schema';
+import { launches, sources, stories, votes } from '@/lib/db/schema';
 import { DOMAINS, DOMAIN_MEMBERSHIP_THRESHOLD, type Domain } from '@/lib/domains';
 import {
   dailyDomainCounts,
@@ -20,6 +20,7 @@ import {
 import { seriesFor } from '@/lib/metrics';
 import { isDomain } from '@/lib/domains';
 import { domainAffinity, personalScore, splitFeed, timeAgo } from '@/lib/feed';
+import { freshnessVsAnchor, itemAggByStory, voteAggByStory } from '@/lib/feed-agg';
 import { safeHttpUrl } from '@/lib/safe-url';
 import { visitAnchor } from '@/lib/visits';
 import { canonicalEntityKey } from '@/lib/entity';
@@ -42,53 +43,11 @@ import ScopeHero, { type ScopeInsight } from '@/components/ScopeHero';
 import { paths } from '@/lib/urls';
 import { ChevronUp } from 'lucide-react';
 
-type ItemAgg = { count: number; firstUrl: string | null; sourceName: string | null };
-type VoteAgg = { up: number; down: number; mine: 1 | -1 | 0 };
-
 export const metadata = {
   title: 'Today',
   description:
     'Today\u2019s AI stories, curated and scored per domain — coding, copy, image, video, ads, agentic.',
 };
-
-function itemAggByStory(storyIds: number[]): Map<number, ItemAgg> {
-  const map = new Map<number, ItemAgg>();
-  if (storyIds.length === 0) return map;
-  const db = getDb();
-  const rows = db
-    .select({ storyId: items.storyId, url: items.url, sourceName: sources.name })
-    .from(items)
-    .innerJoin(sources, eq(items.sourceId, sources.id))
-    .where(inArray(items.storyId, storyIds))
-    .orderBy(items.id)
-    .all();
-  for (const row of rows) {
-    if (row.storyId == null) continue;
-    const agg = map.get(row.storyId) ?? { count: 0, firstUrl: null, sourceName: null };
-    agg.count += 1;
-    if (agg.firstUrl === null) {
-      agg.firstUrl = row.url;
-      agg.sourceName = row.sourceName;
-    }
-    map.set(row.storyId, agg);
-  }
-  return map;
-}
-
-function voteAggByStory(storyIds: number[], userId: number): Map<number, VoteAgg> {
-  const map = new Map<number, VoteAgg>();
-  if (storyIds.length === 0) return map;
-  const db = getDb();
-  const rows = db.select().from(votes).where(inArray(votes.storyId, storyIds)).all();
-  for (const row of rows) {
-    const agg = map.get(row.storyId) ?? { up: 0, down: 0, mine: 0 };
-    if (row.value === 1) agg.up += 1;
-    else if (row.value === -1) agg.down += 1;
-    if (row.userId === userId && (row.value === 1 || row.value === -1)) agg.mine = row.value;
-    map.set(row.storyId, agg);
-  }
-  return map;
-}
 
 type Contact = {
   story: import('@/lib/feed').FeedStory;
@@ -156,7 +115,7 @@ export default async function BriefingPage() {
   const itemAgg = itemAggByStory([...curated, ...rawRecent].map((s) => s.id));
   const voteAgg = voteAggByStory(
     curated.map((s) => s.id),
-    user?.id ?? -1, // anonymous viewers match no votes
+    user?.id ?? null, // anonymous viewers match no votes
   );
 
   const anchor = user ? visitAnchor(user) : null;
@@ -176,15 +135,14 @@ export default async function BriefingPage() {
     const scores = parseDomainScores(story.domainScores);
     // new OR updated: a merge bumps updatedAt, so fresh coverage of an
     // existing story still counts against the visit anchor
-    const createdFresh = anchor !== null && story.createdAt > anchor;
-    const mergedFresh = anchor !== null && story.updatedAt !== null && story.updatedAt > anchor;
+    const { isNew, isUpdated } = freshnessVsAnchor(story, anchor);
     return {
       story,
       scores,
       score: personalScore(story.topScore, story.domainScores, affinity),
       createdAt: story.createdAt,
-      isNew: createdFresh || mergedFresh,
-      isUpdated: !createdFresh && mergedFresh,
+      isNew,
+      isUpdated,
     };
   });
   const { top, scan, lowCount } = splitFeed(contacts);

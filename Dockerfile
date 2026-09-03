@@ -1,6 +1,7 @@
 FROM node:22-slim AS base
 WORKDIR /app
 # build tools for better-sqlite3 native module (used when prebuilds don't match)
+# — throwaway stages only; the shipped images start from plain node:22-slim
 RUN apt-get update \
     && apt-get install -y --no-install-recommends python3 make g++ \
     && rm -rf /var/lib/apt/lists/*
@@ -8,6 +9,13 @@ RUN apt-get update \
 FROM base AS deps
 COPY package.json package-lock.json .npmrc ./
 RUN npm ci
+
+# production-only node_modules for the runtime stages: devDependencies
+# (vitest, playwright-core, drizzle-kit, typescript) never reach the shipped
+# images. tsx is a real dependency — the worker/mcp entrypoints run through it.
+FROM base AS deps-prod
+COPY package.json package-lock.json .npmrc ./
+RUN npm ci --omit=dev
 
 FROM base AS build
 COPY --from=deps /app/node_modules ./node_modules
@@ -35,9 +43,10 @@ EXPOSE 3000
 CMD ["node", "server.js"]
 
 # --- worker: cron jobs via tsx (also the mcp image; compose overrides CMD) ---
-FROM base AS worker
+FROM node:22-slim AS worker
+WORKDIR /app
 ENV NODE_ENV=production
-COPY --from=deps /app/node_modules ./node_modules
+COPY --from=deps-prod /app/node_modules ./node_modules
 # chown the source tree for the node user; node_modules stays root-owned/read-only
 COPY --chown=node:node . .
 # WORKDIR itself stays root-owned after COPY; hand it to node so it can create

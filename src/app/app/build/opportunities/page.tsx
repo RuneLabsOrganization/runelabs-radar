@@ -1,10 +1,14 @@
-import { desc } from 'drizzle-orm';
+// Namespace import keeps JSX working under vitest's classic transform (jsx: preserve).
+import * as React from 'react';
+import { and, count, desc, eq } from 'drizzle-orm';
+import Link from 'next/link';
 import { requireViewer } from '@/lib/auth/user';
 import { getDb } from '@/lib/db';
 import { opportunities } from '@/lib/db/schema';
 import { factoryFunnel } from '@/lib/analytics';
 import { oppViewFromRow } from '@/lib/opportunities/view';
 import { visibleTo } from '@/lib/opportunities/scope';
+import { paths } from '@/lib/urls';
 import FactoryPipeline from '@/components/FactoryPipeline';
 import OpportunityList from '@/components/OpportunityList';
 import PageHeader from '@/components/PageHeader';
@@ -15,18 +19,44 @@ export const metadata = {
     'Business openings detected by crossing unmet pains, newly-cheap capability, launch gaps and attention surges — flip/hold scored with launch dossiers.',
 };
 
-export default async function OpportunitiesPage() {
+/**
+ * Card payload cap: every card serializes a full dossier view into the client
+ * list, so the default page ships the top slice by flip score; ?all=1 opts
+ * into the complete set.
+ */
+const DEFAULT_LIMIT = 50;
+
+export default async function OpportunitiesPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ all?: string }>;
+}) {
   const user = await requireViewer();
+  const { all } = await searchParams;
   const db = getDb();
+  const scope = visibleTo(user?.id ?? null);
+  // archived rows stay in the table (and out of the payload) — only the count
+  // is rendered; active rows are capped at DEFAULT_LIMIT unless ?all=1
+  const activeCount =
+    db
+      .select({ c: count() })
+      .from(opportunities)
+      .where(and(scope, eq(opportunities.status, 'active')))
+      .get()?.c ?? 0;
+  const archivedCount =
+    db
+      .select({ c: count() })
+      .from(opportunities)
+      .where(and(scope, eq(opportunities.status, 'archived')))
+      .get()?.c ?? 0;
   const rows = db
     .select()
     .from(opportunities)
-    .where(visibleTo(user?.id ?? null))
+    .where(and(scope, eq(opportunities.status, 'active')))
     .orderBy(desc(opportunities.flipScore))
+    .limit(all === '1' ? activeCount : DEFAULT_LIMIT)
     .all();
-  const active = rows.filter((r) => r.status === 'active');
-  const archivedCount = rows.length - active.length;
-  const views = active.map(oppViewFromRow);
+  const views = rows.map(oppViewFromRow);
 
   return (
     <div>
@@ -55,6 +85,18 @@ export default async function OpportunitiesPage() {
         <div className="mt-6">
           <OpportunityList opps={views} canGenerate={!!user} />
         </div>
+      )}
+
+      {all !== '1' && activeCount > views.length && (
+        <p className="mono mt-6 text-[10.5px] text-ink-4">
+          showing the top {views.length} of {activeCount} by flip score ·{' '}
+          <Link
+            href={`${paths.opportunities}?all=1`}
+            className="underline decoration-grat-strong underline-offset-2 hover:text-ink-3"
+          >
+            show all {activeCount} →
+          </Link>
+        </p>
       )}
 
       {archivedCount > 0 && (

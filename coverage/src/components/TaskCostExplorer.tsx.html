@@ -1,0 +1,559 @@
+
+<!doctype html>
+<html lang="en">
+
+<head>
+    <title>Code coverage report for src/components/TaskCostExplorer.tsx</title>
+    <meta charset="utf-8" />
+    <link rel="stylesheet" href="../../prettify.css" />
+    <link rel="stylesheet" href="../../base.css" />
+    <link rel="shortcut icon" type="image/x-icon" href="../../favicon.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style type='text/css'>
+        .coverage-summary .sorter {
+            background-image: url(../../sort-arrow-sprite.png);
+        }
+    </style>
+</head>
+    
+<body>
+<div class='wrapper'>
+    <div class='pad1'>
+        <h1><a href="../../index.html">All files</a> / <a href="index.html">src/components</a> TaskCostExplorer.tsx</h1>
+        <div class='clearfix'>
+            
+            <div class='fl pad1y space-right2'>
+                <span class="strong">0% </span>
+                <span class="quiet">Statements</span>
+                <span class='fraction'>0/133</span>
+            </div>
+        
+            
+            <div class='fl pad1y space-right2'>
+                <span class="strong">100% </span>
+                <span class="quiet">Branches</span>
+                <span class='fraction'>1/1</span>
+            </div>
+        
+            
+            <div class='fl pad1y space-right2'>
+                <span class="strong">100% </span>
+                <span class="quiet">Functions</span>
+                <span class='fraction'>1/1</span>
+            </div>
+        
+            
+            <div class='fl pad1y space-right2'>
+                <span class="strong">0% </span>
+                <span class="quiet">Lines</span>
+                <span class='fraction'>0/133</span>
+            </div>
+        
+            
+        </div>
+        <p class="quiet">
+            Press <em>n</em> or <em>j</em> to go to the next uncovered block, <em>b</em>, <em>p</em> or <em>k</em> for the previous block.
+        </p>
+        <template id="filterTemplate">
+            <div class="quiet">
+                Filter:
+                <input type="search" id="fileSearch">
+            </div>
+        </template>
+    </div>
+    <div class='status-line low'></div>
+    <pre><table class="coverage">
+<tr><td class="line-count quiet"><a name='L1'></a><a href='#L1'>1</a>
+<a name='L2'></a><a href='#L2'>2</a>
+<a name='L3'></a><a href='#L3'>3</a>
+<a name='L4'></a><a href='#L4'>4</a>
+<a name='L5'></a><a href='#L5'>5</a>
+<a name='L6'></a><a href='#L6'>6</a>
+<a name='L7'></a><a href='#L7'>7</a>
+<a name='L8'></a><a href='#L8'>8</a>
+<a name='L9'></a><a href='#L9'>9</a>
+<a name='L10'></a><a href='#L10'>10</a>
+<a name='L11'></a><a href='#L11'>11</a>
+<a name='L12'></a><a href='#L12'>12</a>
+<a name='L13'></a><a href='#L13'>13</a>
+<a name='L14'></a><a href='#L14'>14</a>
+<a name='L15'></a><a href='#L15'>15</a>
+<a name='L16'></a><a href='#L16'>16</a>
+<a name='L17'></a><a href='#L17'>17</a>
+<a name='L18'></a><a href='#L18'>18</a>
+<a name='L19'></a><a href='#L19'>19</a>
+<a name='L20'></a><a href='#L20'>20</a>
+<a name='L21'></a><a href='#L21'>21</a>
+<a name='L22'></a><a href='#L22'>22</a>
+<a name='L23'></a><a href='#L23'>23</a>
+<a name='L24'></a><a href='#L24'>24</a>
+<a name='L25'></a><a href='#L25'>25</a>
+<a name='L26'></a><a href='#L26'>26</a>
+<a name='L27'></a><a href='#L27'>27</a>
+<a name='L28'></a><a href='#L28'>28</a>
+<a name='L29'></a><a href='#L29'>29</a>
+<a name='L30'></a><a href='#L30'>30</a>
+<a name='L31'></a><a href='#L31'>31</a>
+<a name='L32'></a><a href='#L32'>32</a>
+<a name='L33'></a><a href='#L33'>33</a>
+<a name='L34'></a><a href='#L34'>34</a>
+<a name='L35'></a><a href='#L35'>35</a>
+<a name='L36'></a><a href='#L36'>36</a>
+<a name='L37'></a><a href='#L37'>37</a>
+<a name='L38'></a><a href='#L38'>38</a>
+<a name='L39'></a><a href='#L39'>39</a>
+<a name='L40'></a><a href='#L40'>40</a>
+<a name='L41'></a><a href='#L41'>41</a>
+<a name='L42'></a><a href='#L42'>42</a>
+<a name='L43'></a><a href='#L43'>43</a>
+<a name='L44'></a><a href='#L44'>44</a>
+<a name='L45'></a><a href='#L45'>45</a>
+<a name='L46'></a><a href='#L46'>46</a>
+<a name='L47'></a><a href='#L47'>47</a>
+<a name='L48'></a><a href='#L48'>48</a>
+<a name='L49'></a><a href='#L49'>49</a>
+<a name='L50'></a><a href='#L50'>50</a>
+<a name='L51'></a><a href='#L51'>51</a>
+<a name='L52'></a><a href='#L52'>52</a>
+<a name='L53'></a><a href='#L53'>53</a>
+<a name='L54'></a><a href='#L54'>54</a>
+<a name='L55'></a><a href='#L55'>55</a>
+<a name='L56'></a><a href='#L56'>56</a>
+<a name='L57'></a><a href='#L57'>57</a>
+<a name='L58'></a><a href='#L58'>58</a>
+<a name='L59'></a><a href='#L59'>59</a>
+<a name='L60'></a><a href='#L60'>60</a>
+<a name='L61'></a><a href='#L61'>61</a>
+<a name='L62'></a><a href='#L62'>62</a>
+<a name='L63'></a><a href='#L63'>63</a>
+<a name='L64'></a><a href='#L64'>64</a>
+<a name='L65'></a><a href='#L65'>65</a>
+<a name='L66'></a><a href='#L66'>66</a>
+<a name='L67'></a><a href='#L67'>67</a>
+<a name='L68'></a><a href='#L68'>68</a>
+<a name='L69'></a><a href='#L69'>69</a>
+<a name='L70'></a><a href='#L70'>70</a>
+<a name='L71'></a><a href='#L71'>71</a>
+<a name='L72'></a><a href='#L72'>72</a>
+<a name='L73'></a><a href='#L73'>73</a>
+<a name='L74'></a><a href='#L74'>74</a>
+<a name='L75'></a><a href='#L75'>75</a>
+<a name='L76'></a><a href='#L76'>76</a>
+<a name='L77'></a><a href='#L77'>77</a>
+<a name='L78'></a><a href='#L78'>78</a>
+<a name='L79'></a><a href='#L79'>79</a>
+<a name='L80'></a><a href='#L80'>80</a>
+<a name='L81'></a><a href='#L81'>81</a>
+<a name='L82'></a><a href='#L82'>82</a>
+<a name='L83'></a><a href='#L83'>83</a>
+<a name='L84'></a><a href='#L84'>84</a>
+<a name='L85'></a><a href='#L85'>85</a>
+<a name='L86'></a><a href='#L86'>86</a>
+<a name='L87'></a><a href='#L87'>87</a>
+<a name='L88'></a><a href='#L88'>88</a>
+<a name='L89'></a><a href='#L89'>89</a>
+<a name='L90'></a><a href='#L90'>90</a>
+<a name='L91'></a><a href='#L91'>91</a>
+<a name='L92'></a><a href='#L92'>92</a>
+<a name='L93'></a><a href='#L93'>93</a>
+<a name='L94'></a><a href='#L94'>94</a>
+<a name='L95'></a><a href='#L95'>95</a>
+<a name='L96'></a><a href='#L96'>96</a>
+<a name='L97'></a><a href='#L97'>97</a>
+<a name='L98'></a><a href='#L98'>98</a>
+<a name='L99'></a><a href='#L99'>99</a>
+<a name='L100'></a><a href='#L100'>100</a>
+<a name='L101'></a><a href='#L101'>101</a>
+<a name='L102'></a><a href='#L102'>102</a>
+<a name='L103'></a><a href='#L103'>103</a>
+<a name='L104'></a><a href='#L104'>104</a>
+<a name='L105'></a><a href='#L105'>105</a>
+<a name='L106'></a><a href='#L106'>106</a>
+<a name='L107'></a><a href='#L107'>107</a>
+<a name='L108'></a><a href='#L108'>108</a>
+<a name='L109'></a><a href='#L109'>109</a>
+<a name='L110'></a><a href='#L110'>110</a>
+<a name='L111'></a><a href='#L111'>111</a>
+<a name='L112'></a><a href='#L112'>112</a>
+<a name='L113'></a><a href='#L113'>113</a>
+<a name='L114'></a><a href='#L114'>114</a>
+<a name='L115'></a><a href='#L115'>115</a>
+<a name='L116'></a><a href='#L116'>116</a>
+<a name='L117'></a><a href='#L117'>117</a>
+<a name='L118'></a><a href='#L118'>118</a>
+<a name='L119'></a><a href='#L119'>119</a>
+<a name='L120'></a><a href='#L120'>120</a>
+<a name='L121'></a><a href='#L121'>121</a>
+<a name='L122'></a><a href='#L122'>122</a>
+<a name='L123'></a><a href='#L123'>123</a>
+<a name='L124'></a><a href='#L124'>124</a>
+<a name='L125'></a><a href='#L125'>125</a>
+<a name='L126'></a><a href='#L126'>126</a>
+<a name='L127'></a><a href='#L127'>127</a>
+<a name='L128'></a><a href='#L128'>128</a>
+<a name='L129'></a><a href='#L129'>129</a>
+<a name='L130'></a><a href='#L130'>130</a>
+<a name='L131'></a><a href='#L131'>131</a>
+<a name='L132'></a><a href='#L132'>132</a>
+<a name='L133'></a><a href='#L133'>133</a>
+<a name='L134'></a><a href='#L134'>134</a>
+<a name='L135'></a><a href='#L135'>135</a>
+<a name='L136'></a><a href='#L136'>136</a>
+<a name='L137'></a><a href='#L137'>137</a>
+<a name='L138'></a><a href='#L138'>138</a>
+<a name='L139'></a><a href='#L139'>139</a>
+<a name='L140'></a><a href='#L140'>140</a>
+<a name='L141'></a><a href='#L141'>141</a>
+<a name='L142'></a><a href='#L142'>142</a>
+<a name='L143'></a><a href='#L143'>143</a>
+<a name='L144'></a><a href='#L144'>144</a>
+<a name='L145'></a><a href='#L145'>145</a>
+<a name='L146'></a><a href='#L146'>146</a>
+<a name='L147'></a><a href='#L147'>147</a>
+<a name='L148'></a><a href='#L148'>148</a>
+<a name='L149'></a><a href='#L149'>149</a>
+<a name='L150'></a><a href='#L150'>150</a>
+<a name='L151'></a><a href='#L151'>151</a>
+<a name='L152'></a><a href='#L152'>152</a>
+<a name='L153'></a><a href='#L153'>153</a>
+<a name='L154'></a><a href='#L154'>154</a>
+<a name='L155'></a><a href='#L155'>155</a>
+<a name='L156'></a><a href='#L156'>156</a>
+<a name='L157'></a><a href='#L157'>157</a>
+<a name='L158'></a><a href='#L158'>158</a>
+<a name='L159'></a><a href='#L159'>159</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js">'use client';
+&nbsp;
+<span class="cstat-no" title="statement not covered" >import * as React from 'react';</span>
+<span class="cstat-no" title="statement not covered" >import { useMemo, useState } from 'react';</span>
+<span class="cstat-no" title="statement not covered" >import { paretoFrontier, type AaModel } from '@/lib/pareto';</span>
+<span class="cstat-no" title="statement not covered" >import { fmtPtsPerDollar, fmtUsd, taskCost, TASK_ARCHETYPES } from '@/lib/costs';</span>
+&nbsp;
+<span class="cstat-no" title="statement not covered" >const CHART_SIZE = 14;</span>
+&nbsp;
+type SortKey = 'cost' | 'intel' | 'value';
+&nbsp;
+<span class="cstat-no" title="statement not covered" >const SORTS: { key: SortKey; label: string }[] = [</span>
+<span class="cstat-no" title="statement not covered" >  { key: 'cost', label: 'cheapest' },</span>
+<span class="cstat-no" title="statement not covered" >  { key: 'intel', label: 'smartest' },</span>
+<span class="cstat-no" title="statement not covered" >  { key: 'value', label: 'intel/$' },</span>
+<span class="cstat-no" title="statement not covered" >];</span>
+&nbsp;
+/**
+ * The bottom line: what one concrete piece of Runelabs work costs on each
+ * model. Task chips switch the token archetype; assumptions stay visible.
+ */
+<span class="cstat-no" title="statement not covered" >export default function TaskCostExplorer({ models }: { models: AaModel[] }) {</span>
+<span class="cstat-no" title="statement not covered" >  const [taskKey, setTaskKey] = useState(TASK_ARCHETYPES[0].key);</span>
+<span class="cstat-no" title="statement not covered" >  const [sortKey, setSortKey] = useState&lt;SortKey&gt;('cost');</span>
+<span class="cstat-no" title="statement not covered" >  const task = TASK_ARCHETYPES.find((t) =&gt; t.key === taskKey) ?? TASK_ARCHETYPES[0];</span>
+&nbsp;
+  // Chart set: pareto-frontier models plus the most intelligent rest, so both
+  // the value picks and the flagships are always on the board.
+<span class="cstat-no" title="statement not covered" >  const chartSet = useMemo(() =&gt; {</span>
+<span class="cstat-no" title="statement not covered" >    const priced = models.filter((m) =&gt; m.priceIn !== null &amp;&amp; m.priceOut !== null);</span>
+<span class="cstat-no" title="statement not covered" >    const frontier = paretoFrontier(priced.map((m) =&gt; ({ x: m.price, y: m.intelligence })));</span>
+<span class="cstat-no" title="statement not covered" >    const picked: AaModel[] = priced.filter((_, i) =&gt; frontier[i]);</span>
+<span class="cstat-no" title="statement not covered" >    for (const m of priced) {</span>
+<span class="cstat-no" title="statement not covered" >      if (picked.length &gt;= CHART_SIZE) break;</span>
+<span class="cstat-no" title="statement not covered" >      if (!picked.includes(m)) picked.push(m); // models arrive intelligence-sorted</span>
+<span class="cstat-no" title="statement not covered" >    }</span>
+<span class="cstat-no" title="statement not covered" >    return { picked: picked.slice(0, CHART_SIZE), frontierSet: new Set(priced.filter((_, i) =&gt; frontier[i])) };</span>
+<span class="cstat-no" title="statement not covered" >  }, [models]);</span>
+&nbsp;
+<span class="cstat-no" title="statement not covered" >  const rows = useMemo(() =&gt; {</span>
+<span class="cstat-no" title="statement not covered" >    const scored = chartSet.picked</span>
+<span class="cstat-no" title="statement not covered" >      .map((m) =&gt; ({ m, cost: taskCost(m, task) }))</span>
+<span class="cstat-no" title="statement not covered" >      .filter((r): r is { m: AaModel; cost: number } =&gt; r.cost !== null &amp;&amp; r.cost &gt; 0)</span>
+<span class="cstat-no" title="statement not covered" >      .map((r) =&gt; ({ ...r, ratio: r.m.intelligence / r.cost }));</span>
+<span class="cstat-no" title="statement not covered" >    switch (sortKey) {</span>
+<span class="cstat-no" title="statement not covered" >      case 'intel':</span>
+<span class="cstat-no" title="statement not covered" >        return scored.sort((a, b) =&gt; b.m.intelligence - a.m.intelligence || a.cost - b.cost);</span>
+<span class="cstat-no" title="statement not covered" >      case 'value':</span>
+<span class="cstat-no" title="statement not covered" >        return scored.sort((a, b) =&gt; b.ratio - a.ratio);</span>
+<span class="cstat-no" title="statement not covered" >      default:</span>
+<span class="cstat-no" title="statement not covered" >        return scored.sort((a, b) =&gt; a.cost - b.cost);</span>
+<span class="cstat-no" title="statement not covered" >    }</span>
+<span class="cstat-no" title="statement not covered" >  }, [chartSet, task, sortKey]);</span>
+&nbsp;
+<span class="cstat-no" title="statement not covered" >  if (rows.length === 0) return null;</span>
+<span class="cstat-no" title="statement not covered" >  const costs = rows.map((r) =&gt; r.cost);</span>
+<span class="cstat-no" title="statement not covered" >  const maxCost = Math.max(...costs);</span>
+<span class="cstat-no" title="statement not covered" >  const minCost = Math.min(...costs);</span>
+<span class="cstat-no" title="statement not covered" >  const spread = minCost &gt; 0 ? Math.round(maxCost / minCost) : null;</span>
+&nbsp;
+<span class="cstat-no" title="statement not covered" >  return (</span>
+<span class="cstat-no" title="statement not covered" >    &lt;div&gt;</span>
+<span class="cstat-no" title="statement not covered" >      &lt;div className="mono mb-2 flex flex-wrap items-center gap-1.5 text-[10px] tracking-[0.06em]"&gt;</span>
+<span class="cstat-no" title="statement not covered" >        {TASK_ARCHETYPES.map((t) =&gt; (</span>
+<span class="cstat-no" title="statement not covered" >          &lt;button</span>
+<span class="cstat-no" title="statement not covered" >            key={t.key}</span>
+<span class="cstat-no" title="statement not covered" >            type="button"</span>
+<span class="cstat-no" title="statement not covered" >            onClick={() =&gt; setTaskKey(t.key)}</span>
+<span class="cstat-no" title="statement not covered" >            aria-pressed={t.key === taskKey}</span>
+<span class="cstat-no" title="statement not covered" >            className={`cursor-pointer rounded-[3px] border px-2 py-0.5 uppercase transition-colors ${</span>
+<span class="cstat-no" title="statement not covered" >              t.key === taskKey</span>
+<span class="cstat-no" title="statement not covered" >                ? 'border-[var(--phosphor)] text-[var(--ink)]'</span>
+<span class="cstat-no" title="statement not covered" >                : 'border-[var(--grat)] text-[var(--ink-3)] hover:border-[var(--grat-strong)]'</span>
+<span class="cstat-no" title="statement not covered" >            }`}</span>
+          &gt;
+<span class="cstat-no" title="statement not covered" >            {t.label}</span>
+<span class="cstat-no" title="statement not covered" >          &lt;/button&gt;</span>
+<span class="cstat-no" title="statement not covered" >        ))}</span>
+<span class="cstat-no" title="statement not covered" >      &lt;/div&gt;</span>
+<span class="cstat-no" title="statement not covered" >      &lt;div className="mono mb-1.5 flex items-center gap-1.5 text-[10px] tracking-[0.06em]"&gt;</span>
+<span class="cstat-no" title="statement not covered" >        &lt;span style={{ color: 'var(--ink-4)' }}&gt;sort&lt;/span&gt;</span>
+<span class="cstat-no" title="statement not covered" >        {SORTS.map((s) =&gt; (</span>
+<span class="cstat-no" title="statement not covered" >          &lt;button</span>
+<span class="cstat-no" title="statement not covered" >            key={s.key}</span>
+<span class="cstat-no" title="statement not covered" >            type="button"</span>
+<span class="cstat-no" title="statement not covered" >            onClick={() =&gt; setSortKey(s.key)}</span>
+<span class="cstat-no" title="statement not covered" >            aria-pressed={s.key === sortKey}</span>
+<span class="cstat-no" title="statement not covered" >            className={`cursor-pointer rounded-[3px] border px-2 py-0.5 uppercase transition-colors ${</span>
+<span class="cstat-no" title="statement not covered" >              s.key === sortKey</span>
+<span class="cstat-no" title="statement not covered" >                ? 'border-[var(--phosphor)] text-[var(--ink)]'</span>
+<span class="cstat-no" title="statement not covered" >                : 'border-[var(--grat)] text-[var(--ink-3)] hover:border-[var(--grat-strong)]'</span>
+<span class="cstat-no" title="statement not covered" >            }`}</span>
+          &gt;
+<span class="cstat-no" title="statement not covered" >            {s.label}</span>
+<span class="cstat-no" title="statement not covered" >          &lt;/button&gt;</span>
+<span class="cstat-no" title="statement not covered" >        ))}</span>
+<span class="cstat-no" title="statement not covered" >      &lt;/div&gt;</span>
+<span class="cstat-no" title="statement not covered" >      &lt;p className="mono mb-3 text-[10px]" style={{ color: 'var(--ink-4)' }}&gt;</span>
+<span class="cstat-no" title="statement not covered" >        {task.blurb} &amp;middot; assumes ~{(task.inTokens / 1000).toLocaleString()}k in /{' '}</span>
+<span class="cstat-no" title="statement not covered" >        {(task.outTokens / 1000).toLocaleString()}k out tokens</span>
+<span class="cstat-no" title="statement not covered" >        {spread !== null &amp;&amp; spread &gt; 1 &amp;&amp; (</span>
+<span class="cstat-no" title="statement not covered" >          &lt;span style={{ color: 'var(--ink-3)' }}&gt;</span>
+<span class="cstat-no" title="statement not covered" >            {' '}</span>
+<span class="cstat-no" title="statement not covered" >            &amp;middot; priciest is {spread}&amp;times; the cheapest</span>
+<span class="cstat-no" title="statement not covered" >          &lt;/span&gt;</span>
+        )}
+<span class="cstat-no" title="statement not covered" >      &lt;/p&gt;</span>
+<span class="cstat-no" title="statement not covered" >      &lt;ul className="flex flex-col gap-[7px]"&gt;</span>
+<span class="cstat-no" title="statement not covered" >        {rows.map(({ m, cost, ratio }) =&gt; {</span>
+<span class="cstat-no" title="statement not covered" >          const onFrontier = chartSet.frontierSet.has(m);</span>
+<span class="cstat-no" title="statement not covered" >          return (</span>
+<span class="cstat-no" title="statement not covered" >            &lt;li key={m.name} title={`${m.name} — in $${m.priceIn}/1M, out $${m.priceOut}/1M`}&gt;</span>
+<span class="cstat-no" title="statement not covered" >              &lt;div className="flex items-baseline justify-between gap-2"&gt;</span>
+<span class="cstat-no" title="statement not covered" >                &lt;span className="mono min-w-0 truncate text-[11px]" style={{ color: 'var(--ink-2)' }}&gt;</span>
+<span class="cstat-no" title="statement not covered" >                  {m.name}</span>
+<span class="cstat-no" title="statement not covered" >                  {m.org &amp;&amp; (</span>
+<span class="cstat-no" title="statement not covered" >                    &lt;span style={{ color: 'var(--ink-4)' }}&gt; &amp;middot; {m.org}&lt;/span&gt;</span>
+                  )}
+<span class="cstat-no" title="statement not covered" >                &lt;/span&gt;</span>
+<span class="cstat-no" title="statement not covered" >                &lt;span className="mono shrink-0 text-[10.5px]"&gt;</span>
+<span class="cstat-no" title="statement not covered" >                  &lt;span style={{ color: sortKey === 'intel' ? 'var(--ink)' : 'var(--ink-4)' }}&gt;</span>
+<span class="cstat-no" title="statement not covered" >                    intel {m.intelligence}</span>
+<span class="cstat-no" title="statement not covered" >                  &lt;/span&gt;</span>
+<span class="cstat-no" title="statement not covered" >                  &lt;span className="ml-2" style={{ color: sortKey === 'value' ? 'var(--ink)' : 'var(--ink-4)' }}&gt;</span>
+<span class="cstat-no" title="statement not covered" >                    {fmtPtsPerDollar(ratio)}</span>
+<span class="cstat-no" title="statement not covered" >                  &lt;/span&gt;</span>
+<span class="cstat-no" title="statement not covered" >                  &lt;span</span>
+<span class="cstat-no" title="statement not covered" >                    className="ml-2"</span>
+<span class="cstat-no" title="statement not covered" >                    style={{</span>
+<span class="cstat-no" title="statement not covered" >                      color: onFrontier ? 'var(--phosphor)' : sortKey === 'cost' ? 'var(--ink)' : 'var(--ink-2)',</span>
+<span class="cstat-no" title="statement not covered" >                    }}</span>
+                  &gt;
+<span class="cstat-no" title="statement not covered" >                    {fmtUsd(cost)}</span>
+<span class="cstat-no" title="statement not covered" >                  &lt;/span&gt;</span>
+<span class="cstat-no" title="statement not covered" >                &lt;/span&gt;</span>
+<span class="cstat-no" title="statement not covered" >              &lt;/div&gt;</span>
+<span class="cstat-no" title="statement not covered" >              &lt;div className="mt-[3px] h-[3px] w-full rounded-[1px]" style={{ background: 'var(--grat-soft)' }}&gt;</span>
+<span class="cstat-no" title="statement not covered" >                &lt;div</span>
+<span class="cstat-no" title="statement not covered" >                  key={`${taskKey}-${sortKey}`}</span>
+<span class="cstat-no" title="statement not covered" >                  className="anim-bar h-full rounded-[1px]"</span>
+<span class="cstat-no" title="statement not covered" >                  style={{</span>
+<span class="cstat-no" title="statement not covered" >                    width: `${Math.max(1.5, (cost / maxCost) * 100)}%`,</span>
+<span class="cstat-no" title="statement not covered" >                    background: onFrontier ? 'var(--phosphor)' : 'var(--grat-strong)',</span>
+<span class="cstat-no" title="statement not covered" >                    opacity: onFrontier ? 0.8 : 0.9,</span>
+<span class="cstat-no" title="statement not covered" >                  }}</span>
+<span class="cstat-no" title="statement not covered" >                /&gt;</span>
+<span class="cstat-no" title="statement not covered" >              &lt;/div&gt;</span>
+<span class="cstat-no" title="statement not covered" >            &lt;/li&gt;</span>
+          );
+<span class="cstat-no" title="statement not covered" >        })}</span>
+<span class="cstat-no" title="statement not covered" >      &lt;/ul&gt;</span>
+<span class="cstat-no" title="statement not covered" >      &lt;p className="mono mt-2 text-[10px]" style={{ color: 'var(--ink-4)' }}&gt;</span>
+<span class="cstat-no" title="statement not covered" >        &lt;span aria-hidden style={{ color: 'var(--phosphor)' }}&gt;&amp;#9679;&lt;/span&gt; pareto-frontier model &amp;middot;</span>
+        token budgets are stated assumptions — tune in src/lib/costs.ts
+<span class="cstat-no" title="statement not covered" >      &lt;/p&gt;</span>
+<span class="cstat-no" title="statement not covered" >    &lt;/div&gt;</span>
+  );
+<span class="cstat-no" title="statement not covered" >}</span>
+&nbsp;</pre></td></tr></table></pre>
+
+                <div class='push'></div><!-- for sticky footer -->
+            </div><!-- /wrapper -->
+            <div class='footer quiet pad2 space-top1 center small'>
+                Code coverage generated by
+                <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
+                at 2026-09-03T20:03:48.692Z
+            </div>
+        <script src="../../prettify.js"></script>
+        <script>
+            window.onload = function () {
+                prettyPrint();
+            };
+        </script>
+        <script src="../../sorter.js"></script>
+        <script src="../../block-navigation.js"></script>
+    </body>
+</html>
+    

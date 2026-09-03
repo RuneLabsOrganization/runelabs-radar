@@ -1,4 +1,4 @@
-﻿import { and, count, desc, eq, gte, inArray, isNotNull, sql } from 'drizzle-orm';
+import { and, count, desc, eq, gte, inArray, isNotNull, lte, sql } from 'drizzle-orm';
 import { memo, TTL } from './cache';
 import { config } from './config';
 import { getDb } from './db';
@@ -687,17 +687,35 @@ const KNOWN_JOBS: readonly JobName[] = [
 
 /** Recent runs per job for the health timeline (oldest → newest), for every job present in job_runs. */
 function _jobHistory(perJob = 28): Record<string, JobRunCell[]> {
-  // one descending pass, sliced per job in JS — the old shape ran a separate
-  // LIMIT query for each of the ~20 job names on every admin render
-  const rows = getDb()
+  // one bounded query: the trailing 30 days, windowed in SQL to the newest
+  // `perJob` runs per job — the old shape full-scanned and re-sorted an
+  // ever-growing, never-pruned job_runs table on every admin render. The
+  // per-job window (not a global LIMIT) keeps a flooded window from silently
+  // dropping low-frequency jobs from the timeline.
+  const db = getDb();
+  const rn = sql<number>`row_number() over (partition by ${jobRuns.job} order by ${jobRuns.id} desc)`.as('rn');
+  const windowed = db
     .select({
+      id: jobRuns.id,
       job: jobRuns.job,
       status: jobRuns.status,
       startedAt: jobRuns.startedAt,
       finishedAt: jobRuns.finishedAt,
+      rn,
     })
     .from(jobRuns)
-    .orderBy(desc(jobRuns.id))
+    .where(gte(jobRuns.startedAt, new Date(Date.now() - 30 * DAY_MS)))
+    .as('windowed');
+  const rows = db
+    .select({
+      job: windowed.job,
+      status: windowed.status,
+      startedAt: windowed.startedAt,
+      finishedAt: windowed.finishedAt,
+    })
+    .from(windowed)
+    .where(lte(windowed.rn, perJob))
+    .orderBy(desc(windowed.id))
     .all();
 
   const recent = new Map<string, JobRunCell[]>();

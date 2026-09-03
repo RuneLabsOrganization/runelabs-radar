@@ -73,11 +73,9 @@ const jobs: Record<JobName, () => Promise<Record<string, unknown>>> = {
   sweep: runSweep,
   'media-pricing': runMediaPricingSync,
   'kit-evidence': runKitEvidence,
-  'kit-grade': () => {
-    const prices = runKitPriceBackfill();
-    const grades = runKitGrade();
-    return Promise.resolve({ ...prices, ...grades });
-  },
+  // separate run rows: a pricing failure must not block (or masquerade as) grading
+  'kit-prices': () => Promise.resolve(runKitPriceBackfill()),
+  'kit-grade': () => Promise.resolve(runKitGrade()),
   'source-review': runSourceReview,
   'verdict-grade': runVerdictGrade,
 };

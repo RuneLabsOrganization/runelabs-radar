@@ -1,6 +1,11 @@
+// Namespace import keeps JSX working under vitest's classic transform (jsx: preserve).
+import * as React from 'react';
 import Link from 'next/link';
+import { inArray } from 'drizzle-orm';
 import { requireViewer } from '@/lib/auth/user';
-import { listBatchesForUser, getBatchItems } from '@/lib/batches';
+import { getDb } from '@/lib/db';
+import { batchItems } from '@/lib/db/schema';
+import { listBatchesForUser } from '@/lib/batches';
 import { can } from '@/lib/entitlements';
 import { paths } from '@/lib/urls';
 import { UpgradeWall } from '@/components/UpgradeWall';
@@ -20,6 +25,19 @@ export default async function BatchesPage() {
   const user = await requireViewer();
   const rows = listBatchesForUser(user?.id ?? null);
   const createGate = user ? can(user, 'batch_create') : { ok: false as const, tier: 'free' as const };
+
+  // one grouped query for every card's item count — a per-row getBatchItems
+  // call in the render loop is an N+1 on this index
+  const batchIds = rows.map((b) => b.id);
+  const itemRows = batchIds.length
+    ? getDb()
+        .select({ batchId: batchItems.batchId })
+        .from(batchItems)
+        .where(inArray(batchItems.batchId, batchIds))
+        .all()
+    : [];
+  const itemCounts = new Map<number, number>();
+  for (const r of itemRows) itemCounts.set(r.batchId, (itemCounts.get(r.batchId) ?? 0) + 1);
 
   return (
     <div>
@@ -54,7 +72,7 @@ export default async function BatchesPage() {
           />
         )}
         {rows.map((b) => {
-          const items = getBatchItems(b.id);
+          const itemCount = itemCounts.get(b.id) ?? 0;
           return (
             <Card key={b.id} className="hover-raise">
               <CardHeader className="flex-row items-start justify-between gap-3">
@@ -69,7 +87,7 @@ export default async function BatchesPage() {
                     </Link>
                   </CardTitle>
                   <CardDescription>
-                    {items.length} item{items.length === 1 ? '' : 's'}
+                    {itemCount} item{itemCount === 1 ? '' : 's'}
                     {b.description ? ` · ${b.description}` : ''}
                   </CardDescription>
                 </div>

@@ -1,4 +1,5 @@
-import { and, eq, inArray } from 'drizzle-orm';
+import { cache } from 'react';
+import { and, eq, gte, inArray } from 'drizzle-orm';
 import { getDb } from '../db';
 import { metricPoints } from '../db/schema';
 import { linearFit, type Fit } from './math';
@@ -13,13 +14,25 @@ const FRONTIER_FRACTION = 0.9; // "frontier" = within 90% of the day's max intel
 /**
  * Price of frontier intelligence per snapshot day: the cheapest blended price
  * among models at ≥90% of that day's intelligence ceiling.
+ * Memoized per request — /trust derives several blocks from the same series.
  */
-export function frontierPriceSeries(days = 120): SeriesPoint[] {
+export const frontierPriceSeries = cache(function frontierPriceSeries(days = 120): SeriesPoint[] {
   const db = getDb();
+  // Bounded read: only the window the trailing series can draw from — the old
+  // version loaded the entire aa metric history on every /trust render and
+  // sliced in JS. The +30d slack keeps the series full when snapshots skip
+  // days; points older than the window are dropped even if it comes up short.
+  const windowStart = new Date(Date.now() - (days + 30) * 864e5).toISOString().slice(0, 10);
   const rows = db
     .select()
     .from(metricPoints)
-    .where(and(eq(metricPoints.source, 'aa'), inArray(metricPoints.metric, ['price_blended', 'intelligence'])))
+    .where(
+      and(
+        eq(metricPoints.source, 'aa'),
+        inArray(metricPoints.metric, ['price_blended', 'intelligence']),
+        gte(metricPoints.date, windowStart),
+      ),
+    )
     .all();
 
   const byDate = new Map<string, Map<string, { price?: number; intelligence?: number }>>();
@@ -53,7 +66,7 @@ export function frontierPriceSeries(days = 120): SeriesPoint[] {
     if (Number.isFinite(cheapest)) out.push({ date, value: cheapest });
   }
   return out.sort((a, b) => a.date.localeCompare(b.date)).slice(-days);
-}
+});
 
 export interface Forecast {
   history: SeriesPoint[];

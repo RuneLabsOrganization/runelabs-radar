@@ -1,5 +1,5 @@
-import { eq } from 'drizzle-orm';
-import { getDb } from '../db';
+import { and, eq, lt, sql } from 'drizzle-orm';
+import { getDb, type Db } from '../db';
 import { llmCalls, llmUsage } from '../db/schema';
 import { config } from '../config';
 import { estimateCostUsd } from './pricing';
@@ -38,17 +38,29 @@ function today(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+/**
+ * Atomically consumes one call from the day's budget; returns the new count,
+ * or null when the cap is already spent. The guarded UPDATE is a single
+ * statement, so web + worker + mcp sharing the SQLite file can't both win a
+ * select-then-update race past the cap — SQLite serializes the writers and
+ * the loser's WHERE calls < cap no longer matches.
+ */
+export function tryConsumeDailyCall(db: Db, date: string, cap: number): number | null {
+  db.insert(llmUsage).values({ date, calls: 0 }).onConflictDoNothing().run();
+  const row = db
+    .update(llmUsage)
+    .set({ calls: sql`${llmUsage.calls} + 1` })
+    .where(and(eq(llmUsage.date, date), lt(llmUsage.calls, cap)))
+    .returning({ calls: llmUsage.calls })
+    .get();
+  return row?.calls ?? null;
+}
+
 /** Increments the daily counter; throws (non-retryable) when the cap is hit. */
 function checkAndCountCall(): void {
-  const db = getDb();
-  const date = today();
-  db.insert(llmUsage).values({ date, calls: 0 }).onConflictDoNothing().run();
-  const row = db.select().from(llmUsage).where(eq(llmUsage.date, date)).get();
-  const calls = row?.calls ?? 0;
-  if (calls >= config.minimaxDailyCallCap) {
+  if (tryConsumeDailyCall(getDb(), today(), config.minimaxDailyCallCap) === null) {
     throw new LlmError(`Daily LLM call cap reached (${config.minimaxDailyCallCap})`, false);
   }
-  db.update(llmUsage).set({ calls: calls + 1 }).where(eq(llmUsage.date, date)).run();
 }
 
 function extractJson(content: string): string {

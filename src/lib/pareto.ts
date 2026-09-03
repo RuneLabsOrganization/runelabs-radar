@@ -15,7 +15,16 @@ export interface AaModel {
 /**
  * Pareto frontier for a "cheaper is better, higher is better" scatter: a point
  * is on the frontier when no other point is both cheaper-or-equal and
- * strictly better. Returns a parallel boolean array.
+ * strictly better. Two chosen semantics, documented so callers can rely on
+ * them:
+ *
+ *   - EXACT duplicates (same x AND same y) co-exist on the frontier — neither
+ *     dominates the other, and flagging only one would hide real models from
+ *     the scatter's highlighted set.
+ *   - an equal-y but pricier point IS off the frontier: the cheaper equal
+ *     beats it on price.
+ *
+ * Returns a parallel boolean array.
  */
 export function paretoFrontier(points: { x: number; y: number }[]): boolean[] {
   const order = points
@@ -23,10 +32,12 @@ export function paretoFrontier(points: { x: number; y: number }[]): boolean[] {
     .sort((a, b) => a.x - b.x || b.y - a.y);
   const frontier = new Array<boolean>(points.length).fill(false);
   let bestY = -Infinity;
+  let bestX = Infinity; // x at which bestY was set — duplicates of a frontier point share both
   for (const p of order) {
-    if (p.y > bestY) {
+    if (p.y > bestY || (p.y === bestY && p.x === bestX)) {
       frontier[p.i] = true;
       bestY = p.y;
+      bestX = p.x;
     }
   }
   return frontier;

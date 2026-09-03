@@ -76,8 +76,10 @@ export function sanitizeBrief(v: unknown): OppBrief | null {
 
 type BriefResult = { ok: true; brief: OppBrief } | { ok: false; error: string };
 
-// in-flight dedupe: concurrent expands of the same opportunity share one LLM call
-const inflight = new Map<number, Promise<BriefResult>>();
+// in-flight dedupe: concurrent expands of the same opportunity share one LLM
+// call — but only within one market-visibility class, or a brief built with AA
+// prices could be handed to a caller those prices are withheld from
+const inflight = new Map<string, Promise<BriefResult>>();
 
 /**
  * One-call launchable brief for an opportunity, cached on the row.
@@ -88,12 +90,14 @@ export function generateBrief(
   oppId: number,
   opts?: { userId?: number | null; allowMarket?: boolean },
 ): Promise<BriefResult> {
-  const existing = inflight.get(oppId);
+  const allowMarket = opts?.allowMarket ?? true;
+  const key = `${oppId}:${allowMarket ? 'mkt' : 'nomkt'}`;
+  const existing = inflight.get(key);
   if (existing) return existing;
-  const p = generateBriefInner(oppId, opts?.userId ?? null, opts?.allowMarket ?? true).finally(() =>
-    inflight.delete(oppId),
+  const p = generateBriefInner(oppId, opts?.userId ?? null, allowMarket).finally(() =>
+    inflight.delete(key),
   );
-  inflight.set(oppId, p);
+  inflight.set(key, p);
   return p;
 }
 
@@ -109,7 +113,13 @@ async function generateBriefInner(
     .where(and(eq(opportunities.id, oppId), visibleTo(userId)))
     .get();
   if (!opp) return { ok: false, error: 'opportunity not found' };
-  if (opp.brief) {
+  // The on-row cache is by invariant a MARKET-CLASS brief (see the write
+  // below): it may embed AA prices in the unit economics, so it is only ever
+  // served to market-allowed callers. A restricted caller regenerates without
+  // market data, and that market-free brief is never persisted over the
+  // shared cache — there is one cache slot and no way to tell classes apart
+  // on read (view.ts parses the same column).
+  if (opp.brief && allowMarket) {
     try {
       const cached = sanitizeBrief(JSON.parse(opp.brief));
       if (cached) return { ok: true, brief: cached };
@@ -196,10 +206,13 @@ async function generateBriefInner(
     const res = await chatJSON<Record<string, unknown>>(system, user, { feature: 'opportunity-brief', userId });
     const brief = sanitizeBrief(res);
     if (!brief) return { ok: false, error: 'brief failed validation — try again' };
-    db.update(opportunities)
-      .set({ brief: JSON.stringify(brief), briefGeneratedAt: new Date() })
-      .where(eq(opportunities.id, oppId))
-      .run();
+    // only market-class briefs may occupy the shared on-row cache (see above)
+    if (allowMarket) {
+      db.update(opportunities)
+        .set({ brief: JSON.stringify(brief), briefGeneratedAt: new Date() })
+        .where(eq(opportunities.id, oppId))
+        .run();
+    }
     return { ok: true, brief };
   } catch (e) {
     console.error('[opportunities] brief generation failed:', e);

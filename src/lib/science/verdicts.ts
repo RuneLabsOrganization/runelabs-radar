@@ -8,7 +8,7 @@
  * tool entered OUR field of view, not when it shipped — and it is the honest
  * one available, because it is exactly the information the original call had.
  */
-import { and, asc, eq, isNotNull, lt, ne } from 'drizzle-orm';
+import { and, asc, eq, isNotNull, lt, ne, sql } from 'drizzle-orm';
 import { getDb } from '../db';
 import { kitPickHistory, stories, verdictClaims } from '../db/schema';
 import { classifyFlip } from '../kits/flip';
@@ -98,12 +98,21 @@ export async function runVerdictGrade(): Promise<{ graded: number }> {
 function firstSeenAtNamed(name: string): Date | null {
   const needle = name.trim().toLowerCase();
   if (needle.length < 3) return null;
+  // Escaped LIKE with LIMIT 1 over the (status, created_at) index — the old
+  // in-JS .find() full-scanned every curated story once per ungraded row.
+  // Wildcards in the tool name must match literally, not broaden the match.
+  const escaped = needle.replace(/[\\%_]/g, (c) => `\\${c}`);
   const row = getDb()
-    .select({ title: stories.title, createdAt: stories.createdAt })
+    .select({ createdAt: stories.createdAt })
     .from(stories)
-    .where(eq(stories.status, 'curated'))
+    .where(
+      and(
+        eq(stories.status, 'curated'),
+        sql`lower(${stories.title}) like ${'%' + escaped + '%'} escape '\\'`,
+      ),
+    )
     .orderBy(asc(stories.createdAt))
-    .all()
-    .find((s) => s.title.toLowerCase().includes(needle));
+    .limit(1)
+    .get();
   return row?.createdAt ?? null;
 }

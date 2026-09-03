@@ -3,21 +3,17 @@
 import * as React from 'react';
 import { paths } from '@/lib/urls';
 import { Button } from '@/components/ui/button';
-import { authClient } from '@/lib/auth/client';
+import { subscriptionApi } from '@/lib/auth/client';
 
 export function BillingPortalButton() {
   const [error, setError] = React.useState<string | null>(null);
 
   async function open() {
     setError(null);
-    const client = authClient as {
-      subscription?: {
-        billingPortal: (opts: { returnUrl: string }) => Promise<{ error?: { message?: string } }>;
-      };
-    };
-    if (client.subscription?.billingPortal) {
+    const subscription = subscriptionApi();
+    if (subscription?.billingPortal) {
       try {
-        const result = await client.subscription.billingPortal({
+        const result = await subscription.billingPortal({
           returnUrl: `${window.location.origin}${paths.account}`,
         });
         if (result?.error) {

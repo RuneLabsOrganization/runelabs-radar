@@ -23,7 +23,6 @@ export type Capability =
 
 export interface EntitlementUser {
   id: number;
-  tier?: Tier;
 }
 
 export interface GateResult {
@@ -33,12 +32,6 @@ export interface GateResult {
   used?: number;
   quota?: number;
   upgradeHint?: string;
-}
-
-function tierFor(user: EntitlementUser | null | undefined): Tier {
-  if (!user) return 'free';
-  if (user.tier) return user.tier;
-  return entitlementFor(user.id).tier;
 }
 
 function countFeature(userId: number, feature: string, resetDay: number, now = new Date()): number {

@@ -87,12 +87,19 @@ const tasks = [
   cron.schedule('30 5 * * 2', () => fireAndForget(withJobRun('media-pricing', runMediaPricingSync), 'media-pricing')),
   // evidence mining: daily 06:55, after pain mining (06:40) and science (06:50)
   cron.schedule('55 6 * * *', () => fireAndForget(withJobRun('kit-evidence', runKitEvidence), 'kit-evidence')),
-  // price backfill + confidence grading: daily 07:05, after both feeders
-  cron.schedule('5 7 * * *', () => fireAndForget(withJobRun('kit-grade', () => {
-    const prices = runKitPriceBackfill();
-    const grades = runKitGrade();
-    return Promise.resolve({ ...prices, ...grades });
-  }), 'kit-grade')),
+  // price backfill + confidence grading: daily 07:05, after both feeders.
+  // Two job names, one chain: a pricing-feeder failure is recorded as a
+  // kit-prices error and never takes grading down with it (withJobRun swallows
+  // the failure into the run row, so the .then still grades) — before, the
+  // merged {...prices, ...grades} run died opaque on the first throw.
+  cron.schedule('5 7 * * *', () =>
+    fireAndForget(
+      withJobRun('kit-prices', () => Promise.resolve(runKitPriceBackfill())).then(() =>
+        withJobRun('kit-grade', () => Promise.resolve(runKitGrade())),
+      ),
+      'kit-prices→kit-grade',
+    ),
+  ),
   // daily: grade kit pick verdicts while flip history is fresh (after kit-grade)
   cron.schedule('15 7 * * *', () => fireAndForget(withJobRun('verdict-grade', runVerdictGrade), 'verdict-grade')),
   // weekly: source quality review over a 30-day window (Sunday 09:00)

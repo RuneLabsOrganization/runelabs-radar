@@ -1,3 +1,5 @@
+// Namespace import keeps JSX working under vitest's classic transform (jsx: preserve).
+import * as React from 'react';
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { desc, sql } from 'drizzle-orm';
@@ -25,7 +27,7 @@ import { DOMAIN_LABELS, isDomain } from '@/lib/domains';
 
 export async function generateMetadata({ params }: { params: Promise<{ name: string }> }) {
   const { name } = await params;
-  const entity = resolveEntity(decodeURIComponent(name));
+  const entity = resolveEntity(name);
   if (!entity) return {};
   return {
     title: `${entity.name} — watch`,
@@ -86,7 +88,9 @@ function StatBlock({ label, value, delta, range }: { label: string; value: strin
 export default async function EntityPage({ params }: { params: Promise<{ name: string }> }) {
   await requireViewer();
   const { name } = await params;
-  const entity = resolveEntity(decodeURIComponent(name));
+  // route params arrive decoded — decoding again would throw URIError on a
+  // literal '%' (e.g. /app/entity/%25), and entitySlug only emits [a-z0-9-]
+  const entity = resolveEntity(name);
   if (!entity) notFound();
 
   const db = getDb();

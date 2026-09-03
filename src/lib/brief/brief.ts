@@ -128,8 +128,11 @@ export async function runBrief(): Promise<{ wrote: boolean; insights: number; di
     .where(gte(boardHistory.appliedAt, weekAgo))
     .orderBy(desc(boardHistory.appliedAt))
     .all();
+  // board change lines embed externally-derived model names (see board/apply)
+  // — same prompt-line hygiene weekly.ts gives this exact data
   const historyLines = history.map(
-    (h) => `${h.appliedAt.toISOString().slice(0, 10)} ${h.domain}/${h.task}: ${h.change}`,
+    (h) =>
+      `${h.appliedAt.toISOString().slice(0, 10)} ${promptLine(h.domain, 20)}/${promptLine(h.task, 60)}: ${promptLine(h.change, 200)}`,
   );
 
   if (topStories.length < 3) {

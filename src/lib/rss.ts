@@ -29,7 +29,10 @@ export function mdToText(md: string, max = 300): string {
     .replace(/^-\s+/gm, '') // list bullets
     .replace(/\s+/g, ' ')
     .trim();
-  return text.length > max ? `${text.slice(0, max - 1).trimEnd()}…` : text;
+  // slice by code points: a UTF-16 slice can sever a surrogate pair and
+  // leave a lone half (renders as U+FFFD) at the boundary
+  const chars = [...text];
+  return chars.length > max ? `${chars.slice(0, max - 1).join('').trimEnd()}…` : text;
 }
 
 export function buildRss(opts: {

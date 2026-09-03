@@ -9,31 +9,8 @@ import { setSession } from '../../src/lib/personalization';
 import { urls } from '../../src/lib/urls';
 import { envelopeSchema, respond, withUserEconomy } from '../lib/payload';
 import { marketVisible, hasScope, type AuthContext } from '../lib/auth';
+import { overlap, tokenSet } from '../lib/overlap';
 import { visibleTo } from '../../src/lib/opportunities/scope';
-
-const STOPWORDS = new Set(
-  (
-    'the a an and or of to in on for with that this it is are be was were i me my we our you your they them their ' +
-    'as at by from so do does how what when where who why can could should would will not no new build make app ' +
-    'tool tools platform product service ai saas software idea'
-  ).split(' '),
-);
-
-function tokenSet(s: string): Set<string> {
-  return new Set(
-    s
-      .toLowerCase()
-      .split(/[^a-z0-9]+/)
-      .filter((t) => t.length > 2 && !STOPWORDS.has(t)),
-  );
-}
-
-function overlap(a: Set<string>, b: Set<string>): number {
-  if (a.size === 0 || b.size === 0) return 0;
-  let hit = 0;
-  for (const t of a) if (b.has(t)) hit++;
-  return hit / Math.sqrt(a.size * b.size);
-}
 
 export function registerJobTools(server: McpServer, auth: AuthContext): void {
   server.registerTool(

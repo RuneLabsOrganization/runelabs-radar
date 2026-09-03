@@ -11,6 +11,7 @@
     "seed": "tsx scripts/seed.ts",
     "seed:kits": "tsx scripts/seed-kit-infra.ts",
     "test": "vitest run",
+    "test:cov": "vitest run --coverage",
     "db:generate": "drizzle-kit generate",
     "mcp": "tsx mcp/server.ts"
   },
@@ -54,6 +55,7 @@
     "stripe": "^22.5.0",
     "tailwind-merge": "^3.6.0",
     "three": "^0.185.1",
+    "tsx": "^4.20.3",
     "zod": "^3.25.76"
   },
   "devDependencies": {
@@ -63,10 +65,10 @@
     "@types/node-cron": "^3.0.11",
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",
+    "@vitest/coverage-v8": "3.2.7",
     "drizzle-kit": "^0.31.2",
     "playwright-core": "^1.62.1",
     "tailwindcss": "^4.1.10",
-    "tsx": "^4.20.3",
     "typescript": "^5.8.3",
     "vitest": "^3.2.4"
   }

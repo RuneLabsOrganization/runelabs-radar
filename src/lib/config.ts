@@ -1,3 +1,19 @@
+/**
+ * Numeric env var with a loud fallback: Number(typo) is NaN, and
+ * `calls >= NaN` is always false — a malformed cap would silently disable the
+ * cost limit. Fall back to the default and warn instead.
+ */
+function intEnv(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (raw === undefined) return fallback;
+  const n = Number(raw);
+  if (!Number.isFinite(n)) {
+    console.warn(`[config] ${name}="${raw}" is not a number — falling back to ${fallback}`);
+    return fallback;
+  }
+  return n;
+}
+
 export const config = {
   get databasePath(): string {
     return process.env.DATABASE_PATH ?? './data/radar.db';
@@ -19,11 +35,11 @@ export const config = {
     return process.env.MINIMAX_MODEL ?? 'MiniMax-M3';
   },
   get minimaxDailyCallCap(): number {
-    return Number(process.env.MINIMAX_DAILY_CALL_CAP ?? 500);
+    return intEnv('MINIMAX_DAILY_CALL_CAP', 500);
   },
   /** Per-job daily cap for the high-volume curation job — keeps it from starving the others. */
   get minimaxCurateDailyCap(): number {
-    return Number(process.env.MINIMAX_CURATE_DAILY_CAP ?? 400);
+    return intEnv('MINIMAX_CURATE_DAILY_CAP', 400);
   },
   get aaApiKey(): string {
     return process.env.AA_API_KEY ?? '';

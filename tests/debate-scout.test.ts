@@ -227,7 +227,8 @@ describe('debate_idea', () => {
     const client = await wire('debate-fails');
     const res = await call(client, 'debate_idea', { idea: IDEA });
     expect(res.structuredContent).toMatchObject({ ok: false });
-    expect(res.structuredContent!.error as string).toContain('LLM down');
+    // the client gets a stable message — provider internals stay server-side
+    expect(res.structuredContent!.error as string).not.toContain('LLM down');
   });
 
   it('refuses after MCP_DEBATE_DAILY_CAP calls — every call counts', async () => {

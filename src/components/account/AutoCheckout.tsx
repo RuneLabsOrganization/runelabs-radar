@@ -18,19 +18,10 @@ export function AutoCheckout() {
 
     void (async () => {
       try {
-        const { authClient } = await import('@/lib/auth/client');
-        const client = authClient as {
-          subscription?: {
-            upgrade: (opts: {
-              plan: string;
-              annual?: boolean;
-              successUrl: string;
-              cancelUrl: string;
-            }) => Promise<{ error?: { message?: string } }>;
-          };
-        };
-        if (client.subscription?.upgrade) {
-          const result = await client.subscription.upgrade({
+        const { subscriptionApi } = await import('@/lib/auth/client');
+        const subscription = subscriptionApi();
+        if (subscription?.upgrade) {
+          const result = await subscription.upgrade({
             plan: checkout,
             annual,
             successUrl: `${window.location.origin}${paths.account}?upgraded=1`,

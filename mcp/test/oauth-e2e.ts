@@ -8,6 +8,11 @@
  *
  * Prereqs: web on :3000 (npm start), auth-enabled MCP on :3125, seeded admin
  * mcptest. Usage: npx tsx mcp/test/oauth-e2e.ts
+ *
+ * Env overrides (current values are the defaults, so the script runs as-is on
+ * the machine it was written on):
+ *   MCP_TEST_PASSWORD         — password of the seeded mcptest admin
+ *   PLAYWRIGHT_CHROMIUM_PATH  — chromium (headless shell) executable
  */
 import { createHash, randomBytes } from 'node:crypto';
 import { createServer } from 'node:http';
@@ -16,12 +21,13 @@ import { chromium } from 'playwright-core';
 const WEB = 'http://127.0.0.1:3000';
 const MCP = 'http://127.0.0.1:3125';
 const USER = 'mcptest';
-const PASS = 'McpT3st!Pass';
+const PASS = process.env.MCP_TEST_PASSWORD ?? 'McpT3st!Pass';
 const CB_PORT = 9877;
 const REDIRECT = `http://127.0.0.1:${CB_PORT}/callback`;
 // pinned to the chromium revision present on this machine (playwright-core
-// otherwise demands its own exact build)
+// otherwise demands its own exact build); override via PLAYWRIGHT_CHROMIUM_PATH
 const CHROMIUM =
+  process.env.PLAYWRIGHT_CHROMIUM_PATH ??
   process.env.LOCALAPPDATA + '\\ms-playwright\\chromium_headless_shell-1208\\chrome-headless-shell-win64\\chrome-headless-shell.exe';
 
 let passed = 0;

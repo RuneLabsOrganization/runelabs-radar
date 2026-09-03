@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, isNotNull, isNull } from 'drizzle-orm';
+import { and, desc, eq, gte, isNotNull, isNull, ne } from 'drizzle-orm';
 import { getDb } from '../db';
 import { items, stories } from '../db/schema';
 import { bufferToVec, cosine, vecToBuffer } from '../vec';
@@ -28,10 +28,12 @@ export async function semanticPreDedup(opts: { embed?: EmbedFn } = {}): Promise<
   const db = getDb();
   const cutoff = new Date(Date.now() - WINDOW_MS);
 
+  // 'filtered' stories are excluded: merging into one would keep it filtered
+  // (the gate never re-runs) and the dupe's items would vanish with it.
   const candidates = db
     .select({ id: stories.id, embedding: stories.embedding })
     .from(stories)
-    .where(and(gte(stories.createdAt, cutoff), isNotNull(stories.embedding)))
+    .where(and(gte(stories.createdAt, cutoff), isNotNull(stories.embedding), ne(stories.status, 'filtered')))
     .all();
 
   const targets = db
@@ -76,9 +78,13 @@ export async function semanticPreDedup(opts: { embed?: EmbedFn } = {}): Promise<
     }
     if (bestId !== null) {
       const canonical = db.select({ title: stories.title }).from(stories).where(eq(stories.id, bestId)).get();
-      db.update(items).set({ storyId: bestId }).where(eq(items.storyId, targets[i].id)).run();
-      db.update(stories).set({ updatedAt: now }).where(eq(stories.id, bestId)).run();
-      db.delete(stories).where(eq(stories.id, targets[i].id)).run();
+      // relink + bump + delete atomically: a crash mid-merge must not strand
+      // the dupe's items on a deleted story or bump without merging
+      db.transaction((tx) => {
+        tx.update(items).set({ storyId: bestId }).where(eq(items.storyId, targets[i].id)).run();
+        tx.update(stories).set({ updatedAt: now }).where(eq(stories.id, bestId)).run();
+        tx.delete(stories).where(eq(stories.id, targets[i].id)).run();
+      });
       merged++;
       console.log(`[semantic-dedup] merged "${targets[i].title}" → "${canonical?.title ?? bestId}"`);
     } else {

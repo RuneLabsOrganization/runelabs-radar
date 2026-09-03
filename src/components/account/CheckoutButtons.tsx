@@ -20,22 +20,13 @@ export function CheckoutButtons({
     setError(null);
     let signedIn = false;
     try {
-      const { authClient } = await import('@/lib/auth/client');
+      const { authClient, subscriptionApi } = await import('@/lib/auth/client');
       const session = await authClient.getSession();
       signedIn = Boolean((session as { data?: unknown } | null)?.data);
 
-      const client = authClient as {
-        subscription?: {
-          upgrade: (opts: {
-            plan: string;
-            annual?: boolean;
-            successUrl: string;
-            cancelUrl: string;
-          }) => Promise<{ error?: { message?: string } }>;
-        };
-      };
-      if (client.subscription?.upgrade) {
-        const result = await client.subscription.upgrade({
+      const subscription = subscriptionApi();
+      if (subscription?.upgrade) {
+        const result = await subscription.upgrade({
           plan,
           annual,
           successUrl: `${window.location.origin}${paths.account}?upgraded=1`,

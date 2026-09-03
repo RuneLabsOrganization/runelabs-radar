@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { boardEntries, stories } from '@/lib/db/schema';
 import {
   boardPlacements,
@@ -8,7 +8,15 @@ import {
   metricWeeklyDelta,
   weeklyDelta,
 } from '@/lib/entity-extras';
+import EntityPage, { generateMetadata } from '@/app/app/entity/[name]/page';
 import { useTestDb } from './helpers/db';
+
+// pages treat a null viewer as anonymous — enough to render the watch page
+vi.mock('@/lib/auth/user', () => ({
+  requireApiUser: vi.fn(async () => null),
+  getCurrentUser: vi.fn(async () => null),
+  requireViewer: vi.fn(async () => null),
+}));
 
 describe('makeDelta / weeklyDelta', () => {
   it('computes absolute and percent change', () => {
@@ -106,5 +114,49 @@ describe('humanizeMetricKey', () => {
     expect(humanizeMetricKey('github:owner/repo:stars')).toBe('GitHub stars · owner/repo');
     expect(humanizeMetricKey('npm:react:weekly_downloads')).toBe('npm weekly downloads · react');
     expect(humanizeMetricKey('aa:GPT-5:speed')).toBe('Artificial Analysis speed · GPT-5');
+  });
+});
+
+type El = { props?: { children?: unknown } };
+
+function textOf(node: unknown): string {
+  if (node == null || typeof node === 'boolean') return '';
+  if (typeof node === 'string' || typeof node === 'number') return String(node);
+  if (Array.isArray(node)) return node.map(textOf).join('');
+  return textOf((node as El).props?.children);
+}
+
+describe('entity page route param handling', () => {
+  beforeEach(() => {
+    useTestDb();
+  });
+
+  it('a literal % in the slug 404s instead of throwing URIError', async () => {
+    // Next decodes route params once — '/app/entity/%25' arrives here as '%'.
+    // A second decodeURIComponent would throw URIError → 500; the slug is now
+    // passed straight to resolveEntity, which finds nothing and 404s.
+    await expect(EntityPage({ params: Promise.resolve({ name: '%' }) })).rejects.toMatchObject({
+      digest: 'NEXT_HTTP_ERROR_FALLBACK;404', // notFound() — not a URIError 500
+    });
+    await expect(generateMetadata({ params: Promise.resolve({ name: '%' }) })).resolves.toEqual({});
+  });
+
+  it('still resolves a real entity slug', async () => {
+    const db = useTestDb();
+    db.insert(stories)
+      .values({
+        title: 'GPT-5 ships',
+        status: 'curated',
+        topScore: 88,
+        entities: JSON.stringify([{ name: 'GPT-5', kind: 'model' }]),
+        createdAt: new Date(),
+      })
+      .run();
+
+    const tree = await EntityPage({ params: Promise.resolve({ name: 'gpt-5' }) });
+    expect(textOf(tree)).toContain('GPT-5');
+
+    const meta = await generateMetadata({ params: Promise.resolve({ name: 'gpt-5' }) });
+    expect(meta.title).toContain('GPT-5');
   });
 });

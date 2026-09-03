@@ -21,11 +21,49 @@ export type PlanResult = { ok: true; plan: ExecutionPlan; cached: boolean } | { 
 // in-flight dedupe: concurrent requests for the same opportunity AND the same
 // market-visibility share one generation (mixing visibilities would hand a
 // market-grounded plan to a restricted caller). Progress listeners fan out to
-// every waiter instead of only the first.
+// every waiter instead of only the first. Quota accounting for attaching
+// callers lives in attachToInflight below.
 const inflight = new Map<
   string,
-  { p: Promise<PlanResult>; listeners: Set<(done: number, total: number, label: string) => void> }
+  {
+    owner: number | null;
+    p: Promise<PlanResult>;
+    listeners: Set<(done: number, total: number, label: string) => void>;
+  }
 >();
+
+/**
+ * Attach a concurrent caller to an in-flight generation. Quota accounting
+ * mirrors generatePlanInner's swap/release rules for the caller's own
+ * admission row (billing.admitPlanGeneration):
+ * - same owner as the running generation: the admission is a duplicate
+ *   reservation — the run's frame row already holds this caller's one quota
+ *   slot — so it is handed straight back (a retry never double-meters).
+ * - different owner: the admission row IS the attaching caller's metering
+ *   for the shared plan. It stays (counts) when the run lands a fresh plan,
+ *   and is handed back on the free outcomes — cache hit, failed generation,
+ *   or a rejected run — exactly like the generation owner's admission.
+ */
+function attachToInflight(
+  existing: { owner: number | null; p: Promise<PlanResult> },
+  userId: number | null,
+  admissionId: number | null,
+): Promise<PlanResult> {
+  if (existing.owner === userId) {
+    releasePlanAdmission(admissionId);
+    return existing.p;
+  }
+  return existing.p.then(
+    (result) => {
+      if (!result.ok || result.cached) releasePlanAdmission(admissionId);
+      return result;
+    },
+    (e) => {
+      releasePlanAdmission(admissionId);
+      throw e;
+    },
+  );
+}
 
 /**
  * Full-lifecycle execution plan for an opportunity, cached on the row.
@@ -57,7 +95,7 @@ export function generatePlan(
     const existing = inflight.get(key);
     if (existing) {
       if (opts?.onProgress) existing.listeners.add(opts.onProgress);
-      return existing.p;
+      return attachToInflight(existing, opts?.userId ?? null, opts?.admissionId ?? null);
     }
   }
   const listeners = new Set(opts?.onProgress ? [opts.onProgress] : []);
@@ -88,7 +126,7 @@ export function generatePlan(
       // delete only our own entry — a force call may have replaced it meanwhile
       if (inflight.get(key)?.p === p) inflight.delete(key);
     });
-  inflight.set(key, { p, listeners });
+  inflight.set(key, { owner: opts?.userId ?? null, p, listeners });
   return p;
 }
 

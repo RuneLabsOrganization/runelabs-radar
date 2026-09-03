@@ -1,0 +1,1012 @@
+
+<!doctype html>
+<html lang="en">
+
+<head>
+    <title>Code coverage report for src/lib/ingest/openbench.ts</title>
+    <meta charset="utf-8" />
+    <link rel="stylesheet" href="../../../prettify.css" />
+    <link rel="stylesheet" href="../../../base.css" />
+    <link rel="shortcut icon" type="image/x-icon" href="../../../favicon.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style type='text/css'>
+        .coverage-summary .sorter {
+            background-image: url(../../../sort-arrow-sprite.png);
+        }
+    </style>
+</head>
+    
+<body>
+<div class='wrapper'>
+    <div class='pad1'>
+        <h1><a href="../../../index.html">All files</a> / <a href="index.html">src/lib/ingest</a> openbench.ts</h1>
+        <div class='clearfix'>
+            
+            <div class='fl pad1y space-right2'>
+                <span class="strong">0% </span>
+                <span class="quiet">Statements</span>
+                <span class='fraction'>0/177</span>
+            </div>
+        
+            
+            <div class='fl pad1y space-right2'>
+                <span class="strong">100% </span>
+                <span class="quiet">Branches</span>
+                <span class='fraction'>1/1</span>
+            </div>
+        
+            
+            <div class='fl pad1y space-right2'>
+                <span class="strong">100% </span>
+                <span class="quiet">Functions</span>
+                <span class='fraction'>1/1</span>
+            </div>
+        
+            
+            <div class='fl pad1y space-right2'>
+                <span class="strong">0% </span>
+                <span class="quiet">Lines</span>
+                <span class='fraction'>0/177</span>
+            </div>
+        
+            
+        </div>
+        <p class="quiet">
+            Press <em>n</em> or <em>j</em> to go to the next uncovered block, <em>b</em>, <em>p</em> or <em>k</em> for the previous block.
+        </p>
+        <template id="filterTemplate">
+            <div class="quiet">
+                Filter:
+                <input type="search" id="fileSearch">
+            </div>
+        </template>
+    </div>
+    <div class='status-line low'></div>
+    <pre><table class="coverage">
+<tr><td class="line-count quiet"><a name='L1'></a><a href='#L1'>1</a>
+<a name='L2'></a><a href='#L2'>2</a>
+<a name='L3'></a><a href='#L3'>3</a>
+<a name='L4'></a><a href='#L4'>4</a>
+<a name='L5'></a><a href='#L5'>5</a>
+<a name='L6'></a><a href='#L6'>6</a>
+<a name='L7'></a><a href='#L7'>7</a>
+<a name='L8'></a><a href='#L8'>8</a>
+<a name='L9'></a><a href='#L9'>9</a>
+<a name='L10'></a><a href='#L10'>10</a>
+<a name='L11'></a><a href='#L11'>11</a>
+<a name='L12'></a><a href='#L12'>12</a>
+<a name='L13'></a><a href='#L13'>13</a>
+<a name='L14'></a><a href='#L14'>14</a>
+<a name='L15'></a><a href='#L15'>15</a>
+<a name='L16'></a><a href='#L16'>16</a>
+<a name='L17'></a><a href='#L17'>17</a>
+<a name='L18'></a><a href='#L18'>18</a>
+<a name='L19'></a><a href='#L19'>19</a>
+<a name='L20'></a><a href='#L20'>20</a>
+<a name='L21'></a><a href='#L21'>21</a>
+<a name='L22'></a><a href='#L22'>22</a>
+<a name='L23'></a><a href='#L23'>23</a>
+<a name='L24'></a><a href='#L24'>24</a>
+<a name='L25'></a><a href='#L25'>25</a>
+<a name='L26'></a><a href='#L26'>26</a>
+<a name='L27'></a><a href='#L27'>27</a>
+<a name='L28'></a><a href='#L28'>28</a>
+<a name='L29'></a><a href='#L29'>29</a>
+<a name='L30'></a><a href='#L30'>30</a>
+<a name='L31'></a><a href='#L31'>31</a>
+<a name='L32'></a><a href='#L32'>32</a>
+<a name='L33'></a><a href='#L33'>33</a>
+<a name='L34'></a><a href='#L34'>34</a>
+<a name='L35'></a><a href='#L35'>35</a>
+<a name='L36'></a><a href='#L36'>36</a>
+<a name='L37'></a><a href='#L37'>37</a>
+<a name='L38'></a><a href='#L38'>38</a>
+<a name='L39'></a><a href='#L39'>39</a>
+<a name='L40'></a><a href='#L40'>40</a>
+<a name='L41'></a><a href='#L41'>41</a>
+<a name='L42'></a><a href='#L42'>42</a>
+<a name='L43'></a><a href='#L43'>43</a>
+<a name='L44'></a><a href='#L44'>44</a>
+<a name='L45'></a><a href='#L45'>45</a>
+<a name='L46'></a><a href='#L46'>46</a>
+<a name='L47'></a><a href='#L47'>47</a>
+<a name='L48'></a><a href='#L48'>48</a>
+<a name='L49'></a><a href='#L49'>49</a>
+<a name='L50'></a><a href='#L50'>50</a>
+<a name='L51'></a><a href='#L51'>51</a>
+<a name='L52'></a><a href='#L52'>52</a>
+<a name='L53'></a><a href='#L53'>53</a>
+<a name='L54'></a><a href='#L54'>54</a>
+<a name='L55'></a><a href='#L55'>55</a>
+<a name='L56'></a><a href='#L56'>56</a>
+<a name='L57'></a><a href='#L57'>57</a>
+<a name='L58'></a><a href='#L58'>58</a>
+<a name='L59'></a><a href='#L59'>59</a>
+<a name='L60'></a><a href='#L60'>60</a>
+<a name='L61'></a><a href='#L61'>61</a>
+<a name='L62'></a><a href='#L62'>62</a>
+<a name='L63'></a><a href='#L63'>63</a>
+<a name='L64'></a><a href='#L64'>64</a>
+<a name='L65'></a><a href='#L65'>65</a>
+<a name='L66'></a><a href='#L66'>66</a>
+<a name='L67'></a><a href='#L67'>67</a>
+<a name='L68'></a><a href='#L68'>68</a>
+<a name='L69'></a><a href='#L69'>69</a>
+<a name='L70'></a><a href='#L70'>70</a>
+<a name='L71'></a><a href='#L71'>71</a>
+<a name='L72'></a><a href='#L72'>72</a>
+<a name='L73'></a><a href='#L73'>73</a>
+<a name='L74'></a><a href='#L74'>74</a>
+<a name='L75'></a><a href='#L75'>75</a>
+<a name='L76'></a><a href='#L76'>76</a>
+<a name='L77'></a><a href='#L77'>77</a>
+<a name='L78'></a><a href='#L78'>78</a>
+<a name='L79'></a><a href='#L79'>79</a>
+<a name='L80'></a><a href='#L80'>80</a>
+<a name='L81'></a><a href='#L81'>81</a>
+<a name='L82'></a><a href='#L82'>82</a>
+<a name='L83'></a><a href='#L83'>83</a>
+<a name='L84'></a><a href='#L84'>84</a>
+<a name='L85'></a><a href='#L85'>85</a>
+<a name='L86'></a><a href='#L86'>86</a>
+<a name='L87'></a><a href='#L87'>87</a>
+<a name='L88'></a><a href='#L88'>88</a>
+<a name='L89'></a><a href='#L89'>89</a>
+<a name='L90'></a><a href='#L90'>90</a>
+<a name='L91'></a><a href='#L91'>91</a>
+<a name='L92'></a><a href='#L92'>92</a>
+<a name='L93'></a><a href='#L93'>93</a>
+<a name='L94'></a><a href='#L94'>94</a>
+<a name='L95'></a><a href='#L95'>95</a>
+<a name='L96'></a><a href='#L96'>96</a>
+<a name='L97'></a><a href='#L97'>97</a>
+<a name='L98'></a><a href='#L98'>98</a>
+<a name='L99'></a><a href='#L99'>99</a>
+<a name='L100'></a><a href='#L100'>100</a>
+<a name='L101'></a><a href='#L101'>101</a>
+<a name='L102'></a><a href='#L102'>102</a>
+<a name='L103'></a><a href='#L103'>103</a>
+<a name='L104'></a><a href='#L104'>104</a>
+<a name='L105'></a><a href='#L105'>105</a>
+<a name='L106'></a><a href='#L106'>106</a>
+<a name='L107'></a><a href='#L107'>107</a>
+<a name='L108'></a><a href='#L108'>108</a>
+<a name='L109'></a><a href='#L109'>109</a>
+<a name='L110'></a><a href='#L110'>110</a>
+<a name='L111'></a><a href='#L111'>111</a>
+<a name='L112'></a><a href='#L112'>112</a>
+<a name='L113'></a><a href='#L113'>113</a>
+<a name='L114'></a><a href='#L114'>114</a>
+<a name='L115'></a><a href='#L115'>115</a>
+<a name='L116'></a><a href='#L116'>116</a>
+<a name='L117'></a><a href='#L117'>117</a>
+<a name='L118'></a><a href='#L118'>118</a>
+<a name='L119'></a><a href='#L119'>119</a>
+<a name='L120'></a><a href='#L120'>120</a>
+<a name='L121'></a><a href='#L121'>121</a>
+<a name='L122'></a><a href='#L122'>122</a>
+<a name='L123'></a><a href='#L123'>123</a>
+<a name='L124'></a><a href='#L124'>124</a>
+<a name='L125'></a><a href='#L125'>125</a>
+<a name='L126'></a><a href='#L126'>126</a>
+<a name='L127'></a><a href='#L127'>127</a>
+<a name='L128'></a><a href='#L128'>128</a>
+<a name='L129'></a><a href='#L129'>129</a>
+<a name='L130'></a><a href='#L130'>130</a>
+<a name='L131'></a><a href='#L131'>131</a>
+<a name='L132'></a><a href='#L132'>132</a>
+<a name='L133'></a><a href='#L133'>133</a>
+<a name='L134'></a><a href='#L134'>134</a>
+<a name='L135'></a><a href='#L135'>135</a>
+<a name='L136'></a><a href='#L136'>136</a>
+<a name='L137'></a><a href='#L137'>137</a>
+<a name='L138'></a><a href='#L138'>138</a>
+<a name='L139'></a><a href='#L139'>139</a>
+<a name='L140'></a><a href='#L140'>140</a>
+<a name='L141'></a><a href='#L141'>141</a>
+<a name='L142'></a><a href='#L142'>142</a>
+<a name='L143'></a><a href='#L143'>143</a>
+<a name='L144'></a><a href='#L144'>144</a>
+<a name='L145'></a><a href='#L145'>145</a>
+<a name='L146'></a><a href='#L146'>146</a>
+<a name='L147'></a><a href='#L147'>147</a>
+<a name='L148'></a><a href='#L148'>148</a>
+<a name='L149'></a><a href='#L149'>149</a>
+<a name='L150'></a><a href='#L150'>150</a>
+<a name='L151'></a><a href='#L151'>151</a>
+<a name='L152'></a><a href='#L152'>152</a>
+<a name='L153'></a><a href='#L153'>153</a>
+<a name='L154'></a><a href='#L154'>154</a>
+<a name='L155'></a><a href='#L155'>155</a>
+<a name='L156'></a><a href='#L156'>156</a>
+<a name='L157'></a><a href='#L157'>157</a>
+<a name='L158'></a><a href='#L158'>158</a>
+<a name='L159'></a><a href='#L159'>159</a>
+<a name='L160'></a><a href='#L160'>160</a>
+<a name='L161'></a><a href='#L161'>161</a>
+<a name='L162'></a><a href='#L162'>162</a>
+<a name='L163'></a><a href='#L163'>163</a>
+<a name='L164'></a><a href='#L164'>164</a>
+<a name='L165'></a><a href='#L165'>165</a>
+<a name='L166'></a><a href='#L166'>166</a>
+<a name='L167'></a><a href='#L167'>167</a>
+<a name='L168'></a><a href='#L168'>168</a>
+<a name='L169'></a><a href='#L169'>169</a>
+<a name='L170'></a><a href='#L170'>170</a>
+<a name='L171'></a><a href='#L171'>171</a>
+<a name='L172'></a><a href='#L172'>172</a>
+<a name='L173'></a><a href='#L173'>173</a>
+<a name='L174'></a><a href='#L174'>174</a>
+<a name='L175'></a><a href='#L175'>175</a>
+<a name='L176'></a><a href='#L176'>176</a>
+<a name='L177'></a><a href='#L177'>177</a>
+<a name='L178'></a><a href='#L178'>178</a>
+<a name='L179'></a><a href='#L179'>179</a>
+<a name='L180'></a><a href='#L180'>180</a>
+<a name='L181'></a><a href='#L181'>181</a>
+<a name='L182'></a><a href='#L182'>182</a>
+<a name='L183'></a><a href='#L183'>183</a>
+<a name='L184'></a><a href='#L184'>184</a>
+<a name='L185'></a><a href='#L185'>185</a>
+<a name='L186'></a><a href='#L186'>186</a>
+<a name='L187'></a><a href='#L187'>187</a>
+<a name='L188'></a><a href='#L188'>188</a>
+<a name='L189'></a><a href='#L189'>189</a>
+<a name='L190'></a><a href='#L190'>190</a>
+<a name='L191'></a><a href='#L191'>191</a>
+<a name='L192'></a><a href='#L192'>192</a>
+<a name='L193'></a><a href='#L193'>193</a>
+<a name='L194'></a><a href='#L194'>194</a>
+<a name='L195'></a><a href='#L195'>195</a>
+<a name='L196'></a><a href='#L196'>196</a>
+<a name='L197'></a><a href='#L197'>197</a>
+<a name='L198'></a><a href='#L198'>198</a>
+<a name='L199'></a><a href='#L199'>199</a>
+<a name='L200'></a><a href='#L200'>200</a>
+<a name='L201'></a><a href='#L201'>201</a>
+<a name='L202'></a><a href='#L202'>202</a>
+<a name='L203'></a><a href='#L203'>203</a>
+<a name='L204'></a><a href='#L204'>204</a>
+<a name='L205'></a><a href='#L205'>205</a>
+<a name='L206'></a><a href='#L206'>206</a>
+<a name='L207'></a><a href='#L207'>207</a>
+<a name='L208'></a><a href='#L208'>208</a>
+<a name='L209'></a><a href='#L209'>209</a>
+<a name='L210'></a><a href='#L210'>210</a>
+<a name='L211'></a><a href='#L211'>211</a>
+<a name='L212'></a><a href='#L212'>212</a>
+<a name='L213'></a><a href='#L213'>213</a>
+<a name='L214'></a><a href='#L214'>214</a>
+<a name='L215'></a><a href='#L215'>215</a>
+<a name='L216'></a><a href='#L216'>216</a>
+<a name='L217'></a><a href='#L217'>217</a>
+<a name='L218'></a><a href='#L218'>218</a>
+<a name='L219'></a><a href='#L219'>219</a>
+<a name='L220'></a><a href='#L220'>220</a>
+<a name='L221'></a><a href='#L221'>221</a>
+<a name='L222'></a><a href='#L222'>222</a>
+<a name='L223'></a><a href='#L223'>223</a>
+<a name='L224'></a><a href='#L224'>224</a>
+<a name='L225'></a><a href='#L225'>225</a>
+<a name='L226'></a><a href='#L226'>226</a>
+<a name='L227'></a><a href='#L227'>227</a>
+<a name='L228'></a><a href='#L228'>228</a>
+<a name='L229'></a><a href='#L229'>229</a>
+<a name='L230'></a><a href='#L230'>230</a>
+<a name='L231'></a><a href='#L231'>231</a>
+<a name='L232'></a><a href='#L232'>232</a>
+<a name='L233'></a><a href='#L233'>233</a>
+<a name='L234'></a><a href='#L234'>234</a>
+<a name='L235'></a><a href='#L235'>235</a>
+<a name='L236'></a><a href='#L236'>236</a>
+<a name='L237'></a><a href='#L237'>237</a>
+<a name='L238'></a><a href='#L238'>238</a>
+<a name='L239'></a><a href='#L239'>239</a>
+<a name='L240'></a><a href='#L240'>240</a>
+<a name='L241'></a><a href='#L241'>241</a>
+<a name='L242'></a><a href='#L242'>242</a>
+<a name='L243'></a><a href='#L243'>243</a>
+<a name='L244'></a><a href='#L244'>244</a>
+<a name='L245'></a><a href='#L245'>245</a>
+<a name='L246'></a><a href='#L246'>246</a>
+<a name='L247'></a><a href='#L247'>247</a>
+<a name='L248'></a><a href='#L248'>248</a>
+<a name='L249'></a><a href='#L249'>249</a>
+<a name='L250'></a><a href='#L250'>250</a>
+<a name='L251'></a><a href='#L251'>251</a>
+<a name='L252'></a><a href='#L252'>252</a>
+<a name='L253'></a><a href='#L253'>253</a>
+<a name='L254'></a><a href='#L254'>254</a>
+<a name='L255'></a><a href='#L255'>255</a>
+<a name='L256'></a><a href='#L256'>256</a>
+<a name='L257'></a><a href='#L257'>257</a>
+<a name='L258'></a><a href='#L258'>258</a>
+<a name='L259'></a><a href='#L259'>259</a>
+<a name='L260'></a><a href='#L260'>260</a>
+<a name='L261'></a><a href='#L261'>261</a>
+<a name='L262'></a><a href='#L262'>262</a>
+<a name='L263'></a><a href='#L263'>263</a>
+<a name='L264'></a><a href='#L264'>264</a>
+<a name='L265'></a><a href='#L265'>265</a>
+<a name='L266'></a><a href='#L266'>266</a>
+<a name='L267'></a><a href='#L267'>267</a>
+<a name='L268'></a><a href='#L268'>268</a>
+<a name='L269'></a><a href='#L269'>269</a>
+<a name='L270'></a><a href='#L270'>270</a>
+<a name='L271'></a><a href='#L271'>271</a>
+<a name='L272'></a><a href='#L272'>272</a>
+<a name='L273'></a><a href='#L273'>273</a>
+<a name='L274'></a><a href='#L274'>274</a>
+<a name='L275'></a><a href='#L275'>275</a>
+<a name='L276'></a><a href='#L276'>276</a>
+<a name='L277'></a><a href='#L277'>277</a>
+<a name='L278'></a><a href='#L278'>278</a>
+<a name='L279'></a><a href='#L279'>279</a>
+<a name='L280'></a><a href='#L280'>280</a>
+<a name='L281'></a><a href='#L281'>281</a>
+<a name='L282'></a><a href='#L282'>282</a>
+<a name='L283'></a><a href='#L283'>283</a>
+<a name='L284'></a><a href='#L284'>284</a>
+<a name='L285'></a><a href='#L285'>285</a>
+<a name='L286'></a><a href='#L286'>286</a>
+<a name='L287'></a><a href='#L287'>287</a>
+<a name='L288'></a><a href='#L288'>288</a>
+<a name='L289'></a><a href='#L289'>289</a>
+<a name='L290'></a><a href='#L290'>290</a>
+<a name='L291'></a><a href='#L291'>291</a>
+<a name='L292'></a><a href='#L292'>292</a>
+<a name='L293'></a><a href='#L293'>293</a>
+<a name='L294'></a><a href='#L294'>294</a>
+<a name='L295'></a><a href='#L295'>295</a>
+<a name='L296'></a><a href='#L296'>296</a>
+<a name='L297'></a><a href='#L297'>297</a>
+<a name='L298'></a><a href='#L298'>298</a>
+<a name='L299'></a><a href='#L299'>299</a>
+<a name='L300'></a><a href='#L300'>300</a>
+<a name='L301'></a><a href='#L301'>301</a>
+<a name='L302'></a><a href='#L302'>302</a>
+<a name='L303'></a><a href='#L303'>303</a>
+<a name='L304'></a><a href='#L304'>304</a>
+<a name='L305'></a><a href='#L305'>305</a>
+<a name='L306'></a><a href='#L306'>306</a>
+<a name='L307'></a><a href='#L307'>307</a>
+<a name='L308'></a><a href='#L308'>308</a>
+<a name='L309'></a><a href='#L309'>309</a>
+<a name='L310'></a><a href='#L310'>310</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js">/**
+ * Open benchmark + media + OpenRouter ingest (master plan §6b).
+ *
+ * First-party time series, written weekly into metric_points:
+ *   source 'openrouter' — per-model token pricing from OpenRouter's public
+ *     /api/v1/models endpoint (no key). metric: 'price_in' | 'price_out',
+ *     USD per 1M tokens (their API quotes per-token strings).
+ *   source 'open-bench' — capability scores. metric:
+ *     'intelligence'  0-100 composite (seed table)
+ *     'elo'           LMArena text arena ELO (seed table)
+ *     'image_elo'     text-to-image arena ELO (seed table)
+ *     'video_elo'     text-to-video arena ELO (seed table)
+ *     'livebench'     LiveBench global average (live fetch)
+ *
+ * Live vs seed: LMArena has no stable machine-readable export (probed
+ * 2026-08: leaderboard is a gradio app; the HF datasets hold raw votes, not
+ * scores), so arena + composite numbers come from the manually reviewed
+ * SEED_MODELS table below — that is the primary path. LiveBench publishes a
+ * static per-release CSV/JSON export; that one live source is fetched
+ * best-effort on top, under its own metric key ('livebench') so it can never
+ * clobber the hand-reviewed 'intelligence' series on the same day.
+ * Speech arena: skipped — no clean public source exists (probed 2026-08).
+ *
+ * Every source is failure-isolated and leaves an audit row in
+ * benchmark_snapshots (source 'openrouter' | 'open-bench-livebench' |
+ * 'open-bench-seed'). Registration (weekly cron in worker/index.ts +
+ * worker/run.ts job map) is done by the integrator, not here.
+ */
+&nbsp;
+<span class="cstat-no" title="statement not covered" >import { getDb } from '../db';</span>
+<span class="cstat-no" title="statement not covered" >import { benchmarkSnapshots } from '../db/schema';</span>
+<span class="cstat-no" title="statement not covered" >import { recordMetrics, type MetricInput } from '../metrics';</span>
+<span class="cstat-no" title="statement not covered" >import { fetchText } from './adapters/shared';</span>
+&nbsp;
+/** Injected for offline tests; production default is the shared retried fetcher. */
+export type FetchTextFn = (url: string) =&gt; Promise&lt;string&gt;;
+&nbsp;
+/** Raw audit snapshots are capped (~50KB) so a ballooning payload can't bloat the DB. */
+<span class="cstat-no" title="statement not covered" >const RAW_SNAPSHOT_MAX = 50_000;</span>
+&nbsp;
+<span class="cstat-no" title="statement not covered" >const OPENROUTER_MODELS_URL = 'https://openrouter.ai/api/v1/models';</span>
+<span class="cstat-no" title="statement not covered" >const LIVEBENCH_BASE = 'https://livebench.ai';</span>
+&nbsp;
+export type SourceStat = { name: string; ok: boolean; points: number; release?: string; error?: string };
+export type OpenBenchStats = { recorded: number; snapshots: number; sources: SourceStat[] };
+&nbsp;
+// ── Static seed table ────────────────────────────────────────────────────────
+&nbsp;
+export interface SeedModel {
+  /** Vendor-public display name — later phases join metric series on this. */
+  entity: string;
+  /** 0-100 capability composite (model cards / AA-style index, transcribed). */
+  intelligence?: number;
+  /** LMArena text arena ELO. */
+  elo?: number;
+  /** LMArena text-to-image arena ELO. */
+  imageElo?: number;
+  /** LMArena text-to-video arena ELO. */
+  videoElo?: number;
+  /** LiveBench slug prefix enabling live augmentation (see liveBenchPoints). */
+  livebench?: string;
+}
+&nbsp;
+/**
+ * Static seed table — the PRIMARY source of open-bench capability scores.
+ * There is no stable machine-readable LMArena API, so these are transcribed
+ * by hand from the public leaderboards and official model cards:
+ *   text arena  — https://lmarena.ai/leaderboard (Text)
+ *   image arena — https://lmarena.ai/leaderboard (Text-to-Image)
+ *   video arena — https://lmarena.ai/leaderboard (Text-to-Video)
+ *   composite   — vendor model cards + https://livebench.ai global average
+ * Keep to ~15-20 builder-relevant LLMs plus the media models our image/video
+ * domains track. Media arenas get their own metric keys ('image_elo' /
+ * 'video_elo') so a model present in both text and media arenas never
+ * collides on (source, entity, metric, date).
+ * last manual review: 2026-08
+ */
+<span class="cstat-no" title="statement not covered" >export const SEED_MODELS: SeedModel[] = [</span>
+  // frontier closed weights
+<span class="cstat-no" title="statement not covered" >  { entity: 'GPT-5.5', intelligence: 68, elo: 1486, livebench: 'gpt-5-5' },</span>
+<span class="cstat-no" title="statement not covered" >  { entity: 'GPT-5.2-Codex', intelligence: 62, livebench: 'gpt-5-2-codex' },</span>
+<span class="cstat-no" title="statement not covered" >  { entity: 'Claude Opus 4.7', intelligence: 66, elo: 1472, livebench: 'claude-opus-4-7' },</span>
+<span class="cstat-no" title="statement not covered" >  { entity: 'Claude Sonnet 5', intelligence: 61, elo: 1459, livebench: 'claude-sonnet-5' },</span>
+<span class="cstat-no" title="statement not covered" >  { entity: 'Claude Sonnet 4.5', intelligence: 55, elo: 1441, livebench: 'claude-sonnet-4-5' },</span>
+<span class="cstat-no" title="statement not covered" >  { entity: 'Gemini 3.1 Pro', intelligence: 65, elo: 1468, livebench: 'gemini-3-1-pro' },</span>
+<span class="cstat-no" title="statement not covered" >  { entity: 'Gemini 2.5 Pro', intelligence: 57, elo: 1446, livebench: 'gemini-2-5-pro' },</span>
+<span class="cstat-no" title="statement not covered" >  { entity: 'Grok 4.1', intelligence: 60, elo: 1452, livebench: 'grok-4-1' },</span>
+  // open weights — the self-host slice builders actually compare
+<span class="cstat-no" title="statement not covered" >  { entity: 'DeepSeek-V3.2', intelligence: 54, elo: 1436, livebench: 'deepseek-v3-2' },</span>
+<span class="cstat-no" title="statement not covered" >  { entity: 'DeepSeek V4 Pro', intelligence: 59, livebench: 'deepseek-v4' },</span>
+<span class="cstat-no" title="statement not covered" >  { entity: 'Kimi K2', intelligence: 50, elo: 1424, livebench: 'kimi-k2' },</span>
+<span class="cstat-no" title="statement not covered" >  { entity: 'MiniMax-M2', intelligence: 51, elo: 1428, livebench: 'minimax-m2' },</span>
+<span class="cstat-no" title="statement not covered" >  { entity: 'Qwen3-235B', intelligence: 48, elo: 1418, livebench: 'qwen3-235b' },</span>
+<span class="cstat-no" title="statement not covered" >  { entity: 'GLM-5.2', intelligence: 56, elo: 1439, livebench: 'glm-5' },</span>
+<span class="cstat-no" title="statement not covered" >  { entity: 'Mistral Large 3', intelligence: 46, elo: 1408 },</span>
+<span class="cstat-no" title="statement not covered" >  { entity: 'Llama 4 Maverick', intelligence: 44, elo: 1404 },</span>
+  // image arena (text-to-image) — our image domain
+<span class="cstat-no" title="statement not covered" >  { entity: 'GPT Image 1.5', imageElo: 1312 },</span>
+<span class="cstat-no" title="statement not covered" >  { entity: 'Imagen 4 Ultra', imageElo: 1284 },</span>
+<span class="cstat-no" title="statement not covered" >  { entity: 'Seedream 4.5', imageElo: 1266 },</span>
+<span class="cstat-no" title="statement not covered" >  { entity: 'FLUX.2 Pro', imageElo: 1241 },</span>
+<span class="cstat-no" title="statement not covered" >  { entity: 'Recraft V4', imageElo: 1218 },</span>
+  // video arena (text-to-video) — our video domain
+<span class="cstat-no" title="statement not covered" >  { entity: 'Veo 3.1', videoElo: 1296 },</span>
+<span class="cstat-no" title="statement not covered" >  { entity: 'Sora 2 Pro', videoElo: 1271 },</span>
+<span class="cstat-no" title="statement not covered" >  { entity: 'Kling 2.5 Turbo', videoElo: 1233 },</span>
+<span class="cstat-no" title="statement not covered" >  { entity: 'Hailuo 2.3', videoElo: 1211 },</span>
+<span class="cstat-no" title="statement not covered" >  { entity: 'Wan 2.5', videoElo: 1189 },</span>
+<span class="cstat-no" title="statement not covered" >];</span>
+&nbsp;
+/** Flattens the seed table into metric points. Exported for tests. */
+<span class="cstat-no" title="statement not covered" >export function seedPoints(seeds: SeedModel[] = SEED_MODELS): MetricInput[] {</span>
+<span class="cstat-no" title="statement not covered" >  const out: MetricInput[] = [];</span>
+<span class="cstat-no" title="statement not covered" >  for (const m of seeds) {</span>
+<span class="cstat-no" title="statement not covered" >    if (m.intelligence !== undefined)</span>
+<span class="cstat-no" title="statement not covered" >      out.push({ source: 'open-bench', entity: m.entity, metric: 'intelligence', value: m.intelligence });</span>
+<span class="cstat-no" title="statement not covered" >    if (m.elo !== undefined) out.push({ source: 'open-bench', entity: m.entity, metric: 'elo', value: m.elo });</span>
+<span class="cstat-no" title="statement not covered" >    if (m.imageElo !== undefined)</span>
+<span class="cstat-no" title="statement not covered" >      out.push({ source: 'open-bench', entity: m.entity, metric: 'image_elo', value: m.imageElo });</span>
+<span class="cstat-no" title="statement not covered" >    if (m.videoElo !== undefined)</span>
+<span class="cstat-no" title="statement not covered" >      out.push({ source: 'open-bench', entity: m.entity, metric: 'video_elo', value: m.videoElo });</span>
+<span class="cstat-no" title="statement not covered" >  }</span>
+<span class="cstat-no" title="statement not covered" >  return out;</span>
+<span class="cstat-no" title="statement not covered" >}</span>
+&nbsp;
+// ── OpenRouter ───────────────────────────────────────────────────────────────
+&nbsp;
+interface OpenRouterModel {
+  id?: unknown;
+  pricing?: { prompt?: unknown; completion?: unknown } | null;
+}
+&nbsp;
+/**
+ * USD-per-token string/number → USD per 1M tokens. Null when absent,
+ * unparseable, or negative (free models are an explicit 0, kept).
+ * toPrecision(12) trims binary-float dust (3e-6 * 1e6 !== 3 exactly).
+ */
+<span class="cstat-no" title="statement not covered" >function per1M(v: unknown): number | null {</span>
+<span class="cstat-no" title="statement not covered" >  if (typeof v !== 'string' &amp;&amp; typeof v !== 'number') return null;</span>
+<span class="cstat-no" title="statement not covered" >  const n = Number(v);</span>
+<span class="cstat-no" title="statement not covered" >  if (!Number.isFinite(n) || n &lt; 0) return null;</span>
+<span class="cstat-no" title="statement not covered" >  return Number((n * 1e6).toPrecision(12));</span>
+<span class="cstat-no" title="statement not covered" >}</span>
+&nbsp;
+/** Maps the /api/v1/models payload to price points. Exported for tests. */
+<span class="cstat-no" title="statement not covered" >export function metricsFromOpenRouter(payload: unknown): MetricInput[] {</span>
+<span class="cstat-no" title="statement not covered" >  const data = (payload as { data?: unknown } | null)?.data;</span>
+<span class="cstat-no" title="statement not covered" >  if (!Array.isArray(data)) return [];</span>
+<span class="cstat-no" title="statement not covered" >  const out: MetricInput[] = [];</span>
+<span class="cstat-no" title="statement not covered" >  for (const m of data as OpenRouterModel[]) {</span>
+<span class="cstat-no" title="statement not covered" >    if (typeof m?.id !== 'string' || m.id.length === 0) continue;</span>
+<span class="cstat-no" title="statement not covered" >    const priceIn = per1M(m.pricing?.prompt);</span>
+<span class="cstat-no" title="statement not covered" >    const priceOut = per1M(m.pricing?.completion);</span>
+<span class="cstat-no" title="statement not covered" >    if (priceIn !== null) out.push({ source: 'openrouter', entity: m.id, metric: 'price_in', value: priceIn });</span>
+<span class="cstat-no" title="statement not covered" >    if (priceOut !== null) out.push({ source: 'openrouter', entity: m.id, metric: 'price_out', value: priceOut });</span>
+<span class="cstat-no" title="statement not covered" >  }</span>
+<span class="cstat-no" title="statement not covered" >  return out;</span>
+<span class="cstat-no" title="statement not covered" >}</span>
+&nbsp;
+// ── LiveBench (live, best-effort) ────────────────────────────────────────────
+&nbsp;
+/**
+ * LiveBench serves a static export per release — table_&lt;date&gt;.csv (models ×
+ * subtask scores) and categories_&lt;date&gt;.json (category → subtasks) — but the
+ * release list exists only inside the site's JS bundle. Discovery: homepage →
+ * main.*.js path → newest 20YY-MM-DD strings in the bundle, newest first.
+ * Returns up to 3 underscored candidates (a spurious future date string in
+ * the bundle would 404, so the caller tries them in order).
+ */
+<span class="cstat-no" title="statement not covered" >export async function liveBenchReleaseCandidates(text: FetchTextFn): Promise&lt;string[]&gt; {</span>
+<span class="cstat-no" title="statement not covered" >  const html = await text(`${LIVEBENCH_BASE}/`);</span>
+<span class="cstat-no" title="statement not covered" >  const jsPath = html.match(/static\/js\/main\.[\w-]+\.js/)?.[0];</span>
+<span class="cstat-no" title="statement not covered" >  if (!jsPath) throw new Error('livebench: main JS bundle not found on homepage');</span>
+<span class="cstat-no" title="statement not covered" >  const js = await text(`${LIVEBENCH_BASE}/${jsPath}`);</span>
+<span class="cstat-no" title="statement not covered" >  const dates = [...new Set([...js.matchAll(/20\d\d-\d\d-\d\d/g)].map((m) =&gt; m[0]))].sort().reverse();</span>
+<span class="cstat-no" title="statement not covered" >  if (dates.length === 0) throw new Error('livebench: no release dates found in JS bundle');</span>
+<span class="cstat-no" title="statement not covered" >  return dates.slice(0, 3).map((d) =&gt; d.replaceAll('-', '_'));</span>
+<span class="cstat-no" title="statement not covered" >}</span>
+&nbsp;
+/** LiveBench's export is machine-generated: no quoting, no embedded commas. */
+<span class="cstat-no" title="statement not covered" >function parseSimpleCsv(csv: string): string[][] {</span>
+<span class="cstat-no" title="statement not covered" >  return csv</span>
+<span class="cstat-no" title="statement not covered" >    .split(/\r?\n/)</span>
+<span class="cstat-no" title="statement not covered" >    .map((line) =&gt; line.trim())</span>
+<span class="cstat-no" title="statement not covered" >    .filter((line) =&gt; line.length &gt; 0)</span>
+<span class="cstat-no" title="statement not covered" >    .map((line) =&gt; line.split(',').map((cell) =&gt; cell.trim()));</span>
+<span class="cstat-no" title="statement not covered" >}</span>
+&nbsp;
+<span class="cstat-no" title="statement not covered" >const round2 = (v: number) =&gt; Math.round(v * 100) / 100;</span>
+&nbsp;
+/**
+ * LiveBench global average per model: mean of per-category means (their
+ * published methodology). Slugs (e.g. 'claude-opus-4-7-xhigh-effort') are
+ * mapped onto seed names via each model's `livebench` prefix; a model ships
+ * several rows (effort/thinking variants) — take the best published
+ * configuration, as the leaderboard advertises. Rows matching no seed prefix
+ * are dropped: entity naming stays vendor-public and joinable.
+ */
+<span class="cstat-no" title="statement not covered" >export function liveBenchPoints(tableCsv: string, categoriesJson: string, seeds: SeedModel[] = SEED_MODELS): MetricInput[] {</span>
+<span class="cstat-no" title="statement not covered" >  const categories = JSON.parse(categoriesJson) as Record&lt;string, unknown&gt;;</span>
+<span class="cstat-no" title="statement not covered" >  const rows = parseSimpleCsv(tableCsv);</span>
+<span class="cstat-no" title="statement not covered" >  if (rows.length &lt; 2) return [];</span>
+<span class="cstat-no" title="statement not covered" >  const colOf = new Map(rows[0].map((name, i) =&gt; [name, i]));</span>
+&nbsp;
+  // slug → global average across categories
+<span class="cstat-no" title="statement not covered" >  const overall = new Map&lt;string, number&gt;();</span>
+<span class="cstat-no" title="statement not covered" >  for (const row of rows.slice(1)) {</span>
+<span class="cstat-no" title="statement not covered" >    const slug = row[0];</span>
+<span class="cstat-no" title="statement not covered" >    if (!slug) continue;</span>
+<span class="cstat-no" title="statement not covered" >    const catMeans: number[] = [];</span>
+<span class="cstat-no" title="statement not covered" >    for (const subtasks of Object.values(categories)) {</span>
+<span class="cstat-no" title="statement not covered" >      if (!Array.isArray(subtasks)) continue;</span>
+<span class="cstat-no" title="statement not covered" >      const vals: number[] = [];</span>
+<span class="cstat-no" title="statement not covered" >      for (const st of subtasks) {</span>
+<span class="cstat-no" title="statement not covered" >        const col = colOf.get(String(st));</span>
+<span class="cstat-no" title="statement not covered" >        if (col === undefined) continue;</span>
+<span class="cstat-no" title="statement not covered" >        const v = Number(row[col]);</span>
+<span class="cstat-no" title="statement not covered" >        if (Number.isFinite(v)) vals.push(v);</span>
+<span class="cstat-no" title="statement not covered" >      }</span>
+<span class="cstat-no" title="statement not covered" >      if (vals.length &gt; 0) catMeans.push(vals.reduce((a, b) =&gt; a + b, 0) / vals.length);</span>
+<span class="cstat-no" title="statement not covered" >    }</span>
+<span class="cstat-no" title="statement not covered" >    if (catMeans.length &gt; 0) overall.set(slug, catMeans.reduce((a, b) =&gt; a + b, 0) / catMeans.length);</span>
+<span class="cstat-no" title="statement not covered" >  }</span>
+&nbsp;
+<span class="cstat-no" title="statement not covered" >  const out: MetricInput[] = [];</span>
+<span class="cstat-no" title="statement not covered" >  for (const seed of seeds) {</span>
+<span class="cstat-no" title="statement not covered" >    if (!seed.livebench) continue;</span>
+<span class="cstat-no" title="statement not covered" >    let best: number | null = null;</span>
+<span class="cstat-no" title="statement not covered" >    for (const [slug, score] of overall) {</span>
+<span class="cstat-no" title="statement not covered" >      if (slug.startsWith(seed.livebench) &amp;&amp; (best === null || score &gt; best)) best = score;</span>
+<span class="cstat-no" title="statement not covered" >    }</span>
+<span class="cstat-no" title="statement not covered" >    if (best !== null) out.push({ source: 'open-bench', entity: seed.entity, metric: 'livebench', value: round2(best) });</span>
+<span class="cstat-no" title="statement not covered" >  }</span>
+<span class="cstat-no" title="statement not covered" >  return out;</span>
+<span class="cstat-no" title="statement not covered" >}</span>
+&nbsp;
+// ── Sync ─────────────────────────────────────────────────────────────────────
+&nbsp;
+/**
+ * Weekly sync. Failure-isolated per source: one failing source never aborts
+ * the run — it lands in stats.sources with ok:false and the rest proceed.
+ */
+<span class="cstat-no" title="statement not covered" >export async function runOpenBenchSync(text: FetchTextFn = fetchText): Promise&lt;OpenBenchStats&gt; {</span>
+<span class="cstat-no" title="statement not covered" >  const db = getDb();</span>
+<span class="cstat-no" title="statement not covered" >  const stats: OpenBenchStats = { recorded: 0, snapshots: 0, sources: [] };</span>
+&nbsp;
+<span class="cstat-no" title="statement not covered" >  const audit = (source: string, raw: string) =&gt; {</span>
+<span class="cstat-no" title="statement not covered" >    db.insert(benchmarkSnapshots)</span>
+<span class="cstat-no" title="statement not covered" >      .values({ source, raw: raw.slice(0, RAW_SNAPSHOT_MAX), fetchedAt: new Date() })</span>
+<span class="cstat-no" title="statement not covered" >      .run();</span>
+<span class="cstat-no" title="statement not covered" >    stats.snapshots++;</span>
+<span class="cstat-no" title="statement not covered" >  };</span>
+<span class="cstat-no" title="statement not covered" >  const ok = (name: string, points: number, release?: string) =&gt;</span>
+<span class="cstat-no" title="statement not covered" >    stats.sources.push(release ? { name, ok: true, points, release } : { name, ok: true, points });</span>
+<span class="cstat-no" title="statement not covered" >  const failed = (name: string, e: unknown) =&gt; {</span>
+<span class="cstat-no" title="statement not covered" >    console.error(`[openbench] ${name} failed:`, e);</span>
+<span class="cstat-no" title="statement not covered" >    stats.sources.push({ name, ok: false, points: 0, error: e instanceof Error ? e.message : String(e) });</span>
+<span class="cstat-no" title="statement not covered" >  };</span>
+&nbsp;
+  // 1. OpenRouter model pricing (live, keyless)
+<span class="cstat-no" title="statement not covered" >  try {</span>
+<span class="cstat-no" title="statement not covered" >    const raw = await text(OPENROUTER_MODELS_URL);</span>
+<span class="cstat-no" title="statement not covered" >    const points = metricsFromOpenRouter(JSON.parse(raw));</span>
+<span class="cstat-no" title="statement not covered" >    if (points.length === 0) throw new Error('no parseable model pricing in response');</span>
+<span class="cstat-no" title="statement not covered" >    audit('openrouter', raw);</span>
+<span class="cstat-no" title="statement not covered" >    stats.recorded += recordMetrics(points);</span>
+<span class="cstat-no" title="statement not covered" >    ok('openrouter', points.length);</span>
+<span class="cstat-no" title="statement not covered" >  } catch (e) {</span>
+<span class="cstat-no" title="statement not covered" >    failed('openrouter', e);</span>
+<span class="cstat-no" title="statement not covered" >  }</span>
+&nbsp;
+  // 2. LiveBench capability scores (live, best-effort static export)
+<span class="cstat-no" title="statement not covered" >  try {</span>
+<span class="cstat-no" title="statement not covered" >    let result: { points: MetricInput[]; raw: string; release: string } | null = null;</span>
+<span class="cstat-no" title="statement not covered" >    let lastErr: unknown = null;</span>
+<span class="cstat-no" title="statement not covered" >    for (const candidate of await liveBenchReleaseCandidates(text)) {</span>
+<span class="cstat-no" title="statement not covered" >      try {</span>
+<span class="cstat-no" title="statement not covered" >        const [table, categories] = await Promise.all([</span>
+<span class="cstat-no" title="statement not covered" >          text(`${LIVEBENCH_BASE}/table_${candidate}.csv`),</span>
+<span class="cstat-no" title="statement not covered" >          text(`${LIVEBENCH_BASE}/categories_${candidate}.json`),</span>
+<span class="cstat-no" title="statement not covered" >        ]);</span>
+<span class="cstat-no" title="statement not covered" >        const points = liveBenchPoints(table, categories);</span>
+<span class="cstat-no" title="statement not covered" >        if (points.length === 0) throw new Error('no seed-mapped models in table');</span>
+<span class="cstat-no" title="statement not covered" >        result = { points, raw: table, release: candidate.replaceAll('_', '-') };</span>
+<span class="cstat-no" title="statement not covered" >        break;</span>
+<span class="cstat-no" title="statement not covered" >      } catch (e) {</span>
+<span class="cstat-no" title="statement not covered" >        lastErr = e;</span>
+<span class="cstat-no" title="statement not covered" >      }</span>
+<span class="cstat-no" title="statement not covered" >    }</span>
+<span class="cstat-no" title="statement not covered" >    if (!result) throw lastErr ?? new Error('no usable release');</span>
+<span class="cstat-no" title="statement not covered" >    audit('open-bench-livebench', result.raw);</span>
+<span class="cstat-no" title="statement not covered" >    stats.recorded += recordMetrics(result.points);</span>
+<span class="cstat-no" title="statement not covered" >    ok('open-bench-livebench', result.points.length, result.release);</span>
+<span class="cstat-no" title="statement not covered" >  } catch (e) {</span>
+<span class="cstat-no" title="statement not covered" >    failed('open-bench-livebench', e);</span>
+<span class="cstat-no" title="statement not covered" >  }</span>
+&nbsp;
+  // 3. Static seed table (primary path — review stamp lives on SEED_MODELS)
+<span class="cstat-no" title="statement not covered" >  try {</span>
+<span class="cstat-no" title="statement not covered" >    const points = seedPoints();</span>
+<span class="cstat-no" title="statement not covered" >    audit('open-bench-seed', JSON.stringify({ lastManualReview: '2026-08', models: SEED_MODELS }));</span>
+<span class="cstat-no" title="statement not covered" >    stats.recorded += recordMetrics(points);</span>
+<span class="cstat-no" title="statement not covered" >    ok('open-bench-seed', points.length);</span>
+<span class="cstat-no" title="statement not covered" >  } catch (e) {</span>
+<span class="cstat-no" title="statement not covered" >    failed('open-bench-seed', e);</span>
+<span class="cstat-no" title="statement not covered" >  }</span>
+&nbsp;
+<span class="cstat-no" title="statement not covered" >  return stats;</span>
+<span class="cstat-no" title="statement not covered" >}</span>
+&nbsp;</pre></td></tr></table></pre>
+
+                <div class='push'></div><!-- for sticky footer -->
+            </div><!-- /wrapper -->
+            <div class='footer quiet pad2 space-top1 center small'>
+                Code coverage generated by
+                <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
+                at 2026-09-03T20:03:48.692Z
+            </div>
+        <script src="../../../prettify.js"></script>
+        <script>
+            window.onload = function () {
+                prettyPrint();
+            };
+        </script>
+        <script src="../../../sorter.js"></script>
+        <script src="../../../block-navigation.js"></script>
+    </body>
+</html>
+    

@@ -103,6 +103,7 @@ export const paths = {
   debates: '/app/build/debates',
 
   connect: '/app/connect',
+  connections: '/oauth/connections',
   account: '/app/account',
   admin: '/app/admin',
   adminUsage: '/app/admin/usage',

@@ -1,5 +1,5 @@
 import { and, desc, eq, gte, inArray } from 'drizzle-orm';
-import { TIER_PRICES, type Tier } from './billing';
+import { TIER_PRICES, quotaFor, type Tier } from './billing';
 import { getDb } from './db';
 import { llmCalls, metricPoints, users } from './db/schema';
 
@@ -16,13 +16,6 @@ function utcDay(d: Date): string {
  * unit cost is estimated as avg per-call cost × this constant.
  */
 export const CALLS_PER_PLAN = 6;
-
-/**
- * Plan-generation quota per tier (plans/month). Phase 8a makes billing.ts the
- * source of truth (quotaFor(tier)); until then these mirror the
- * plan_entitlements defaults in schema.ts — keep them in sync.
- */
-export const TIER_PLAN_QUOTAS: Record<Tier, number> = { free: 3, builder: 30, factory: 100 };
 
 export interface DailyCost {
   date: string; // YYYY-MM-DD (UTC)
@@ -189,6 +182,7 @@ export interface TierMargin {
   tier: Tier;
   /** Monthly subscription price from billing.ts TIER_PRICES. */
   priceUsd: number;
+  /** Monthly plan quota from billing.ts quotaFor — the same source the gates use. */
   quotaPlans: number;
   /** avgCostPerPlanUsd × quota; null until a plan generation is metered. */
   estMonthlyCostUsd: number | null;
@@ -197,11 +191,11 @@ export interface TierMargin {
   marginPct: number | null;
 }
 
-/** Margin view: monthly tier price vs measured avg plan cost × tier quota. */
+/** Margin view: monthly tier price vs measured avg plan cost × tier quota (quotaFor). */
 export function marginByTier(avgCostPerPlanUsd: number | null): TierMargin[] {
   return (Object.keys(TIER_PRICES) as Tier[]).map((tier) => {
     const priceUsd = TIER_PRICES[tier];
-    const quotaPlans = TIER_PLAN_QUOTAS[tier];
+    const quotaPlans = quotaFor(tier);
     const estMonthlyCostUsd = avgCostPerPlanUsd === null ? null : avgCostPerPlanUsd * quotaPlans;
     const marginUsd = estMonthlyCostUsd === null ? null : priceUsd - estMonthlyCostUsd;
     const marginPct = marginUsd === null || priceUsd === 0 ? null : (marginUsd / priceUsd) * 100;

@@ -29,6 +29,9 @@ export function pollMinutesFor(cfg: Record<string, unknown>): number {
   return DEFAULT_POLL_MINUTES;
 }
 
+/** Config keys the fetch job owns (adapter-persisted conditional-GET state); everything else belongs to admins. */
+const FETCH_STATE_KEYS = ['etag', 'lastModified'] as const;
+
 /** Lenient config parse for cadence reads; malformed JSON is the adapter's job to reject. */
 function readConfig(config: string): Record<string, unknown> {
   try {
@@ -37,6 +40,20 @@ function readConfig(config: string): Record<string, unknown> {
   } catch {
     return {};
   }
+}
+
+/**
+ * Write back only the fetch-state keys the adapter mutated, overlaid on the
+ * config as it exists NOW: an admin PATCH that landed while the fetch was in
+ * flight must not be silently overwritten (lost update).
+ */
+function mergeFetchState(freshConfig: string, cfg: Record<string, unknown>): string {
+  const merged = readConfig(freshConfig);
+  for (const key of FETCH_STATE_KEYS) {
+    if (key in cfg) merged[key] = cfg[key];
+    else delete merged[key];
+  }
+  return JSON.stringify(merged);
 }
 
 /**
@@ -108,6 +125,11 @@ export async function runIngest(): Promise<IngestStats> {
       // A 200 with nothing new is not health: a stalled feed never errors, so
       // consecutiveFailures would stay 0 forever. Track the empty run instead.
       const emptyStreak = inserted > 0 ? 0 : source.consecutiveEmpty + 1;
+      const fresh = db
+        .select({ config: sources.config })
+        .from(sources)
+        .where(eq(sources.id, source.id))
+        .get();
       db.update(sources)
         .set({
           lastFetchedAt: now,
@@ -115,7 +137,8 @@ export async function runIngest(): Promise<IngestStats> {
           consecutiveFailures: 0,
           consecutiveEmpty: emptyStreak,
           // persist adapter-mutated fetch state (etag/lastModified round-trip)
-          config: JSON.stringify(cfg),
+          // without clobbering concurrent admin edits to the rest of the config
+          config: mergeFetchState(fresh?.config ?? '{}', cfg),
         })
         .where(eq(sources.id, source.id))
         .run();

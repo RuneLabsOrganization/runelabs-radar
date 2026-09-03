@@ -33,7 +33,10 @@ export async function GET(req: Request) {
   const entity = params.get('entity');
   const metric = params.get('metric');
 
-  if (!config.aaPublic && source !== null && source.startsWith('aa')) {
+  // SQLite LIKE 'aa%' is ASCII case-insensitive; match that here or a
+  // mixed-case source (e.g. 'AA-X') would be hidden from enumeration yet
+  // fetchable directly — toLowerCase keeps the two gates consistent.
+  if (!config.aaPublic && source !== null && source.toLowerCase().startsWith('aa')) {
     return NextResponse.json(
       { error: `source '${source}' is not available on the public API` },
       { status: 403 },

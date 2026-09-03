@@ -20,7 +20,10 @@ async function initSentry() {
   if (!dsn || sentryStarted) return;
   sentryStarted = true;
   const Sentry = await import('@sentry/nextjs');
-  Sentry.init({ dsn, tracesSampleRate: 0.05 });
+  // error reporting only: no tracing integration is wired, so a
+  // tracesSampleRate here would be inert config. Re-add both together if the
+  // project ever wants client performance traces.
+  Sentry.init({ dsn });
 }
 
 function applyConsent(c: Consent | null) {

@@ -39,8 +39,11 @@ export function enrichEvidence(items: { type: string; label: string }[]): Eviden
     if (e.type === 'story') {
       const prefix = e.label.replace(/…$/, '').trim().slice(0, 60);
       if (prefix.length < 8) return { ...e, href: null };
+      // LIKE wildcards in the label must match literally — an unescaped % or _
+      // silently broadens the prefix match to unrelated stories
+      const escaped = prefix.replace(/[\\%_]/g, (c) => `\\${c}`);
       const row = getDb().get<{ id: number }>(
-        sql`SELECT id FROM stories WHERE status = 'curated' AND title LIKE ${prefix + '%'}
+        sql`SELECT id FROM stories WHERE status = 'curated' AND title LIKE ${escaped + '%'} ESCAPE '\\'
             ORDER BY created_at DESC LIMIT 1`,
       );
       return { ...e, href: row ? `/story/${row.id}` : null };

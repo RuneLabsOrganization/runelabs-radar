@@ -2,10 +2,10 @@
 import * as React from 'react';
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
-import { and, desc, eq, gt, inArray } from 'drizzle-orm';
+import { and, desc, eq, gt } from 'drizzle-orm';
 import { requireViewer } from '@/lib/auth/user';
 import { getDb } from '@/lib/db';
-import { boardEntries, items, sources, stories, votes, domainDigests } from '@/lib/db/schema';
+import { boardEntries, stories, votes, domainDigests } from '@/lib/db/schema';
 import {
   DOMAINS,
   DOMAIN_COLORS,
@@ -15,6 +15,7 @@ import {
 } from '@/lib/domains';
 import { dailyDomainCounts, domainMomentum } from '@/lib/analytics';
 import { domainAffinity, personalScore, splitFeed } from '@/lib/feed';
+import { freshnessVsAnchor, itemAggByStory, voteAggByStory } from '@/lib/feed-agg';
 import { visitAnchor } from '@/lib/visits';
 import { allEntityNames, matchEntity } from '@/lib/stacks/match';
 import { topEntitiesInDomain } from '@/lib/entity-extras';
@@ -96,7 +97,8 @@ export default async function DomainPage({ params }: { params: Promise<{ slug: s
       scores,
       score: user ? personalScore(raw, story.domainScores, affinity, slug) : raw,
       createdAt: story.createdAt,
-      isNew: anchor ? story.createdAt > anchor : false,
+      // same freshness semantics as the briefing: merged coverage counts as new
+      isNew: freshnessVsAnchor(story, anchor).isNew,
     };
   });
 
@@ -119,38 +121,8 @@ export default async function DomainPage({ params }: { params: Promise<{ slug: s
   const { top, scan, lowCount } = splitFeed(member);
   const ids = member.map((c) => c.story.id);
 
-  const itemRows = ids.length
-    ? db
-        .select({ storyId: items.storyId, url: items.url, sourceName: sources.name })
-        .from(items)
-        .innerJoin(sources, eq(items.sourceId, sources.id))
-        .where(inArray(items.storyId, ids))
-        .orderBy(items.id)
-        .all()
-    : [];
-  const itemAgg = new Map<number, { count: number; firstUrl: string | null; sourceName: string | null }>();
-  for (const row of itemRows) {
-    if (row.storyId == null) continue;
-    const agg = itemAgg.get(row.storyId) ?? { count: 0, firstUrl: null, sourceName: null };
-    agg.count += 1;
-    if (agg.firstUrl === null) {
-      agg.firstUrl = row.url;
-      agg.sourceName = row.sourceName;
-    }
-    itemAgg.set(row.storyId, agg);
-  }
-
-  const voteRows = ids.length
-    ? db.select().from(votes).where(inArray(votes.storyId, ids)).all()
-    : [];
-  const voteAgg = new Map<number, { up: number; down: number; mine: 1 | -1 | 0 }>();
-  for (const row of voteRows) {
-    const agg = voteAgg.get(row.storyId) ?? { up: 0, down: 0, mine: 0 as const };
-    if (row.value === 1) agg.up += 1;
-    else if (row.value === -1) agg.down += 1;
-    if (user && row.userId === user.id && (row.value === 1 || row.value === -1)) agg.mine = row.value;
-    voteAgg.set(row.storyId, agg);
-  }
+  const itemAgg = itemAggByStory(ids);
+  const voteAgg = voteAggByStory(ids, user?.id ?? null);
 
   const fresh = member.filter((c) => c.isNew).length;
 

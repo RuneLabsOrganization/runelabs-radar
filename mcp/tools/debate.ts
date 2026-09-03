@@ -8,6 +8,7 @@ import { runDebate } from '../../src/lib/opportunities/critic';
 import { promptLine } from '../../src/lib/prompt-hygiene';
 import { envelopeSchema, respond, type NextAction, withUserEconomy } from '../lib/payload';
 import { marketVisible, type AuthContext } from '../lib/auth';
+import { overlap, tokenSet } from '../lib/overlap';
 import { can } from '../../src/lib/entitlements';
 import { estimateTokens } from '../../src/lib/mcp-economy';
 import { visibleTo } from '../../src/lib/opportunities/scope';
@@ -26,33 +27,6 @@ function debateCapExceeded(key: string): boolean {
 }
 function recordDebate(key: string): void {
   bump(key, 'debate', 'day');
-}
-
-// --- deterministic idea↔evidence matching: token overlap, no embeddings ---
-
-const STOPWORDS = new Set(
-  (
-    'the a an and or of to in on for with that this it is are be was were i me my we our you your they them their ' +
-    'as at by from so do does how what when where who why can could should would will not no new build make app ' +
-    'tool tools platform product service ai saas software idea'
-  ).split(' '),
-);
-
-function tokenSet(s: string): Set<string> {
-  return new Set(
-    s
-      .toLowerCase()
-      .split(/[^a-z0-9]+/)
-      .filter((t) => t.length > 2 && !STOPWORDS.has(t)),
-  );
-}
-
-/** Normalized overlap: |a∩b| / sqrt(|a|·|b|) — 0..1, favors shared rare tokens. */
-function overlap(a: Set<string>, b: Set<string>): number {
-  if (a.size === 0 || b.size === 0) return 0;
-  let hit = 0;
-  for (const t of a) if (b.has(t)) hit++;
-  return hit / Math.sqrt(a.size * b.size);
 }
 
 interface Grounding {
@@ -273,10 +247,10 @@ export function registerDebateTools(server: McpServer, auth: AuthContext): void 
           marketVisible: showMarket,
         });
       } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
+        console.error('[mcp/debate_idea] debate call failed:', e);
         return respond(
-          { ok: false, error: `debate failed: ${msg}`, grounding: grounding.used },
-          { summary: `The debate could not run: ${msg}.` },
+          { ok: false, error: 'debate failed — try again shortly', grounding: grounding.used },
+          { summary: 'The debate could not run — try again shortly.' },
         );
       }
 

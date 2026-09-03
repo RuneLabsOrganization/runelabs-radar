@@ -90,28 +90,33 @@ export async function mergeSimilarStories(
     if (members.length === 0) continue;
     const canonical = candidates.find((c) => c.id === rootId)!;
     for (const dup of members) {
-      // a user may have voted on both — drop the dup-side vote first
-      db.run(
-        sql`DELETE FROM votes WHERE story_id = ${dup.id} AND user_id IN (SELECT user_id FROM votes WHERE story_id = ${rootId})`,
-      );
-      db.update(votes).set({ storyId: rootId }).where(eq(votes.storyId, dup.id)).run();
-      db.update(items).set({ storyId: rootId }).where(eq(items.storyId, dup.id)).run();
-
       // better curated payload wins
-      if (dup.topScore > canonical.topScore) {
-        db.update(stories)
-          .set({
-            topScore: dup.topScore,
-            domainScores: dup.domainScores,
-            tldr: dup.tldr,
-            whyItMatters: dup.whyItMatters,
-          })
-          .where(eq(stories.id, rootId))
-          .run();
-        canonical.topScore = dup.topScore;
-      }
+      const takePayload = dup.topScore > canonical.topScore;
+      // vote move + item relink + payload swap + delete atomically: a crash
+      // mid-sequence must not leave half-moved votes or orphaned items
+      db.transaction((tx) => {
+        // a user may have voted on both — drop the dup-side vote first
+        tx.run(
+          sql`DELETE FROM votes WHERE story_id = ${dup.id} AND user_id IN (SELECT user_id FROM votes WHERE story_id = ${rootId})`,
+        );
+        tx.update(votes).set({ storyId: rootId }).where(eq(votes.storyId, dup.id)).run();
+        tx.update(items).set({ storyId: rootId }).where(eq(items.storyId, dup.id)).run();
 
-      db.delete(stories).where(eq(stories.id, dup.id)).run();
+        if (takePayload) {
+          tx.update(stories)
+            .set({
+              topScore: dup.topScore,
+              domainScores: dup.domainScores,
+              tldr: dup.tldr,
+              whyItMatters: dup.whyItMatters,
+            })
+            .where(eq(stories.id, rootId))
+            .run();
+        }
+
+        tx.delete(stories).where(eq(stories.id, dup.id)).run();
+      });
+      if (takePayload) canonical.topScore = dup.topScore;
       merged++;
       console.log(`[dedup] merged "${dup.title}" → "${canonical.title}"`);
     }

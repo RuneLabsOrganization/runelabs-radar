@@ -9,7 +9,7 @@
  * Turning a per-second rate into a fake monthly figure would be exactly the
  * bill-shock this product exists to warn about.
  */
-import { desc, inArray } from 'drizzle-orm';
+import { and, desc, gte, inArray } from 'drizzle-orm';
 import { eq } from 'drizzle-orm';
 import { getDb } from '../db';
 import { kitEvidence, kitPicks, metricPoints } from '../db/schema';
@@ -17,6 +17,14 @@ import { MEDIA_PRICING_SOURCE } from '../ingest/media-pricing';
 import { PRICING_SOURCE } from '../ingest/pricing';
 import { gradeConfidence } from './confidence';
 import { matchPricedEntity } from './match-price';
+
+/**
+ * Only points inside this window count as "latest". metric_points is
+ * append-forever and the feeders run weekly, so scanning all of history every
+ * daily run read thousands of dead rows for the same handful of prices; 90
+ * days covers ~12 repricings of every entity.
+ */
+const PRICE_WINDOW_DAYS = 90;
 
 const UNIT_RISK: Record<string, string> = {
   price_per_second: 'billed per second of output — cost scales with how much you generate',
@@ -37,11 +45,14 @@ const UNIT_RISK: Record<string, string> = {
  * LLMs, so reading only the former left almost every pick unpriced.
  */
 function latestPrices(): Map<string, { metric: string; value: number }> {
-  // metric_points keys on `date` (YYYY-MM-DD text), not a timestamp — see schema.ts
+  // metric_points keys on `date` (YYYY-MM-DD text), not a timestamp — see
+  // schema.ts. ISO dates compare chronologically as text, so the window
+  // bound is a plain string comparison.
+  const cutoff = new Date(Date.now() - PRICE_WINDOW_DAYS * 864e5).toISOString().slice(0, 10);
   const rows = getDb()
     .select()
     .from(metricPoints)
-    .where(inArray(metricPoints.source, [MEDIA_PRICING_SOURCE, PRICING_SOURCE]))
+    .where(and(gte(metricPoints.date, cutoff), inArray(metricPoints.source, [MEDIA_PRICING_SOURCE, PRICING_SOURCE])))
     .orderBy(desc(metricPoints.date), desc(metricPoints.id))
     .all();
   const out = new Map<string, { metric: string; value: number }>();

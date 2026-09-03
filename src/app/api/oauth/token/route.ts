@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { exchangeCode, refreshGrant, type TokenGrant } from '@/lib/oauth';
+import { rateLimited } from '@/lib/api-limit';
+import { exchangeCode, MAX_OAUTH_INPUT_LEN, refreshGrant, type TokenGrant } from '@/lib/oauth';
 
 // Token endpoint: public clients (MCP agents) with PKCE — no client secret.
 // Browser-based MCP clients call this cross-origin, so CORS is open.
@@ -39,6 +40,14 @@ export async function OPTIONS() {
 }
 
 export async function POST(req: Request) {
+  // Same per-IP throttle as the public JSON API — cheap insurance on top of
+  // 256-bit tokens + mandatory PKCE.
+  const limited = rateLimited(req);
+  if (limited) {
+    limited.headers.set('access-control-allow-origin', '*');
+    return limited;
+  }
+
   let form: FormData;
   try {
     form = await req.formData();
@@ -49,6 +58,11 @@ export async function POST(req: Request) {
     const v = form.get(k);
     return typeof v === 'string' ? v : '';
   };
+
+  // attacker-controlled strings get a length cap before any lookup or hash
+  for (const k of ['code', 'code_verifier', 'refresh_token', 'client_id']) {
+    if (get(k).length > MAX_OAUTH_INPUT_LEN) return oauthError('invalid_request');
+  }
 
   if (get('grant_type') === 'authorization_code') {
     const grant = exchangeCode(get('code'), get('redirect_uri'), get('code_verifier'), get('client_id'));

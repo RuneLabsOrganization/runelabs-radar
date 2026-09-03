@@ -1,5 +1,7 @@
 /** Helpers shared by the ingest adapters. No DB access here — adapters only fetch and map. */
 
+import { safePublicHttpUrl } from '../../safe-url';
+
 export const FETCH_TIMEOUT_MS = 15_000;
 export const MAX_BODY_BYTES = 8 * 1024 * 1024;
 export const EXCERPT_MAX = 500;
@@ -26,6 +28,14 @@ export class HttpFetchError extends Error {
   }
 }
 
+/** URL fails the SSRF guard (non-http(s) or private/loopback host) — deterministic, never retried. */
+export class UnsafeUrlError extends Error {
+  constructor(url: string) {
+    super(`blocked unsafe fetch URL: ${url}`);
+    this.name = 'UnsafeUrlError';
+  }
+}
+
 /** Body blew past the size cap — a poison feed, not a transient error, so never retried. */
 export class BodyTooLargeError extends Error {
   readonly limit: number;
@@ -37,14 +47,21 @@ export class BodyTooLargeError extends Error {
   }
 }
 
+/** At/above this magnitude a header value is epoch seconds (≈2001 onward), not seconds-from-now. */
+const EPOCH_SECONDS_THRESHOLD = 1_000_000_000;
+
 /** Longest window from `x-ratelimit-reset: "1, 522166"` or a Retry-After header. */
 export function parseResetSeconds(res: Response): number | null {
   const raw = res.headers.get('x-ratelimit-reset') ?? res.headers.get('retry-after');
   if (!raw) return null;
+  const nowS = Date.now() / 1000;
   const parts = raw
     .split(',')
     .map((s) => Number(s.trim()))
-    .filter((n) => Number.isFinite(n) && n >= 0);
+    .filter((n) => Number.isFinite(n) && n >= 0)
+    // epoch-style values (GitHub's x-ratelimit-reset) must become a delta —
+    // read as seconds-from-now they would block for decades
+    .map((n) => (n >= EPOCH_SECONDS_THRESHOLD ? Math.max(0, Math.round(n - nowS)) : n));
   return parts.length > 0 ? Math.max(...parts) : null;
 }
 
@@ -123,6 +140,9 @@ async function readBodyCapped(res: Response, signal: AbortSignal, url: string): 
   return Promise.race([readAll, aborted]);
 }
 
+const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
+const MAX_REDIRECTS = 5;
+
 /**
  * Fetch with a 15s timeout, a default UA, and up to 2 retries with jittered
  * backoff on 429/5xx/network/timeout — a transient error must not cost a
@@ -130,18 +150,69 @@ async function readBodyCapped(res: Response, signal: AbortSignal, url: string): 
  * (capped at 8 MB), so time-to-headers AND the body download are both bounded;
  * callers get an in-memory Response. 304 passes through without throwing (the
  * RSS adapter's conditional GET relies on it); every other non-2xx throws.
+ *
+ * SSRF guard: the initial URL and every redirect target must be http(s) on a
+ * public host. Redirects are followed manually (max 5) instead of via fetch's
+ * redirect:'follow' so each hop is re-validated — a compromised feed domain
+ * must not bounce the server into loopback/private/link-local endpoints.
  */
 export async function fetchWithTimeout(url: string, init: RequestInit = {}): Promise<Response> {
-  const headers = { 'user-agent': DEFAULT_UA, ...(init.headers as Record<string, string> | undefined) };
+  const headers: Record<string, string> = {
+    'user-agent': DEFAULT_UA,
+    ...(init.headers as Record<string, string> | undefined),
+  };
+  let current = safePublicHttpUrl(url);
+  if (!current) throw new UnsafeUrlError(url);
+  let method = (init.method ?? 'GET').toUpperCase();
+  let body = init.body ?? null;
+
+  for (let redirects = 0; ; redirects++) {
+    const res = await fetchOnce(current, method, body, headers, init);
+    const location = REDIRECT_STATUSES.has(res.status) ? res.headers.get('location') : null;
+    if (!location) return res;
+    if (redirects >= MAX_REDIRECTS) throw new Error(`too many redirects fetching ${url}`);
+    // release the redirect response's socket before the next hop
+    await res.body?.cancel().catch(() => {});
+    const target = new URL(location, current).toString(); // Location may be relative
+    const next = safePublicHttpUrl(target);
+    if (!next) throw new UnsafeUrlError(target);
+    // fetch-spec method rewrite: 301/302 turn POST into GET, 303 turns
+    // anything but GET/HEAD into GET; the body does not survive the switch
+    if (
+      ((res.status === 301 || res.status === 302) && method === 'POST') ||
+      (res.status === 303 && method !== 'GET' && method !== 'HEAD')
+    ) {
+      method = 'GET';
+      body = null;
+      delete headers['content-type'];
+      delete headers['content-length'];
+    }
+    current = next;
+  }
+}
+
+/** One URL hop of fetchWithTimeout: the retry loop around a single request. */
+async function fetchOnce(
+  url: string,
+  method: string,
+  body: RequestInit['body'] | null,
+  headers: Record<string, string>,
+  init: RequestInit,
+): Promise<Response> {
   let lastError: unknown;
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     if (attempt > 1) await sleepImpl(backoffMs(attempt));
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
-      const res = await fetch(url, { ...init, headers, signal: controller.signal });
+      const res = await fetch(url, { ...init, method, body, headers, redirect: 'manual', signal: controller.signal });
+      // redirects are handed back unread; fetchWithTimeout validates and follows them
+      if (REDIRECT_STATUSES.has(res.status) && res.headers.get('location')) return res;
       if (RETRYABLE_STATUSES.has(res.status) && attempt < MAX_ATTEMPTS) {
         lastError = new Error(`HTTP ${res.status} fetching ${url}`);
+        // consume the unread body — otherwise each retried status pins an
+        // undici keep-alive socket until GC
+        await res.body?.cancel().catch(() => {});
         continue;
       }
       if (!res.ok && res.status !== 304) {
@@ -157,8 +228,8 @@ export async function fetchWithTimeout(url: string, init: RequestInit = {}): Pro
       // 304/204/205 carry no body by definition — hand the response through unread
       if (res.status === 304 || res.status === 204 || res.status === 205) return res;
       const bytes = await readBodyCapped(res, controller.signal, url);
-      const body = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
-      return new Response(body, { status: res.status, statusText: res.statusText, headers: res.headers });
+      const out = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+      return new Response(out, { status: res.status, statusText: res.statusText, headers: res.headers });
     } catch (e) {
       lastError = e;
       // our own timeout fired (headers or body): the endpoint is too slow —
@@ -190,6 +261,11 @@ export async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> 
 export function toArray<T>(v: T | T[] | null | undefined): T[] {
   if (v == null) return [];
   return Array.isArray(v) ? v : [v];
+}
+
+/** Narrow parsed-XML output to a node object (fast-xml-parser is untyped: strings/numbers leak through). */
+export function xmlNode(v: unknown): Record<string, unknown> | null {
+  return typeof v === 'object' && v !== null && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
 }
 
 const NAMED_ENTITIES: Record<string, string> = {

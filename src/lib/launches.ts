@@ -6,6 +6,7 @@ import { launches } from './db/schema';
 import { fetchJson } from './ingest/adapters/shared';
 import { chatJSON, drainLlmUsageStats } from './llm/minimax';
 import { upsertMetric, utcDay } from './metrics';
+import { promptLine } from './prompt-hygiene';
 import { safeHttpUrl } from './safe-url';
 
 export const LAUNCH_CATEGORIES = [
@@ -146,7 +147,9 @@ export async function tagCategories(): Promise<number> {
     'tooling without AI focus; saas-tools = business/productivity SaaS; consumer = consumer apps; ' +
     'other = anything else.\n' +
     'Respond with STRICT JSON only: {"categories":{"<id>":"<category>"}} — one key per launch id given.';
-  const user = untagged.map((l) => `Launch ${l.id}: ${l.title}`).join('\n');
+  // promptLine: a title with newlines would otherwise forge fake `Launch <id>:`
+  // lines and misdirect category assignment (same hygiene as the curation prompt)
+  const user = untagged.map((l) => `Launch ${l.id}: ${promptLine(l.title, 140)}`).join('\n');
 
   const res = await chatJSON<{ categories?: Record<string, unknown> }>(system, user, { feature: 'launches' });
   const map = res.categories;

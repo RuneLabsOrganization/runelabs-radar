@@ -1,6 +1,7 @@
+import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { getCurrentUser } from '@/lib/auth/user';
-import { getClient, sanitizeScopes } from '@/lib/oauth';
+import { getClient, MAX_OAUTH_INPUT_LEN, sanitizeScopes, type ClientRow } from '@/lib/oauth';
 import { redirectDestination } from '@/lib/urls';
 import ConsentForm from './consent';
 
@@ -18,20 +19,23 @@ interface AuthorizeParams {
   resource: string;
 }
 
-function validate(p: AuthorizeParams): string | null {
-  if (p.response_type !== 'code') return 'response_type must be "code".';
-  if (!p.client_id) return 'missing client_id.';
+function validate(p: AuthorizeParams): { error: string | null; client: ClientRow | null } {
+  if (p.response_type !== 'code') return { error: 'response_type must be "code".', client: null };
+  if (!p.client_id) return { error: 'missing client_id.', client: null };
   const client = getClient(p.client_id);
-  if (!client) return 'unknown client — the agent must register first (RFC 7591).';
+  if (!client) return { error: 'unknown client — the agent must register first (RFC 7591).', client: null };
   if (!p.redirect_uri || !client.redirectUris.includes(p.redirect_uri)) {
-    return 'redirect_uri is not registered for this client.';
+    return { error: 'redirect_uri is not registered for this client.', client: null };
   }
   // OAuth 2.1 / MCP: PKCE S256 is mandatory (method must be explicit)
-  if (!p.code_challenge || p.code_challenge.length < 43) return 'missing PKCE code_challenge.';
-  if (p.code_challenge_method !== 'S256') {
-    return 'code_challenge_method must be S256.';
+  if (!p.code_challenge || p.code_challenge.length < 43 || p.code_challenge.length > MAX_OAUTH_INPUT_LEN) {
+    return { error: 'missing PKCE code_challenge.', client: null };
   }
-  return null;
+  if (p.code_challenge_method !== 'S256') {
+    return { error: 'code_challenge_method must be S256.', client: null };
+  }
+  if (p.state.length > MAX_OAUTH_INPUT_LEN) return { error: 'state is too long.', client: null };
+  return { error: null, client };
 }
 
 function ErrorCard({ message }: { message: string }) {
@@ -76,8 +80,8 @@ export default async function AuthorizePage({
     resource: one('resource'),
   };
 
-  const error = validate(params);
-  if (error) return <ErrorCard message={error} />;
+  const { error, client } = validate(params);
+  if (error || !client) return <ErrorCard message={error ?? 'invalid authorization request.'} />;
 
   const user = await getCurrentUser();
   if (!user) {
@@ -87,7 +91,6 @@ export default async function AuthorizePage({
     redirect(`/login?next=${encodeURIComponent(`/oauth/authorize?${qs}`)}`);
   }
 
-  const client = getClient(params.client_id);
   const scopes = sanitizeScopes(params.scope).split(' ');
   // The client name is attacker-chosen (open dynamic registration) — the
   // redirect destination is the ground truth the user must consent to.
@@ -100,7 +103,7 @@ export default async function AuthorizePage({
           MCP AUTHORIZATION
         </div>
         <p className="mt-4 text-[13.5px] text-[var(--ink-2)]">
-          <strong className="text-[var(--ink)]">{client?.name ?? 'An AI agent'}</strong> wants to connect to your
+          <strong className="text-[var(--ink)]">{client.name ?? 'An AI agent'}</strong> wants to connect to your
           Radar intelligence feed.
         </p>
         {dest && (
@@ -146,7 +149,13 @@ export default async function AuthorizePage({
           scope={scopes.join(' ')}
           state={params.state}
         />
-        <p className="readout mt-4">signed in as {user.name} — tokens can be revoked by re-seeding your account.</p>
+        <p className="readout mt-4">
+          signed in as {user.name} — manage or disconnect connected agents on{' '}
+          <Link href="/oauth/connections" className="text-[var(--phosphor)] hover:underline">
+            /oauth/connections
+          </Link>
+          .
+        </p>
       </div>
     </main>
   );

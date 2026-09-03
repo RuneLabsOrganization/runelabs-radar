@@ -130,6 +130,9 @@ export default async function AccountPage() {
           <Link href={paths.connect}>Connect MCP</Link>
         </Button>
         <Button asChild variant="outline" size="sm">
+          <Link href={paths.connections}>Connected agents</Link>
+        </Button>
+        <Button asChild variant="outline" size="sm">
           <Link href={paths.batches}>My batches</Link>
         </Button>
         <Button asChild variant="outline" size="sm">

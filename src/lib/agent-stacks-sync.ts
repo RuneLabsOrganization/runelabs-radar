@@ -223,21 +223,21 @@ export function publishedPersona(raw: string): AgentPersona | null {
 
 function persistState(payload: AgentStackPayload, rationale: string | null, braveHits: number): void {
   const db = getDb();
-  const values = {
-    id: STATE_ID,
-    payload: JSON.stringify(payload),
-    rationale,
-    braveHits,
-    updatedAt: new Date(),
-  };
-  const existing = db.select({ id: agentStackState.id }).from(agentStackState).where(eq(agentStackState.id, STATE_ID)).get();
+  const payloadJson = JSON.stringify(payload);
+  const existing = db.select().from(agentStackState).where(eq(agentStackState.id, STATE_ID)).get();
+  // updatedAt feeds the public refreshedAt. Bumping it when the overlay is
+  // byte-identical (e.g. today's LLM refresh failed and we kept the old
+  // overlay) would claim same-day freshness for a weeks-stale payload — so
+  // the timestamp only moves when the content actually changed.
+  const changed = !existing || existing.payload !== payloadJson || existing.rationale !== rationale;
+  const updatedAt = changed || !existing ? new Date() : existing.updatedAt;
   if (existing) {
     db.update(agentStackState)
-      .set({ payload: values.payload, rationale, braveHits, updatedAt: values.updatedAt })
+      .set({ payload: payloadJson, rationale, braveHits, updatedAt })
       .where(eq(agentStackState.id, STATE_ID))
       .run();
   } else {
-    db.insert(agentStackState).values(values).run();
+    db.insert(agentStackState).values({ id: STATE_ID, payload: payloadJson, rationale, braveHits, updatedAt }).run();
   }
 }
 

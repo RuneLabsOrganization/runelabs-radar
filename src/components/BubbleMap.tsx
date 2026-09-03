@@ -180,6 +180,20 @@ export default function BubbleMap({ data, compact = false }: { data: TopicNode[]
     if (n && isLeaf(n) && n.data.node) loadStories(n.data.node.id);
   }
 
+  /** Click and keyboard share one activation path so they can never drift. */
+  function activateCluster(n: PackNode) {
+    if (compact) return; // compact wraps in a Link instead
+    if (focus === n) {
+      // activating the already-focused leaf retries a failed story load
+      // (successful loads are cached in `stories`, so this only fires after errors)
+      if (isLeaf(n) && n.data.node && !stories.has(n.data.node.id) && loadingLeaf !== n.data.node.id) {
+        loadStories(n.data.node.id);
+      }
+      return;
+    }
+    focusNode(n);
+  }
+
   function up() {
     if (!focus) return;
     const parent = focus.parent && focus.parent.data.kind !== 'root' ? focus.parent : null;
@@ -245,17 +259,29 @@ export default function BubbleMap({ data, compact = false }: { data: TopicNode[]
         key={t.id}
         onClick={(e) => {
           e.stopPropagation();
-          if (compact) return; // compact wraps in a Link instead
-          if (isFocus) {
-            // clicking the already-focused leaf retries a failed story load
-            // (successful loads are cached in `stories`, so this only fires after errors)
-            if (isLeaf(n) && n.data.node && !stories.has(n.data.node.id) && loadingLeaf !== n.data.node.id) {
-              loadStories(n.data.node.id);
-            }
-            return;
-          }
-          focusNode(n);
+          activateCluster(n);
         }}
+        onKeyDown={(e) => {
+          if (compact || (e.key !== 'Enter' && e.key !== ' ')) return;
+          e.preventDefault(); // keep Space from scrolling the page
+          e.stopPropagation();
+          activateCluster(n);
+        }}
+        // keyboard focus borrows the hover highlight (bigger radius, brighter
+        // stroke) so the focused bubble is visible without an outline
+        onFocus={() => {
+          if (!compact) setHoverId(t.id);
+        }}
+        onBlur={() => {
+          if (!compact) setHoverId(null);
+        }}
+        tabIndex={compact ? undefined : 0}
+        role={compact ? undefined : 'button'}
+        aria-label={
+          compact
+            ? undefined
+            : `${t.label}: ${t.size} stories${isFocus ? '' : ' — activate to zoom in'}`
+        }
         onMouseEnter={(e) => {
           setHoverId(t.id);
           const rect = (e.currentTarget.ownerSVGElement as SVGSVGElement).getBoundingClientRect();
@@ -620,7 +646,7 @@ export default function BubbleMap({ data, compact = false }: { data: TopicNode[]
 
       <p className="mono mt-1.5 text-[10px]" style={{ color: 'var(--ink-4)' }}>
         click a category to zoom &middot; click a subtopic for its stories &middot; click a story to
-        read it &middot; esc or background to zoom out
+        read it &middot; esc or background to zoom out &middot; keyboard: tab to a bubble, enter to activate
       </p>
     </div>
   );

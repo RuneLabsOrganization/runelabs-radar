@@ -19,6 +19,24 @@ function mean(values: number[]): number | null {
   return values.reduce((a, v) => a + v, 0) / values.length;
 }
 
+/**
+ * Per-source rollup accumulator. Counts (fetched/used/curated) are per item —
+ * they measure yield. Scores and hindsights are keyed by storyId so the MEANS
+ * weight stories, not items: a story covered by 5 items from one feed is one
+ * signal, not five votes for its score.
+ */
+interface SourceAcc {
+  fetched: number;
+  used: number;
+  curated: number;
+  scores: Map<number, number>;
+  hindsights: Map<number, number>;
+}
+
+function emptyAcc(): SourceAcc {
+  return { fetched: 0, used: 0, curated: 0, scores: new Map(), hindsights: new Map() };
+}
+
 export async function runSourceReview(): Promise<{ reviewed: number; drop: number; demote: number }> {
   const db = getDb();
   const since = new Date(Date.now() - WINDOW_DAYS * DAY_MS);
@@ -38,15 +56,15 @@ export async function runSourceReview(): Promise<{ reviewed: number; drop: numbe
     .where(gte(items.fetchedAt, since))
     .all();
 
-  const bySource = new Map<number, { fetched: number; used: number; curated: number; scores: number[]; hindsights: number[] }>();
+  const bySource = new Map<number, SourceAcc>();
   for (const r of rows) {
-    const acc = bySource.get(r.sourceId) ?? { fetched: 0, used: 0, curated: 0, scores: [], hindsights: [] };
+    const acc = bySource.get(r.sourceId) ?? emptyAcc();
     acc.fetched += 1;
     if (r.storyId !== null) acc.used += 1;
-    if (r.status === 'curated') {
+    if (r.status === 'curated' && r.storyId !== null) {
       acc.curated += 1;
-      acc.scores.push(r.topScore ?? 0);
-      if (r.hindsight !== null && r.hindsight !== undefined) acc.hindsights.push(r.hindsight);
+      acc.scores.set(r.storyId, r.topScore ?? 0);
+      if (r.hindsight !== null && r.hindsight !== undefined) acc.hindsights.set(r.storyId, r.hindsight);
     }
     bySource.set(r.sourceId, acc);
   }
@@ -58,13 +76,13 @@ export async function runSourceReview(): Promise<{ reviewed: number; drop: numbe
   let demote = 0;
 
   for (const s of all) {
-    const acc = bySource.get(s.id) ?? { fetched: 0, used: 0, curated: 0, scores: [], hindsights: [] };
+    const acc = bySource.get(s.id) ?? emptyAcc();
     const stats: SourceWindowStats = {
       fetched: acc.fetched,
       used: acc.used,
       curated: acc.curated,
-      meanTopScore: mean(acc.scores),
-      meanHindsight: mean(acc.hindsights),
+      meanTopScore: mean([...acc.scores.values()]),
+      meanHindsight: mean([...acc.hindsights.values()]),
     };
     const { verdict, reason } = sourceVerdict(stats);
     if (verdict === 'drop') drop += 1;

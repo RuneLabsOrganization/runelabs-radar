@@ -17,7 +17,10 @@ export interface HypeEntry {
  * Hype-vs-substance: how loud an entity is vs how much real stuff it shipped.
  * mentions_7d come from curated stories; artifacts from the velocity job's
  * metric points (github stars, HF downloads, npm weekly downloads), matched
- * by name containment ("comfyui" ⊂ "comfyanonymous/ComfyUI").
+ * by name containment ("comfyui" ⊂ "comfyanonymous/ComfyUI"). Known v1
+ * limitation: containment also lumps name families together ("llama" matches
+ * every "llama-*" variant), so popular families over-count artifacts — the
+ * score is a heuristic signal, not an exact accounting.
  *
  * score = 100 · mentions / (mentions + 3 · log10(1 + artifacts))
  * — log scale keeps one viral download spike from drowning everything;

@@ -31,9 +31,7 @@ export default function VoteButtons({
   );
   // optimistic display state — resyncs when server props change after refresh
   const [view, setView] = useState({ up, down, mine: myVote });
-  const propsRef = useRef({ up, down, myVote });
   useEffect(() => {
-    propsRef.current = { up, down, myVote };
     setView({ up, down, mine: myVote });
   }, [up, down, myVote]);
 

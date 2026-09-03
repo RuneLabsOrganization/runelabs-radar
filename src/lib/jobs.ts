@@ -31,6 +31,7 @@ export type JobName =
   | 'sweep'
   | 'media-pricing'
   | 'kit-evidence'
+  | 'kit-prices'
   | 'kit-grade'
   | 'source-review'
   | 'verdict-grade';
@@ -164,19 +165,4 @@ export function lastOkAt(job: JobName): Date | null {
     .limit(1)
     .get();
   return row?.finishedAt ?? null;
-}
-
-export function hoursSinceLastOk(job: JobName): number | null {
-  const at = lastOkAt(job);
-  return at ? (Date.now() - at.getTime()) / 36e5 : null;
-}
-
-/** Never-ran jobs are not "stale" (fresh install); staleness starts after first success. */
-export function getStaleness(): { ingestStale: boolean; curateStale: boolean } {
-  const ingest = hoursSinceLastOk('ingest');
-  const curate = hoursSinceLastOk('curate');
-  return {
-    ingestStale: ingest !== null && ingest > 2,
-    curateStale: curate !== null && curate > 3,
-  };
 }

@@ -34,8 +34,10 @@ export const getCurrentUser = cache(async (): Promise<User | null> => {
       }
       return domain;
     }
-  } catch {
-    // Better Auth not ready / no session
+  } catch (err) {
+    // Falling back silently would mask a broken auth stack (DB down → phantom
+    // anonymous sessions). Log before the legacy-cookie fallback.
+    console.error('[auth] better-auth getSession failed, falling back to legacy cookie:', err);
   }
 
   // Legacy cookie path (CLI-seeded operators during migration)

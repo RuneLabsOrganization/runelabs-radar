@@ -4,45 +4,13 @@ import { eq } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
 import { users } from '@/lib/db/schema';
 import { SESSION_COOKIE, signSession } from '@/lib/auth/session';
+import { clearFailures, clientKey, isLocked, recordFailure } from '@/lib/auth/login-attempts';
 
 const SESSION_MAX_AGE_S = 30 * 24 * 3600;
 
 // Compared against when the user does not exist, so response timing does not
 // leak whether a name is registered.
 const DUMMY_HASH = bcrypt.hashSync('invalid-password-placeholder', 10);
-
-// In-memory brute-force limiter (single-instance deployment): after
-// MAX_FAILURES failed attempts per (ip, name) within the window, reject early.
-const WINDOW_MS = 15 * 60 * 1000;
-const MAX_FAILURES = 10;
-const failures = new Map<string, { count: number; resetAt: number }>();
-
-function clientKey(req: Request, name: string): string {
-  // Rightmost XFF entry is the hop appended by our own reverse proxy; the
-  // leftmost entries are client-controlled and would let an attacker rotate
-  // keys (bypass) or spoof a victim's IP (lockout).
-  const fwd = req.headers.get('x-forwarded-for');
-  const parts = fwd ? fwd.split(',') : [];
-  const ip = parts.length > 0 ? parts[parts.length - 1].trim() : 'local';
-  return `${ip}|${name.toLowerCase()}`;
-}
-
-function isLocked(key: string): boolean {
-  const e = failures.get(key);
-  return !!e && e.resetAt > Date.now() && e.count >= MAX_FAILURES;
-}
-
-function recordFailure(key: string): void {
-  if (failures.size > 1000) {
-    for (const [k, v] of failures) if (v.resetAt < Date.now()) failures.delete(k);
-  }
-  const e = failures.get(key);
-  if (!e || e.resetAt < Date.now()) {
-    failures.set(key, { count: 1, resetAt: Date.now() + WINDOW_MS });
-  } else {
-    e.count++;
-  }
-}
 
 export async function POST(req: Request) {
   let body: unknown;
@@ -65,13 +33,16 @@ export async function POST(req: Request) {
   const db = getDb();
   const user = db.select().from(users).where(eq(users.name, name)).get();
 
-  const ok = await bcrypt.compare(password, user?.passwordHash ?? DUMMY_HASH);
-  if (!user || !ok) {
+  // Passwordless legacy rows (passwordHash '') compare against the dummy hash
+  // too — a fast-fail on the empty hash would reveal which legacy names have
+  // passwords via response timing.
+  const passwordOk = await bcrypt.compare(password, user?.passwordHash ? user.passwordHash : DUMMY_HASH);
+  if (!user || !user.passwordHash || !passwordOk) {
     recordFailure(key);
     return NextResponse.json({ error: 'invalid credentials' }, { status: 401 });
   }
 
-  failures.delete(key);
+  clearFailures(key);
   const res = NextResponse.json({ ok: true });
   res.cookies.set(SESSION_COOKIE, signSession(user.id), {
     httpOnly: true,

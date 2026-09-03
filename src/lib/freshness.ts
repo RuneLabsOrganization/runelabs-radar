@@ -99,9 +99,14 @@ export function freshnessStats(now = new Date(), windowDays = 90): FreshnessStat
     .map((s) => (s.updatedAt!.getTime() - s.createdAt.getTime()) / 60_000);
   const mergeMedian = median(mergeLags);
 
+  // Only changes at/after a story's createdAt can reflect it, and every
+  // candidate story sits inside [since, now] — so rows older than the window
+  // can never match. Bounding the read keeps the trust page from loading the
+  // entire board_history table (and lowercasing every row) forever.
   const changes = db
     .select({ change: boardHistory.change, appliedAt: boardHistory.appliedAt })
     .from(boardHistory)
+    .where(gte(boardHistory.appliedAt, since))
     .orderBy(asc(boardHistory.appliedAt))
     .all()
     .map((c) => ({ ...c, lower: c.change.toLowerCase() }));

@@ -1,7 +1,10 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
-import { and, eq, gt } from 'drizzle-orm';
+import { and, eq, gt, lt, or } from 'drizzle-orm';
 import { getDb } from './db';
 import { oauthClients, oauthCodes, oauthTokens } from './db/schema';
+
+/** Cap on attacker-controlled string inputs (code_challenge, state, verifier, …). */
+export const MAX_OAUTH_INPUT_LEN = 512;
 
 /**
  * OAuth 2.1 backing store for the MCP server. Next.js is the authorization
@@ -169,4 +172,103 @@ export function validateAccessToken(accessToken: string): AccessGrant | null {
     .where(and(eq(oauthTokens.accessToken, accessToken), gt(oauthTokens.expiresAt, new Date())))
     .get();
   return row ?? null;
+}
+
+// --- revocation (RFC 7009) ---
+
+/**
+ * Revoke a grant by access OR refresh token; both live on the same row, so
+ * deleting it kills the pair. Returns whether a row was removed — callers
+ * answering the public RFC 7009 endpoint must ignore this and always return
+ * 200 (the response must not reveal whether the token existed).
+ */
+export function revokeToken(token: string): boolean {
+  if (!token || token.length > MAX_OAUTH_INPUT_LEN) return false;
+  const db = getDb();
+  const row = db
+    .select()
+    .from(oauthTokens)
+    .where(or(eq(oauthTokens.accessToken, token), eq(oauthTokens.refreshToken, token)))
+    .get();
+  if (!row) return false;
+  // Constant-time confirmation of the indexed lookup: fixed-length compare
+  // before acting on the match.
+  const t = Buffer.from(token);
+  const matches =
+    (row.accessToken.length === t.length && timingSafeEqual(Buffer.from(row.accessToken), t)) ||
+    (!!row.refreshToken && row.refreshToken.length === t.length && timingSafeEqual(Buffer.from(row.refreshToken), t));
+  if (!matches) return false;
+  db.delete(oauthTokens).where(eq(oauthTokens.id, row.id)).run();
+  return true;
+}
+
+export interface ClientConnection {
+  clientId: string;
+  clientName: string | null;
+  scope: string;
+  /** First issuance of the oldest live grant — when the chain started. */
+  connectedAt: Date;
+  /** Live grant rows (one per refresh chain the client holds). */
+  grants: number;
+}
+
+/** The agents a user has live grants for, one entry per client. */
+export function listUserConnections(userId: number): ClientConnection[] {
+  const db = getDb();
+  const rows = db
+    .select({
+      clientId: oauthTokens.clientId,
+      scope: oauthTokens.scope,
+      createdAt: oauthTokens.createdAt,
+      clientName: oauthClients.name,
+    })
+    .from(oauthTokens)
+    .leftJoin(oauthClients, eq(oauthClients.clientId, oauthTokens.clientId))
+    .where(eq(oauthTokens.userId, userId))
+    .all();
+  const byClient = new Map<string, ClientConnection & { scopes: Set<string> }>();
+  for (const r of rows) {
+    let entry = byClient.get(r.clientId);
+    if (!entry) {
+      entry = {
+        clientId: r.clientId,
+        clientName: r.clientName,
+        scope: '',
+        connectedAt: r.createdAt,
+        grants: 0,
+        scopes: new Set(),
+      };
+      byClient.set(r.clientId, entry);
+    }
+    entry.grants += 1;
+    if (r.createdAt < entry.connectedAt) entry.connectedAt = r.createdAt;
+    for (const s of r.scope.split(/\s+/).filter(Boolean)) entry.scopes.add(s);
+  }
+  return [...byClient.values()]
+    .map(({ scopes, ...rest }) => ({ ...rest, scope: [...scopes].join(' ') }))
+    .sort((a, b) => b.connectedAt.getTime() - a.connectedAt.getTime());
+}
+
+/** Disconnect one agent: drop every grant this user issued to the client. */
+export function revokeUserClient(userId: number, clientId: string): number {
+  const db = getDb();
+  return db
+    .delete(oauthTokens)
+    .where(and(eq(oauthTokens.userId, userId), eq(oauthTokens.clientId, clientId)))
+    .run().changes;
+}
+
+/**
+ * Daily-sweep hook: drop codes and token rows that can never be used again.
+ * Codes die at expiresAt (5-minute TTL). Token rows are NOT swept at
+ * expiresAt — that is the 24h access-token expiry, but the row also carries
+ * the refresh chain, so a row is dead only once the chain's absolute cap
+ * (REFRESH_TTL_MS from first issuance, see refreshGrant) has passed.
+ */
+export function sweepExpiredOAuth(now: Date = new Date()): { codes: number; tokens: number } {
+  const db = getDb();
+  const codes = db.delete(oauthCodes).where(lt(oauthCodes.expiresAt, now)).run().changes;
+  const refreshFloor = new Date(now.getTime() - REFRESH_TTL_MS);
+  const tokens = db.delete(oauthTokens).where(lt(oauthTokens.createdAt, refreshFloor)).run().changes;
+  return { codes, tokens };
 }

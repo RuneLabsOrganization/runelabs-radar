@@ -389,7 +389,12 @@ export function agentStackPoints(
   landscape: HarnessRow[] = HARNESS_LANDSCAPE,
 ): MetricInput[] {
   const points: MetricInput[] = [];
-  for (const h of closeLovedPie(landscape)) {
+  const closed = closeLovedPie(landscape);
+  // One pass over the story window for every harness, not one per harness
+  // (same pattern as landscapeWithMentions — the memo cache is disabled in
+  // the worker where this runs, so per-harness calls were real extra scans).
+  const series = entityDailySeries([...new Set(closed.flatMap((h) => h.aliases))], 7);
+  for (const h of closed) {
     points.push({
       source: AGENT_STACKS_SOURCE,
       entity: h.name,
@@ -400,7 +405,7 @@ export function agentStackPoints(
       source: AGENT_STACKS_SOURCE,
       entity: h.name,
       metric: 'mentions_7d',
-      value: harnessMentions7d(h.aliases),
+      value: sumAliases(series, h.aliases),
     });
   }
   for (const p of personas) {

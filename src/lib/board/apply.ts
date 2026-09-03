@@ -117,67 +117,85 @@ function mirrorToKitPicks(
  * Applies a pending proposal: upserts board_entries by (domain, task) with the
  * four proposed fields, appends a human-readable board_history row, and marks
  * the proposal approved. Missing/non-pending proposals → {ok:false}.
+ *
+ * The whole apply runs in one transaction and the status flip IS the lock:
+ * the conditional UPDATE ... WHERE status='pending' is atomic across the
+ * web/worker/mcp processes sharing the SQLite file, so a double-clicked or
+ * concurrently approved proposal applies exactly once (one board_history row,
+ * one kit_pick_history row, one verdict claim). The claim goes first because
+ * a transaction whose first statement is a write takes the write lock
+ * immediately (busy_timeout) instead of failing a read-then-write upgrade
+ * with SQLITE_BUSY_SNAPSHOT.
  */
 export async function applyProposal(proposalId: number): Promise<{ ok: boolean }> {
   const db = getDb();
-  const proposal = db.select().from(boardProposals).where(eq(boardProposals.id, proposalId)).get();
-  if (!proposal || proposal.status !== 'pending') return { ok: false };
+  return db.transaction((tx) => {
+    const claimed = tx
+      .update(boardProposals)
+      .set({ status: 'approved' })
+      .where(and(eq(boardProposals.id, proposalId), eq(boardProposals.status, 'pending')))
+      .run();
+    if (claimed.changes === 0) return { ok: false };
+    // changes === 1 implies the row exists — we just wrote it.
+    const proposal = tx.select().from(boardProposals).where(eq(boardProposals.id, proposalId)).get()!;
 
-  const proposed = parseProposed(proposal.proposed);
-  const existing = db
-    .select()
-    .from(boardEntries)
-    .where(and(eq(boardEntries.domain, proposal.domain), eq(boardEntries.task, proposal.task)))
-    .get();
+    const proposed = parseProposed(proposal.proposed);
+    const existing = tx
+      .select()
+      .from(boardEntries)
+      .where(and(eq(boardEntries.domain, proposal.domain), eq(boardEntries.task, proposal.task)))
+      .get();
 
-  const now = new Date();
-  // Only non-null proposed fields are applied — a partial proposal must never
-  // wipe curated values it didn't mention.
-  const changes: Partial<ProposedFields> = {};
-  for (const f of FIELDS) {
-    if (proposed[f] !== null) changes[f] = proposed[f];
-  }
+    const now = new Date();
+    // Only non-null proposed fields are applied — a partial proposal must never
+    // wipe curated values it didn't mention.
+    const changes: Partial<ProposedFields> = {};
+    for (const f of FIELDS) {
+      if (proposed[f] !== null) changes[f] = proposed[f];
+    }
 
-  // The rationale was already shown to the human in ProposalCard before they
-  // approved this — it's reviewed content, not a fresh assertion. Auto-fill
-  // or refresh the board's verdict from it, but only while no human has
-  // hand-written their own via the VerdictEditor: once verdict_author is a
-  // real name, automation must never overwrite deliberate human prose. This
-  // also keeps the verdict in sync with the pick on every later approval —
-  // leaving it fill-once-then-never-touch-again would let a verdict describe
-  // a tool the board no longer picks, the exact mismatch a stale verdict
-  // caused once already.
-  const verdictClaimed = existing?.verdictAuthor != null && existing.verdictAuthor !== AUTO_VERDICT_AUTHOR;
-  const verdictPatch = verdictClaimed
-    ? {}
-    : { runelabsVerdict: proposal.rationale, verdictAuthor: AUTO_VERDICT_AUTHOR };
+    // The rationale was already shown to the human in ProposalCard before they
+    // approved this — it's reviewed content, not a fresh assertion. Auto-fill
+    // or refresh the board's verdict from it, but only while no human has
+    // hand-written their own via the VerdictEditor: once verdict_author is a
+    // real name, automation must never overwrite deliberate human prose. This
+    // also keeps the verdict in sync with the pick on every later approval —
+    // leaving it fill-once-then-never-touch-again would let a verdict describe
+    // a tool the board no longer picks, the exact mismatch a stale verdict
+    // caused once already.
+    const verdictClaimed = existing?.verdictAuthor != null && existing.verdictAuthor !== AUTO_VERDICT_AUTHOR;
+    const verdictPatch = verdictClaimed
+      ? {}
+      : { runelabsVerdict: proposal.rationale, verdictAuthor: AUTO_VERDICT_AUTHOR };
 
-  db.insert(boardEntries)
-    .values({ domain: proposal.domain, task: proposal.task, ...changes, ...verdictPatch, updatedAt: now })
-    .onConflictDoUpdate({
-      target: [boardEntries.domain, boardEntries.task],
-      set: { ...changes, ...verdictPatch, updatedAt: now },
-    })
-    .run();
+    tx.insert(boardEntries)
+      .values({ domain: proposal.domain, task: proposal.task, ...changes, ...verdictPatch, updatedAt: now })
+      .onConflictDoUpdate({
+        target: [boardEntries.domain, boardEntries.task],
+        set: { ...changes, ...verdictPatch, updatedAt: now },
+      })
+      .run();
 
-  const wasEmpty = !existing || FIELDS.every((f) => existing[f] === null);
-  let change: string;
-  if (wasEmpty) {
-    change = 'initial values set';
-  } else {
-    const diffs = FIELDS.filter((f) => proposed[f] !== null && existing[f] !== proposed[f]).map(
-      (f) => `${f}: ${existing[f] ?? '(none)'} -> ${proposed[f]}`,
-    );
-    change = diffs.length > 0 ? diffs.join('; ') : 'no field changes';
-  }
-  db.insert(boardHistory)
-    .values({ domain: proposal.domain, task: proposal.task, change, appliedAt: now })
-    .run();
+    const wasEmpty = !existing || FIELDS.every((f) => existing[f] === null);
+    let change: string;
+    if (wasEmpty) {
+      change = 'initial values set';
+    } else {
+      const diffs = FIELDS.filter((f) => proposed[f] !== null && existing[f] !== proposed[f]).map(
+        (f) => `${f}: ${existing[f] ?? '(none)'} -> ${proposed[f]}`,
+      );
+      change = diffs.length > 0 ? diffs.join('; ') : 'no field changes';
+    }
+    tx.insert(boardHistory)
+      .values({ domain: proposal.domain, task: proposal.task, change, appliedAt: now })
+      .run();
 
-  mirrorToKitPicks(proposal.domain, proposal.task, proposed, now, proposal.rationale);
+    // mirrorToKitPicks and the claim repo write via getDb() — the same
+    // connection this transaction is on, so those writes join it.
+    mirrorToKitPicks(proposal.domain, proposal.task, proposed, now, proposal.rationale);
 
-  db.update(boardProposals).set({ status: 'approved' }).where(eq(boardProposals.id, proposalId)).run();
-  return { ok: true };
+    return { ok: true };
+  });
 }
 
 /** Rejects a pending proposal (status flip only). Missing/non-pending → {ok:false}. */

@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth/user';
 import { oauthCompleteLanding } from '@/lib/oauth-loopback';
 import { config } from '@/lib/config';
-import { createCode, getClient, sanitizeScopes } from '@/lib/oauth';
+import { createCode, getClient, MAX_OAUTH_INPUT_LEN, sanitizeScopes } from '@/lib/oauth';
 
 async function parseBody(req: Request): Promise<Record<string, string>> {
   const ct = req.headers.get('content-type') ?? '';
@@ -53,11 +53,14 @@ export async function POST(req: Request) {
   if (typeof redirect_uri !== 'string' || !client.redirectUris.includes(redirect_uri)) {
     return NextResponse.json({ error: 'redirect_uri not registered' }, { status: 400 });
   }
-  if (typeof code_challenge !== 'string' || code_challenge.length < 43) {
+  if (typeof code_challenge !== 'string' || code_challenge.length < 43 || code_challenge.length > MAX_OAUTH_INPUT_LEN) {
     return NextResponse.json({ error: 'invalid code_challenge' }, { status: 400 });
   }
   if (code_challenge_method !== 'S256') {
     return NextResponse.json({ error: 'code_challenge_method must be S256' }, { status: 400 });
+  }
+  if (typeof state === 'string' && state.length > MAX_OAUTH_INPUT_LEN) {
+    return NextResponse.json({ error: 'invalid state' }, { status: 400 });
   }
 
   const code = createCode({
