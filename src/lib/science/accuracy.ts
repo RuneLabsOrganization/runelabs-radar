@@ -1,9 +1,10 @@
-import { and, desc, eq, gte, isNotNull, isNull } from 'drizzle-orm';
+import { and, desc, eq, gte, isNotNull, isNull, lte } from 'drizzle-orm';
 import { getDb } from '../db';
 import { forecasts, stories } from '../db/schema';
 import { forecastFrontierPrice, frontierPriceSeries } from './forecast';
 import { utcDay } from '../metrics';
 import { median } from '../stats';
+import { RESCORE_MIN_AGE_MS, RESCORE_MAX_AGE_MS } from './hindsight';
 
 export interface CalibrationBucket {
   label: string;
@@ -13,6 +14,15 @@ export interface CalibrationBucket {
   medianHindsight: number | null;
   /** % of the band with hindsight > 0 — "did anything follow at all". */
   followThroughRate: number;
+  /** Curated stories in the band old enough to have been graded (≥36h). */
+  eligible: number;
+  /**
+   * graded / eligible, %. Null when nothing is eligible. Below ~90 the band's
+   * stats are survivors — stories that missed the rescore window vanish from
+   * the bands rather than counting, which flatters calibration — and the
+   * trust page marks the band accordingly.
+   */
+  coveragePct: number | null;
 }
 
 /** Display-level integer median (hindsight points are integers; float median lives in stats). */
@@ -74,16 +84,31 @@ export function calibrationBuckets(): CalibrationBucket[] {
     .from(stories)
     .where(and(eq(stories.status, 'curated'), isNotNull(stories.hindsight)))
     .all();
+  // everything that SHOULD have a grade by now — the coverage denominator
+  const eligibleRows = db
+    .select({ topScore: stories.topScore })
+    .from(stories)
+    .where(and(eq(stories.status, 'curated'), lte(stories.createdAt, new Date(Date.now() - RESCORE_MIN_AGE_MS))))
+    .all();
 
-  const bands: { label: string; test: (s: number) => boolean; scores: number[]; hindsights: number[] }[] = [
-    { label: '<40', test: (s) => s < 40, scores: [], hindsights: [] },
-    { label: '40–69', test: (s) => s >= 40 && s < 70, scores: [], hindsights: [] },
-    { label: '70–100', test: (s) => s >= 70, scores: [], hindsights: [] },
+  const bands: {
+    label: string;
+    test: (s: number) => boolean;
+    scores: number[];
+    hindsights: number[];
+    eligible: number;
+  }[] = [
+    { label: '<40', test: (s) => s < 40, scores: [], hindsights: [], eligible: 0 },
+    { label: '40–69', test: (s) => s >= 40 && s < 70, scores: [], hindsights: [], eligible: 0 },
+    { label: '70–100', test: (s) => s >= 70, scores: [], hindsights: [], eligible: 0 },
   ];
   for (const r of rows) {
     const band = bands.find((b) => b.test(r.topScore))!;
     band.scores.push(r.topScore);
     band.hindsights.push(r.hindsight ?? 0);
+  }
+  for (const r of eligibleRows) {
+    bands.find((b) => b.test(r.topScore))!.eligible += 1;
   }
   return bands.map((b) => ({
     label: b.label,
@@ -96,6 +121,8 @@ export function calibrationBuckets(): CalibrationBucket[] {
     followThroughRate: b.hindsights.length
       ? Math.round((b.hindsights.filter((h) => h > 0).length / b.hindsights.length) * 100)
       : 0,
+    eligible: b.eligible,
+    coveragePct: b.eligible === 0 ? null : Math.round((b.scores.length / b.eligible) * 100),
   }));
 }
 
@@ -113,7 +140,9 @@ export function calibrationPoints(): { score: number; hindsight: number }[] {
 /**
  * Curated stories not yet graded but still inside (or approaching) the 36-60h
  * rescore window — the "pending, not hidden" count. Stories older than 60h
- * without hindsight missed the window and are excluded.
+ * without hindsight missed the window; those are the backlog (see
+ * rescoreBacklog). Return type stays a bare number because the MCP
+ * get_accuracy tool consumes it as one.
  */
 export function pendingGrades(): number {
   const db = getDb();
@@ -124,7 +153,28 @@ export function pendingGrades(): number {
       and(
         eq(stories.status, 'curated'),
         isNull(stories.hindsight),
-        gte(stories.createdAt, new Date(Date.now() - 60 * 36e5)),
+        gte(stories.createdAt, new Date(Date.now() - RESCORE_MAX_AGE_MS)),
+      ),
+    )
+    .all();
+  return rows.length;
+}
+
+/**
+ * The backlog: curated stories that aged PAST the 60h rescore window still
+ * ungraded — missed by the daily cap or by downtime. Published beside
+ * pendingGrades so a growing backlog can never hide inside "pending".
+ */
+export function rescoreBacklog(): number {
+  const db = getDb();
+  const rows = db
+    .select({ id: stories.id })
+    .from(stories)
+    .where(
+      and(
+        eq(stories.status, 'curated'),
+        isNull(stories.hindsight),
+        lte(stories.createdAt, new Date(Date.now() - RESCORE_MAX_AGE_MS)),
       ),
     )
     .all();
@@ -211,15 +261,25 @@ export interface ForecastGrade {
   date: string;
   predicted: number;
   realized: number | null;
+  /** The series date the realized value was actually read at — disclosed because it can lag the 30d target. */
+  realizedDate: string | null;
+  /**
+   * Signed log error, %: ln(realized/predicted) · 100. Symmetric — predicting
+   * 2× too high and 2× too low score the same magnitude — which the naive
+   * percent error on a falling price is not (over-predictions bottom out at
+   * −100% while under-predictions are unbounded, flattering the average).
+   * Positive means realized came in ABOVE the forecast (we aimed low).
+   */
   errorPct: number | null;
 }
 
 /**
  * Past forecasts vs what actually happened. Realized = the frontier-tier
  * blended price AT the 30d target (first series point on/after the target
- * date), computed with the same frontier definition the forecast predicts —
- * not the cheapest price of any model at any later date, which drifted as
- * prices fell. Nulls until the target date passes.
+ * date — the actual date is disclosed per grade), computed with the same
+ * frontier definition the forecast predicts — not the cheapest price of any
+ * model at any later date, which drifted as prices fell. Nulls until the
+ * target date passes.
  */
 export function forecastGrades(): ForecastGrade[] {
   const db = getDb();
@@ -233,7 +293,9 @@ export function forecastGrades(): ForecastGrade[] {
       date: r.date,
       predicted: r.predicted,
       realized: rv,
-      errorPct: rv !== null && r.predicted > 0 ? Math.round(((rv - r.predicted) / r.predicted) * 100) : null,
+      realizedDate: rv !== null ? point!.date : null,
+      errorPct:
+        rv !== null && r.predicted > 0 && rv > 0 ? Math.round(Math.log(rv / r.predicted) * 100) : null,
     };
   });
 }

@@ -1,6 +1,8 @@
 // Pure math for the science layer — no DB, no LLM, fully deterministic
 // (seeded RNG) so runs are reproducible and testable.
 
+import { mean, populationStd, sampleStd } from '../stats';
+
 /** Deterministic LCG — Math.random is banned here for reproducibility. */
 export function makeRng(seed = 1337): () => number {
   let s = seed >>> 0;
@@ -172,16 +174,19 @@ export function pca2d(vectors: Float32Array[], seed = 7, iterations = 60): { x: 
   return coords.map((c) => ({ x: c.x / spread, y: c.y / spread }));
 }
 
-/** Mean and (population) standard deviation. */
+/** Mean and population standard deviation. For a baseline SAMPLED from past
+ *  days, use zScore — it switches to sample std (n−1) below 30 points. */
 export function meanStd(values: number[]): { mean: number; std: number } {
   if (values.length === 0) return { mean: 0, std: 0 };
-  const mean = values.reduce((a, b) => a + b, 0) / values.length;
-  const variance = values.reduce((a, b) => a + (b - mean) ** 2, 0) / values.length;
-  return { mean, std: Math.sqrt(variance) };
+  return { mean: mean(values), std: populationStd(values) };
 }
 
 /**
  * z-score of value against a baseline.
+ *
+ * Small baselines (<30 points) are scored with the SAMPLE std (n−1): ÷n on a
+ * 3-sample baseline underestimates σ by ~1.22×, which manufactured z≥2
+ * "spikes" out of ordinary noise.
  *
  * Degenerate baseline (stdev 0 — a flat rate): ANY uptick would otherwise read
  * as "3σ", so a flat 2-stories/day sector hitting 3 was published as a spike.
@@ -190,12 +195,23 @@ export function meanStd(values: number[]): { mean: number; std: number } {
  * smaller on a flat baseline is indistinguishable from jitter → 0.
  */
 export function zScore(value: number, baseline: number[]): number {
-  const { mean, std } = meanStd(baseline);
+  if (baseline.length === 0) return 0;
+  const m = mean(baseline);
+  const std = baseline.length < 30 ? sampleStd(baseline) : populationStd(baseline);
   if (std < 1e-9) {
-    if (value <= mean || mean < 5 || value < 2 * mean) return 0;
-    return (value - mean) / Math.sqrt(mean);
+    if (value <= m || m < 5 || value < 2 * m) return 0;
+    return (value - m) / Math.sqrt(m);
   }
-  return (value - mean) / std;
+  return (value - m) / std;
+}
+
+/**
+ * The publish bar for a z-score. A fixed z≥2 is overconfident on tiny
+ * baselines (the std itself is estimated from n points), so the bar widens
+ * for small n: z ≥ 2·(1+1/n).
+ */
+export function zGate(baselinePoints: number): number {
+  return 2 * (1 + 1 / Math.max(1, baselinePoints));
 }
 
 export interface Fit {
@@ -229,38 +245,57 @@ export function linearFit(points: { x: number; y: number }[]): Fit | null {
   return {
     slope,
     intercept,
-    r2: ssTot < 1e-12 ? 1 : 1 - ssRes / ssTot,
+    // constant series (ssTot≈0): the fit explains NOTHING about variance that
+    // isn't there — r2 = 1 claimed "perfect fit" and downstream projected with
+    // a near-zero band. 0 is the honest "no explanatory power".
+    r2: ssTot < 1e-12 ? 0 : 1 - ssRes / ssTot,
     residualStd: Math.sqrt(ssRes / Math.max(1, n - 2)),
   };
 }
 
+export interface CrossCorrelation {
+  lag: number;
+  coefficient: number;
+  /** paired points behind the coefficient — identical across lags, so the
+   *  coefficients are comparable (a shrinking per-lag window made larger lags
+   *  noisier and their |r| artificially bigger) */
+  n: number;
+}
+
+/** A lag coefficient on fewer paired points than this is not publishable. */
+export const CROSS_CORRELATE_MIN_OVERLAP = 14;
+
 /**
  * Normalized cross-correlation of two equal-length series at lags 0..maxLag
- * (b shifted later than a — "a leads b by lag"). Returns the best lag.
+ * (b shifted later than a — "a leads b by lag"). Returns the best |r|.
+ *
+ * Every lag is scored on the SAME fixed window of a[0 .. n−maxLag) against a
+ * shifted b — coefficients across lags are comparable and each carries n =
+ * window paired points. Callers pair series by inner-joining real dates (no
+ * zero-fill) and gate publication with correlationSignificant from lib/stats.
  */
 export function crossCorrelate(
   a: number[],
   b: number[],
   maxLag: number,
-): { lag: number; coefficient: number } | null {
-  const n = Math.min(a.length, b.length);
-  if (n < maxLag + 3) return null;
-  let best: { lag: number; coefficient: number } | null = null;
+  minOverlap: number = CROSS_CORRELATE_MIN_OVERLAP,
+): CrossCorrelation | null {
+  const len = Math.min(a.length, b.length);
+  const window = len - maxLag;
+  if (window < minOverlap) return null;
+  const xs = a.slice(0, window);
+  const { mean: mxv, std: sx } = meanStd(xs);
+  if (sx < 1e-9) return null;
+  let best: CrossCorrelation | null = null;
   for (let lag = 0; lag <= maxLag; lag++) {
-    const xs: number[] = [];
-    const ys: number[] = [];
-    for (let i = 0; i + lag < n; i++) {
-      xs.push(a[i]);
-      ys.push(b[i + lag]);
-    }
-    const { mean: mxv, std: sx } = meanStd(xs);
+    const ys = b.slice(lag, lag + window);
     const { mean: myv, std: sy } = meanStd(ys);
-    if (sx < 1e-9 || sy < 1e-9) continue;
+    if (sy < 1e-9) continue;
     let cov = 0;
-    for (let i = 0; i < xs.length; i++) cov += (xs[i] - mxv) * (ys[i] - myv);
-    cov /= xs.length;
+    for (let i = 0; i < window; i++) cov += (xs[i] - mxv) * (ys[i] - myv);
+    cov /= window;
     const r = cov / (sx * sy);
-    if (!best || Math.abs(r) > Math.abs(best.coefficient)) best = { lag, coefficient: r };
+    if (!best || Math.abs(r) > Math.abs(best.coefficient)) best = { lag, coefficient: r, n: window };
   }
   return best;
 }

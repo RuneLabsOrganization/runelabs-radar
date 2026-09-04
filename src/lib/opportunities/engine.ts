@@ -6,13 +6,16 @@ import { DOMAINS } from '../domains';
 import { getIdentity } from '../identity';
 import { chatJSON, drainLlmUsageStats } from '../llm/minimax';
 import { promptLine } from '../prompt-hygiene';
-import { applyGate, blendScore, parseWindowMonths, unverifiedCritic } from './gate';
+import { applyGate, blendScore, MAX_WINDOW_MONTHS, parseWindowMonths, unverifiedCritic } from './gate';
 import { runCritique, runDebate } from './critic';
 
 // Axes + score math live in the client-safe module; re-exported for server code.
 export { compositeScore, FLIP_WEIGHTS, HOLD_WEIGHTS, SUB_KEYS } from './axes';
 export type { SubKey, SubScores } from './axes';
-import { SUB_KEYS, type SubScores } from './axes';
+import { coerceSubScore, SUB_KEYS, type SubScores } from './axes';
+import { clampKpi, KPI_BOUNDS, type KpiKey } from './kpi-bounds';
+import { MIN_SIGNALS, SIGNAL_LOOKBACK_DAYS } from './signals';
+import { valuePicks } from './value-picks';
 import { normalizeSlug } from './slug';
 import { publicOnly } from './scope';
 
@@ -23,28 +26,39 @@ export interface OppKpis {
   monthlyCostUsd: number | null;
   priceUsd: number | null;
   timeToMvpDays: number | null;
+  /**
+   * STEADY-STATE paying-customer count at maturity (what the prompt asks for
+   * and what R8's monthly-profit formula consumes) — NOT the theoretical
+   * "customers needed to break even". Name kept for stored-row compatibility.
+   */
   breakEvenCustomers: number | null;
   competitorCount: number | null;
   competitionNote: string | null;
   regulatoryNote: string | null;
 }
 
-/** Validates the LLM's hard-estimate block. Exported for tests. */
-export function sanitizeKpis(v: unknown): OppKpis {
+/**
+ * Validates the LLM's hard-estimate block. Exported for tests.
+ * Fail-closed: a finite but out-of-range number CLAMPS into bounds (shared
+ * with sanitizeBrief via kpi-bounds.ts) and is recorded in `clamped` so the
+ * gate can flag it — before, it collapsed to null and the R8 economics check
+ * was skipped entirely, so absurd economics escaped more easily than
+ * plausible ones. Only non-numbers/non-finite values still null out.
+ */
+export function sanitizeKpis(v: unknown, clamped?: string[]): OppKpis {
   const rec = (typeof v === 'object' && v !== null ? v : {}) as Record<string, unknown>;
-  const num = (key: string, max: number): number | null => {
-    const val = rec[key];
-    return typeof val === 'number' && Number.isFinite(val) && val >= 0 && val <= max
-      ? Math.round(val * 100) / 100
-      : null;
+  const num = (key: KpiKey): number | null => {
+    const { value, clamped: wasClamped } = clampKpi(rec[key], KPI_BOUNDS[key]);
+    if (wasClamped) clamped?.push(key);
+    return value;
   };
   return {
-    initialCostUsd: num('initialCostUsd', 1e6),
-    monthlyCostUsd: num('monthlyCostUsd', 1e5),
-    priceUsd: num('priceUsd', 1e4),
-    timeToMvpDays: num('timeToMvpDays', 365),
-    breakEvenCustomers: num('breakEvenCustomers', 1e6),
-    competitorCount: num('competitorCount', 500),
+    initialCostUsd: num('initialCostUsd'),
+    monthlyCostUsd: num('monthlyCostUsd'),
+    priceUsd: num('priceUsd'),
+    timeToMvpDays: num('timeToMvpDays'),
+    breakEvenCustomers: num('breakEvenCustomers'),
+    competitorCount: num('competitorCount'),
     competitionNote: typeof rec.competitionNote === 'string' ? promptLine(rec.competitionNote, 160) : null,
     regulatoryNote: typeof rec.regulatoryNote === 'string' ? promptLine(rec.regulatoryNote, 160) : null,
   };
@@ -60,6 +74,8 @@ export interface OppDraft {
   windowMonths: number | null;
   sub: SubScores;
   kpis: OppKpis;
+  /** KPI fields clamped into range during sanitize — forwarded to the gate trail. */
+  kpiClamped?: string[];
   evidenceRefs: string[];
 }
 
@@ -136,15 +152,13 @@ export function sanitizeOpportunities(
     const sub = {} as SubScores;
     let subOk = true;
     for (const k of SUB_KEYS) {
-      const scoreRaw = subRaw[k];
-      const val =
-        typeof scoreRaw === 'number' ? scoreRaw : typeof scoreRaw === 'string' ? Number(scoreRaw.trim()) : NaN;
-      if (!Number.isFinite(val)) {
+      const val = coerceSubScore(subRaw[k]);
+      if (val === null) {
         rejects?.push({ slug, reason: `missing-or-invalid-sub-score:${k}` });
         subOk = false;
         break;
       }
-      sub[k] = Math.max(0, Math.min(20, Math.round(val)));
+      sub[k] = val;
     }
     if (!subOk) continue;
 
@@ -169,6 +183,7 @@ export function sanitizeOpportunities(
       typeof rec.windowMonths === 'number' && Number.isFinite(rec.windowMonths)
         ? Math.round(rec.windowMonths)
         : null;
+    const kpiClamped: string[] = [];
     out.push({
       slug,
       title,
@@ -178,9 +193,10 @@ export function sanitizeOpportunities(
           ? rec.sector
           : null,
       window: windowText,
-      windowMonths: wm !== null && wm > 0 && wm <= 240 ? wm : parseWindowMonths(windowText),
+      windowMonths: wm !== null && wm > 0 && wm <= MAX_WINDOW_MONTHS ? wm : parseWindowMonths(windowText),
       sub,
-      kpis: sanitizeKpis(rec.kpis),
+      kpis: sanitizeKpis(rec.kpis, kpiClamped),
+      kpiClamped,
       evidenceRefs,
     });
   }
@@ -206,7 +222,7 @@ function buildContext(): Context {
   const pains = db
     .select()
     .from(painPoints)
-    .where(gte(painPoints.lastSeenAt, new Date(Date.now() - 14 * 864e5)))
+    .where(gte(painPoints.lastSeenAt, new Date(Date.now() - SIGNAL_LOOKBACK_DAYS * 864e5)))
     .orderBy(desc(painPoints.intensity), desc(painPoints.lastSeenAt))
     .limit(12)
     .all();
@@ -256,14 +272,11 @@ function buildContext(): Context {
 
   const aa = aaModels();
   if (aa) {
-    const valuePicks = aa.models
-      .filter((m) => m.intelligence >= 25 && m.price > 0)
-      .sort((a, b) => b.intelligence / b.price - a.intelligence / a.price)
-      .slice(0, 8);
+    const picks = valuePicks(aa.models, { limit: 8 });
     refMap.set('M', { type: 'market', label: 'model market value picks' });
     sections.push(
       '<model-market ref="M">\n' +
-        valuePicks
+        picks
           .map((m) => `- ${promptLine(m.name, 60)}: intelligence ${m.intelligence}, $${m.price}/1M blended`)
           .join('\n') +
         '\n</model-market>',
@@ -345,14 +358,15 @@ function renderConstraints(c: ScoutConstraints): string {
  * the global picture. Constraints add a <builder-constraints> block to the
  * prompt and steer proposals toward openings THAT builder can exploit; the
  * daily job passes none. Returns empty drafts without spending an LLM call
- * when the scope is too thin (< 5 signals).
+ * when the scope is too thin (< MIN_SIGNALS signals — the one threshold the
+ * scout tool shares).
  */
 export async function proposeOpportunities(constraints?: ScoutConstraints): Promise<{
   drafts: OppDraft[];
   ctx: Context;
 }> {
   const ctx = buildContext();
-  if (ctx.signalCount < 5) return { drafts: [], ctx };
+  if (ctx.signalCount < MIN_SIGNALS) return { drafts: [], ctx };
 
   const db = getDb();
   const existing = db
@@ -376,7 +390,7 @@ export async function proposeOpportunities(constraints?: ScoutConstraints): Prom
     'refreshing a known opportunity), "title" (the product opening, specific), "thesis" (2-3 ' +
     'sentences: why now, citing the evidence), "sector" (one of ' +
     `${DOMAINS.join('|')} or omit), "window" (how long before saturation, honest), ` +
-    '"windowMonths" (integer — months until saturation/obsolescence, honest median, <= 36), ' +
+    `"windowMonths" (integer — months until saturation/obsolescence, honest median, <= ${MAX_WINDOW_MONTHS}), ` +
     '"subScores" — ALL TEN keys, each an integer 0-20 where higher is always MORE favorable: ' +
     '{demand, buildability (20 = weekend-buildable), margin, competition (20 = wide-open field), ' +
     'timing, moat (defensibility once shipped), regClear (20 = no regulatory exposure — think ' +
@@ -390,7 +404,10 @@ export async function proposeOpportunities(constraints?: ScoutConstraints): Prom
     '"kpis" — honest numeric estimates, null when you cannot ground them: {initialCostUsd ' +
     '(build cost to MVP incl. API/tools, excl. salaries), monthlyCostUsd (run cost ~100 users, ' +
     'ground in the model-market prices), priceUsd (monthly price point), timeToMvpDays, ' +
-    'breakEvenCustomers, competitorCount (direct competitors you can name or infer from launch ' +
+    'breakEvenCustomers (the STEADY-STATE paying-customer count once the product is established ' +
+    '— the scoring gate multiplies it by priceUsd to get steady-state monthly revenue, so give ' +
+    'the count you honestly expect at maturity, not the theoretical break-even count), ' +
+    'competitorCount (direct competitors you can name or infer from launch ' +
     'activity), competitionNote (one line naming the closest competitors), regulatoryNote (one ' +
     'line on the main regulatory exposure, or null)}, ' +
     '"evidenceRefs" (the [refs] that support it). Propose at most 6 — quality over quantity; ' +
@@ -430,7 +447,7 @@ export async function runOpportunities(): Promise<{
 }> {
   const db = getDb();
   const { drafts, ctx } = await proposeOpportunities();
-  if (ctx.signalCount < 5) {
+  if (ctx.signalCount < MIN_SIGNALS) {
     console.warn('[opportunities] skipped — not enough signal on the scope yet');
     return { proposed: 0, critiqued: 0, created: 0, refreshed: 0, archived: 0, debated: 0 };
   }
@@ -458,6 +475,7 @@ export async function runOpportunities(): Promise<{
         windowMonths: d.windowMonths,
         evidenceCount: d.evidenceRefs.length,
         legacy: false,
+        kpiClamped: d.kpiClamped,
       },
       critic,
     );

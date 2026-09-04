@@ -4,16 +4,20 @@ import { kitPickHistory, verdictClaims } from '@/lib/db/schema';
 import {
   correctionRate,
   falsifierCoverage,
-  pickHalfLife,
+  pickLongevity,
   reversalRate,
+  STANDING_HORIZON_DAYS,
+  verdictSummary,
 } from '@/lib/science/verdict-accuracy';
 import { useTestDb } from './helpers/db';
+
+const DAY = 86_400_000;
 
 type Row = { toPick: string; fromPick: string | null; changeKind: 'upgrade' | 'drift' | 'correction' | 'unclassified'; heldDays: number | null; task?: string };
 
 function addRows(rows: Row[]): void {
   const db = getDb();
-  let t = Date.now() - rows.length * 86_400_000;
+  let t = Date.now() - rows.length * DAY;
   for (const r of rows) {
     db.insert(kitPickHistory)
       .values({
@@ -25,22 +29,24 @@ function addRows(rows: Row[]): void {
         reason: 'x',
         changeKind: r.changeKind,
         heldDays: r.heldDays,
-        changedAt: new Date((t += 86_400_000)),
+        changedAt: new Date((t += DAY)),
       })
       .run();
   }
 }
 
-describe('pickHalfLife', () => {
+describe('pickLongevity — closed-flip median', () => {
   beforeEach(() => useTestDb());
 
-  it('is the median held time of graded flips', () => {
+  it('is the median held time of graded flips, with n', () => {
     addRows([
       { fromPick: 'A', toPick: 'B', changeKind: 'upgrade', heldDays: 10 },
       { fromPick: 'B', toPick: 'C', changeKind: 'correction', heldDays: 30 },
       { fromPick: 'C', toPick: 'D', changeKind: 'drift', heldDays: 50 },
     ]);
-    expect(pickHalfLife()).toBe(30);
+    const l = pickLongevity();
+    expect(l.medianHeldDays).toBe(30);
+    expect(l.closedFlips).toBe(3);
   });
 
   it('ignores ungraded rows and the -1 sentinel', () => {
@@ -48,11 +54,56 @@ describe('pickHalfLife', () => {
       { fromPick: null, toPick: 'A', changeKind: 'unclassified', heldDays: -1 },
       { fromPick: 'A', toPick: 'B', changeKind: 'upgrade', heldDays: 20 },
     ]);
-    expect(pickHalfLife()).toBe(20);
+    expect(pickLongevity().medianHeldDays).toBe(20);
+    expect(pickLongevity().closedFlips).toBe(1);
   });
 
   it('is null with nothing graded', () => {
-    expect(pickHalfLife()).toBeNull();
+    const l = pickLongevity();
+    expect(l.medianHeldDays).toBeNull();
+    expect(l.closedFlips).toBe(0);
+  });
+});
+
+describe('pickLongevity — the censoring fix', () => {
+  beforeEach(() => useTestDb());
+
+  it('a board of old, still-standing picks is not published as a misleadingly low figure', () => {
+    const db = getDb();
+    // 10 cells whose picks have stood 200 days (first pick, never replaced)
+    for (let i = 0; i < 10; i++) {
+      db.insert(kitPickHistory)
+        .values({
+          category: 'coding',
+          task: `task-${i}`,
+          tier: 'best',
+          fromPick: null,
+          toPick: `Tool-${i}`,
+          reason: 'initial',
+          changeKind: 'unclassified',
+          heldDays: -1,
+          changedAt: new Date(Date.now() - 200 * DAY),
+        })
+        .run();
+    }
+    // one cell with a fast closed flip — a closed-only median would publish "5d"
+    addRows([{ fromPick: 'A', toPick: 'B', changeKind: 'upgrade', heldDays: 5 }]);
+
+    const l = pickLongevity();
+    // the closed-only median is still reported, LABELED, with its n…
+    expect(l.medianHeldDays).toBe(5);
+    expect(l.closedFlips).toBe(1);
+    // …but beside it: 10 of 11 datable picks have stood ≥ the horizon
+    expect(l.standingDatable).toBe(11);
+    expect(l.stillStanding).toBe(10);
+    expect(l.standingPct).toBe(91);
+    expect(l.horizonDays).toBe(STANDING_HORIZON_DAYS);
+  });
+
+  it('standingPct is null (never 0%) when no pick start is datable', () => {
+    const l = pickLongevity();
+    expect(l.standingPct).toBeNull();
+    expect(l.standingDatable).toBe(0);
   });
 });
 
@@ -68,8 +119,9 @@ describe('correctionRate', () => {
     expect(correctionRate()).toEqual({ corrections: 1, graded: 2, pct: 50 });
   });
 
-  it('is zero-safe with no graded flips', () => {
-    expect(correctionRate()).toEqual({ corrections: 0, graded: 0, pct: 0 });
+  it('is null on n=0 — "0% of nothing" reads as a perfect record, the page shows "—"', () => {
+    // was pct: 0; changed because rendering 0% at n=0 flatters an empty board
+    expect(correctionRate()).toEqual({ corrections: 0, graded: 0, pct: null });
   });
 });
 
@@ -100,6 +152,10 @@ describe('reversalRate', () => {
     ]);
     expect(reversalRate()).toEqual({ reversed: 1, cells: 2, pct: 50 });
   });
+
+  it('is null on n=0, never 0%', () => {
+    expect(reversalRate()).toEqual({ reversed: 0, cells: 0, pct: null });
+  });
 });
 
 describe('falsifierCoverage', () => {
@@ -113,7 +169,21 @@ describe('falsifierCoverage', () => {
     expect(falsifierCoverage()).toEqual({ registered: 1, open: 2, pct: 50 });
   });
 
-  it('is zero-safe with no claims', () => {
-    expect(falsifierCoverage()).toEqual({ registered: 0, open: 0, pct: 0 });
+  it('is null on n=0, never 0%', () => {
+    // was pct: 0; an empty claim set is not a 0% track record
+    expect(falsifierCoverage()).toEqual({ registered: 0, open: 0, pct: null });
+  });
+});
+
+describe('verdictSummary', () => {
+  beforeEach(() => useTestDb());
+
+  it('an empty board reports "—" (null) everywhere, never a perfect-looking 0%', () => {
+    const s = verdictSummary();
+    expect(s.longevity.medianHeldDays).toBeNull();
+    expect(s.longevity.standingPct).toBeNull();
+    expect(s.correction.pct).toBeNull();
+    expect(s.reversal.pct).toBeNull();
+    expect(s.coverage.pct).toBeNull();
   });
 });

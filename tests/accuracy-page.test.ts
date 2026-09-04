@@ -1,11 +1,14 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { stories } from '@/lib/db/schema';
+import { getDb } from '@/lib/db';
+import { forecasts, metricPoints, stories } from '@/lib/db/schema';
 import {
   accuracyMisses,
   calibrationBuckets,
   calibrationMonotonic,
+  forecastGrades,
   gradingSince,
   pendingGrades,
+  rescoreBacklog,
   spearman,
   type CalibrationBucket,
 } from '@/lib/science/accuracy';
@@ -32,6 +35,8 @@ const bucket = (label: string, meanHindsight: number | null): CalibrationBucket 
   meanHindsight,
   medianHindsight: meanHindsight,
   followThroughRate: 50,
+  eligible: 5,
+  coveragePct: 100,
 });
 
 describe('spearman', () => {
@@ -111,6 +116,30 @@ describe('calibrationBuckets', () => {
     db.insert(stories).values({ title: 'ungraded', status: 'curated', topScore: 90, createdAt: new Date() }).run();
     expect(calibrationBuckets().every((b) => b.count === 0)).toBe(true);
   });
+
+  it('publishes coveragePct — graded ÷ old enough to grade — so missed stories cannot vanish', () => {
+    const db = useTestDb();
+    const old = new Date(Date.now() - 48 * 36e5); // inside the would-have-graded window
+    // graded 70+ story
+    db.insert(stories)
+      .values({ title: 'graded old', status: 'curated', topScore: 80, hindsight: 40, hindsightAt: new Date(), createdAt: old })
+      .run();
+    // ungraded 70+ story of the same age — missed the rescore window
+    db.insert(stories).values({ title: 'missed old', status: 'curated', topScore: 90, createdAt: old }).run();
+    // fresh ungraded story — not yet eligible, must not hurt coverage
+    db.insert(stories).values({ title: 'fresh', status: 'curated', topScore: 85, createdAt: new Date() }).run();
+
+    const band = calibrationBuckets().find((b) => b.label === '70–100')!;
+    expect(band.count).toBe(1);
+    expect(band.eligible).toBe(2);
+    expect(band.coveragePct).toBe(50); // the trust page marks bands below 90%
+  });
+
+  it('coveragePct is null when nothing in the band is old enough to grade', () => {
+    const db = useTestDb();
+    addGraded(db, 80, 20); // addGraded uses createdAt: now → not eligible
+    expect(calibrationBuckets().find((b) => b.label === '70–100')!.coveragePct).toBeNull();
+  });
 });
 
 describe('pendingGrades', () => {
@@ -136,6 +165,84 @@ describe('pendingGrades', () => {
       })
       .run();
     expect(pendingGrades()).toBe(1);
+  });
+});
+
+describe('rescoreBacklog', () => {
+  beforeEach(() => {
+    useTestDb();
+  });
+
+  it('counts curated stories that aged past the 60h window still ungraded', () => {
+    const db = useTestDb();
+    // missed the window → backlog
+    db.insert(stories)
+      .values({ title: 'stale', status: 'curated', topScore: 80, createdAt: new Date(Date.now() - 72 * 36e5) })
+      .run();
+    // in-window ungraded → pending, not backlog
+    db.insert(stories)
+      .values({ title: 'fresh', status: 'curated', topScore: 80, createdAt: new Date() })
+      .run();
+    // graded → neither
+    addGraded(db, 80, 20);
+    expect(rescoreBacklog()).toBe(1);
+    expect(pendingGrades()).toBe(1);
+  });
+});
+
+describe('forecastGrades', () => {
+  beforeEach(() => {
+    useTestDb();
+  });
+
+  const DAY = 864e5;
+  const day = (agoDays: number) => new Date(Date.now() - agoDays * DAY).toISOString().slice(0, 10);
+
+  function seedAa(dateStr: string, price: number) {
+    getDb()
+      .insert(metricPoints)
+      .values([
+        { source: 'aa', entity: 'frontier-model', metric: 'intelligence', value: 50, date: dateStr, createdAt: new Date() },
+        { source: 'aa', entity: 'frontier-model', metric: 'price_blended', value: price, date: dateStr, createdAt: new Date() },
+      ])
+      .run();
+  }
+
+  function addForecast(date: string, predicted: number) {
+    getDb().insert(forecasts).values({ date, metric: 'frontier_price_30d', predicted, createdAt: new Date() }).run();
+  }
+
+  it('symmetric log error: overshooting 2× and undershooting 2× score the same magnitude', () => {
+    // realized price 8 at both 30d targets
+    seedAa(day(31), 8);
+    seedAa(day(0), 8);
+    addForecast(day(61), 16); // predicted 2× too high → target day(31)
+    addForecast(day(30), 4); // predicted 2× too low → target day(0)
+
+    const grades = forecastGrades();
+    const high = grades.find((g) => g.predicted === 16)!;
+    const low = grades.find((g) => g.predicted === 4)!;
+    // naive percent error gave −50% vs +100% — flattering on a falling price
+    expect(high.errorPct).toBe(Math.round(Math.log(8 / 16) * 100)); // −69
+    expect(low.errorPct).toBe(Math.round(Math.log(8 / 4) * 100)); // +69
+    expect(Math.abs(high.errorPct!)).toBe(Math.abs(low.errorPct!));
+  });
+
+  it('discloses the date the realized value was actually read at', () => {
+    seedAa(day(2), 8); // series point lags the exact target day(0) is absent
+    addForecast(day(32), 10); // target = day(2)
+    const [g] = forecastGrades();
+    expect(g!.realized).toBe(8);
+    expect(g!.realizedDate).toBe(day(2));
+    expect(g!.errorPct).toBe(Math.round(Math.log(8 / 10) * 100));
+  });
+
+  it('is null-safe before the target date passes', () => {
+    addForecast(day(1), 10); // target is 29 days in the future
+    const [g] = forecastGrades();
+    expect(g!.realized).toBeNull();
+    expect(g!.realizedDate).toBeNull();
+    expect(g!.errorPct).toBeNull();
   });
 });
 
@@ -176,11 +283,18 @@ describe('gradingSince', () => {
 describe('verdictSummary', () => {
   beforeEach(() => useTestDb());
 
-  it('returns every published verdict number with its denominator', () => {
+  it('returns every published verdict number with its denominator — null pct on n=0, never 0%', () => {
     const s = verdictSummary();
-    expect(s).toHaveProperty('halfLifeDays');
-    expect(s.correction).toEqual({ corrections: 0, graded: 0, pct: 0 });
-    expect(s.reversal).toEqual({ reversed: 0, cells: 0, pct: 0 });
-    expect(s.coverage).toEqual({ registered: 0, open: 0, pct: 0 });
+    expect(s.longevity).toMatchObject({
+      medianHeldDays: null,
+      closedFlips: 0,
+      standingPct: null,
+      standingDatable: 0,
+      stillStanding: 0,
+    });
+    // was pct: 0 on all three — "0% n=0" read as a perfect record; null renders "—"
+    expect(s.correction).toEqual({ corrections: 0, graded: 0, pct: null });
+    expect(s.reversal).toEqual({ reversed: 0, cells: 0, pct: null });
+    expect(s.coverage).toEqual({ registered: 0, open: 0, pct: null });
   });
 });

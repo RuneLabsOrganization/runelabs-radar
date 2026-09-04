@@ -38,6 +38,7 @@ export function persistScoutDrafts(drafts: OppDraft[], ownerUserId: number | nul
         windowMonths: d.windowMonths,
         evidenceCount: d.evidenceRefs.length,
         legacy: false,
+        kpiClamped: d.kpiClamped,
       },
       critic,
     );

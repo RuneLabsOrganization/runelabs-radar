@@ -57,6 +57,24 @@ function mergeFetchState(freshConfig: string, cfg: Record<string, unknown>): str
 }
 
 /**
+ * Exponential backoff for chronically failing sources, with ±25% jitter:
+ * 3+ failures → cadence × 2^(failures-2) × uniform(0.75, 1.25), capped at 6h.
+ * The jitter matters after a SHARED outage — every source fails together and,
+ * without it, would retry in lockstep against the recovering upstream.
+ * A dead feed still shouldn't burn a slot. `rand` is injectable so tests can
+ * pin the jitter band deterministically.
+ */
+export function backoffPollMs(
+  pollMs: number,
+  consecutiveFailures: number,
+  rand: () => number = Math.random,
+): number {
+  if (consecutiveFailures < 3) return pollMs;
+  const nominal = pollMs * 2 ** (consecutiveFailures - 2);
+  return Math.min(nominal * (0.75 + rand() * 0.5), 6 * 36e5);
+}
+
+/**
  * Fetch every DUE enabled source through its adapter and insert new items
  * (deduped by unique url via INSERT OR IGNORE). A source is due when
  * lastFetchedAt is older than its pollMinutes cadence; skipped sources are
@@ -75,12 +93,7 @@ export async function runIngest(): Promise<IngestStats> {
   let sourcesSkipped = 0;
   for (const source of enabled) {
     const pollMs = pollMinutesFor(readConfig(source.config)) * 60_000;
-    // exponential backoff for chronically failing sources: 3+ failures →
-    // cadence × 2^(failures-2), capped at 6h — a dead feed shouldn't burn a slot
-    const effectivePollMs =
-      source.consecutiveFailures >= 3
-        ? Math.min(pollMs * 2 ** (source.consecutiveFailures - 2), 6 * 36e5)
-        : pollMs;
+    const effectivePollMs = backoffPollMs(pollMs, source.consecutiveFailures);
     if (source.lastFetchedAt && now - source.lastFetchedAt.getTime() < effectivePollMs) {
       sourcesSkipped += 1;
       continue;

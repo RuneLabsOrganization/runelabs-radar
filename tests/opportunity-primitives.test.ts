@@ -137,7 +137,9 @@ describe('loadPrimitives', () => {
     }
   });
 
-  it('rescales pains that all share intensity 1 to 50, not 5', () => {
+  it('uses an ABSOLUTE log scale: a singleton pain is not auto-50 (F5)', () => {
+    // pre-fix: per-day min-max mapped same-value groups to 50 regardless of
+    // count, so a pain seen once on a quiet week scored 50
     const now = new Date();
     for (let i = 0; i < 3; i++) {
       db.insert(painPoints)
@@ -152,32 +154,42 @@ describe('loadPrimitives', () => {
     }
     const pains = loadPrimitives().filter((p) => p.type === 'pain');
     expect(pains).toHaveLength(3);
-    expect(pains.every((p) => p.intensity === 50)).toBe(true);
-    expect(pains.some((p) => p.intensity === 5)).toBe(false);
+    // 100·log1p(1)/log1p(50) ≈ 18 (plus a sub-point tie-break nudge)
+    for (const p of pains) {
+      expect(p.intensity).toBeGreaterThanOrEqual(18);
+      expect(p.intensity).toBeLessThan(19);
+      expect(p.intensity).not.toBe(50);
+    }
   });
 
-  it('maps the weakest pain to 0 and the strongest to 100 when raw intensity is 1..5', () => {
+  it('keeps absolute demand: 2 sightings in a quiet week do NOT score 100 (F5)', () => {
+    // pre-fix: the day's weakest item mapped to 0 and the strongest to 100,
+    // so 2× on a quiet week was indistinguishable from 50× on a busy one
     const now = new Date();
-    for (let i = 1; i <= 5; i++) {
+    for (const count of [2, 5, 50]) {
       db.insert(painPoints)
         .values({
-          summary: `A distinct recurring pain number ${i} that teams keep reporting`,
+          summary: `A distinct recurring pain seen ${count} times that teams keep reporting`,
           sector: 'devtools',
-          intensity: i,
+          intensity: count,
           createdAt: now,
           lastSeenAt: now,
         })
         .run();
     }
-    const intensities = loadPrimitives()
-      .filter((p) => p.type === 'pain')
-      .map((p) => p.intensity)
-      .sort((a, b) => a - b);
-    expect(intensities[0]).toBe(0);
-    expect(intensities[intensities.length - 1]).toBe(100);
+    const byCount = new Map(
+      loadPrimitives()
+        .filter((p) => p.type === 'pain')
+        .map((p) => [p.label.match(/seen (\d+) times/)![1], p.intensity]),
+    );
+    const [two, five, fifty] = [byCount.get('2')!, byCount.get('5')!, byCount.get('50')!];
+    expect(two).toBeLessThan(30); // ≈28 — nowhere near 100
+    expect(fifty).toBe(100); // the documented ceiling for pains
+    expect(five).toBeGreaterThan(two);
+    expect(fifty).toBeGreaterThan(five); // a hot week outranks a cold one
   });
 
-  it('rescales stories against stories only, never against pains', () => {
+  it('scales stories on their own absolute ceiling, never relative to pains (F5)', () => {
     const now = new Date();
     for (let i = 0; i < 4; i++) {
       db.insert(painPoints)
@@ -197,8 +209,12 @@ describe('loadPrimitives', () => {
       .filter((p) => p.type === 'story')
       .map((p) => p.intensity)
       .sort((a, b) => a - b);
-    expect(storyIntensities).toEqual([0, 100]);
-    expect(prims.filter((p) => p.type === 'pain').every((p) => p.intensity === 50)).toBe(true);
+    // 100·log1p(80)/log1p(100) ≈ 95 and ≈ 98 — absolute, not [0, 100] min-max
+    expect(storyIntensities[0]).toBeGreaterThanOrEqual(95);
+    expect(storyIntensities[0]).toBeLessThan(97);
+    expect(storyIntensities[1]).toBeGreaterThanOrEqual(98);
+    // weak pains stay weak even with loud stories in the pool
+    expect(prims.filter((p) => p.type === 'pain').every((p) => p.intensity < 20)).toBe(true);
   });
 });
 

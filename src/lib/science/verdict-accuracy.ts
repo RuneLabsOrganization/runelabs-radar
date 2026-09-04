@@ -7,6 +7,8 @@
  *
  * Everything here is zero-safe and reports its own denominator, because these
  * numbers get published and a rate without an n is a claim without evidence.
+ * A rate with n=0 reports pct null — "0% of nothing" reads as a perfect
+ * record, and the page renders "—" instead.
  */
 import { isNull, ne } from 'drizzle-orm';
 import { getDb } from '../db';
@@ -16,6 +18,11 @@ import { median } from '../stats';
 
 /** heldDays sentinel written by the grader when the span is unknowable. */
 const UNKNOWN_HELD = -1;
+
+const DAY_MS = 86_400_000;
+
+/** Horizon for the "still standing" survival figure. */
+export const STANDING_HORIZON_DAYS = 30;
 
 /** Display-level integer median over whole-day spans (float median lives in stats). */
 function medianInt(values: number[]): number | null {
@@ -31,22 +38,77 @@ function gradedFlips() {
     .all();
 }
 
-/** Median days a pick stands before it is replaced. The field's clock speed. */
-export function pickHalfLife(): number | null {
+export interface PickLongevity {
+  /**
+   * Median days a pick stood before replacement — CLOSED flips only. This is
+   * right-censored: picks still standing (the longest-lived, i.e. the best
+   * calls) are excluded, so on its own it UNDERSTATES longevity and gets
+   * worse exactly when the calls are good. Never publish it without
+   * standingPct beside it.
+   */
+  medianHeldDays: number | null;
+  /** n behind medianHeldDays. */
+  closedFlips: number;
+  /** % of currently-standing picks with a datable start at least STANDING_HORIZON_DAYS old. Null when n=0. */
+  standingPct: number | null;
+  /** n behind standingPct: standing picks whose start we can date. */
+  standingDatable: number;
+  /** Of those, how many have stood ≥ the horizon. */
+  stillStanding: number;
+  horizonDays: number;
+}
+
+/**
+ * How long picks live — two numbers, because a closed-only median lies by
+ * omission. The survival half is computed from each cell's latest history
+ * row: the current pick began standing at the last recorded change.
+ */
+export function pickLongevity(): PickLongevity {
+  const db = getDb();
   const held = gradedFlips()
     .map((r) => r.heldDays)
     .filter((d): d is number => d !== null && d !== UNKNOWN_HELD);
-  return medianInt(held);
+
+  const rows = db
+    .select({
+      category: kitPickHistory.category,
+      task: kitPickHistory.task,
+      tier: kitPickHistory.tier,
+      changedAt: kitPickHistory.changedAt,
+    })
+    .from(kitPickHistory)
+    .all();
+  const latestByCell = new Map<string, Date>();
+  for (const r of rows) {
+    const key = `${r.category}/${r.task}/${r.tier}`;
+    const cur = latestByCell.get(key);
+    if (!cur || r.changedAt > cur) latestByCell.set(key, r.changedAt);
+  }
+  const now = Date.now();
+  let stillStanding = 0;
+  for (const started of latestByCell.values()) {
+    if ((now - started.getTime()) / DAY_MS >= STANDING_HORIZON_DAYS) stillStanding += 1;
+  }
+  const standingDatable = latestByCell.size;
+
+  return {
+    medianHeldDays: medianInt(held),
+    closedFlips: held.length,
+    standingPct: standingDatable === 0 ? null : Math.round((stillStanding / standingDatable) * 100),
+    standingDatable,
+    stillStanding,
+    horizonDays: STANDING_HORIZON_DAYS,
+  };
 }
 
 /** How often we were actually wrong, as opposed to overtaken. */
-export function correctionRate(): { corrections: number; graded: number; pct: number } {
+export function correctionRate(): { corrections: number; graded: number; pct: number | null } {
   const flips = gradedFlips();
   const corrections = flips.filter((r) => r.changeKind === 'correction').length;
   return {
     corrections,
     graded: flips.length,
-    pct: flips.length === 0 ? 0 : Math.round((corrections / flips.length) * 100),
+    pct: flips.length === 0 ? null : Math.round((corrections / flips.length) * 100),
   };
 }
 
@@ -54,7 +116,7 @@ export function correctionRate(): { corrections: number; graded: number; pct: nu
  * Cells that went A → B → A. A reversal means the original call was noise:
  * we changed our mind and then changed it back.
  */
-export function reversalRate(): { reversed: number; cells: number; pct: number } {
+export function reversalRate(): { reversed: number; cells: number; pct: number | null } {
   const rows = getDb()
     .select()
     .from(kitPickHistory)
@@ -87,7 +149,7 @@ export function reversalRate(): { reversed: number; cells: number; pct: number }
   }
 
   const cells = byCell.size;
-  return { reversed, cells, pct: cells === 0 ? 0 : Math.round((reversed / cells) * 100) };
+  return { reversed, cells, pct: cells === 0 ? null : Math.round((reversed / cells) * 100) };
 }
 
 /**
@@ -95,18 +157,18 @@ export function reversalRate(): { reversed: number; cells: number; pct: number }
  * deliberately: an unregistered claim is a call we cannot grade, and hiding
  * that would make every other number on the page look better than it is.
  */
-export function falsifierCoverage(): { registered: number; open: number; pct: number } {
+export function falsifierCoverage(): { registered: number; open: number; pct: number | null } {
   const open = getDb().select().from(verdictClaims).where(isNull(verdictClaims.closedAt)).all();
   const registered = open.filter((c) => c.falsifier !== UNREGISTERED).length;
   return {
     registered,
     open: open.length,
-    pct: open.length === 0 ? 0 : Math.round((registered / open.length) * 100),
+    pct: open.length === 0 ? null : Math.round((registered / open.length) * 100),
   };
 }
 
 export interface VerdictSummary {
-  halfLifeDays: number | null;
+  longevity: PickLongevity;
   correction: ReturnType<typeof correctionRate>;
   reversal: ReturnType<typeof reversalRate>;
   coverage: ReturnType<typeof falsifierCoverage>;
@@ -115,7 +177,7 @@ export interface VerdictSummary {
 /** One call for the trust page — four numbers, each with its denominator. */
 export function verdictSummary(): VerdictSummary {
   return {
-    halfLifeDays: pickHalfLife(),
+    longevity: pickLongevity(),
     correction: correctionRate(),
     reversal: reversalRate(),
     coverage: falsifierCoverage(),

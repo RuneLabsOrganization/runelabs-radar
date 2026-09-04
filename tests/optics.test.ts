@@ -39,9 +39,15 @@ describe('optics', () => {
     expect(flip.areaOf(null, sub(0))).toBeNull();
   });
 
-  it('mrr optic: est MRR = price × demand/20, null without price', () => {
-    expect(mrr.areaOf(kpis({ priceUsd: 30 }), sub(10))).toBe(15);
-    expect(mrr.areaOf(kpis({}), sub(10))).toBeNull();
+  it('mrr optic: est MRR needs price AND a customer count — never price alone (F9)', () => {
+    // pre-fix: price × demand/20 was labeled "est MRR" with no customer count
+    // anywhere in the inputs. Now it matches sizing.ts semantics ÷ 12:
+    // price × steady-state customers × demand/20, and hatches (null) otherwise.
+    expect(mrr.areaOf(kpis({ priceUsd: 30, breakEvenCustomers: 10 }), sub(10))).toBe(150);
+    expect(mrr.areaOf(kpis({ priceUsd: 30 }), sub(10))).toBeNull(); // no customers → no MRR claim
+    expect(mrr.areaOf(kpis({ breakEvenCustomers: 10 }), sub(10))).toBeNull();
+    expect(mrr.areaOf(kpis({ priceUsd: 30, breakEvenCustomers: 0 }), sub(10))).toBeNull();
+    expect(mrr.caption).toContain('customers');
   });
 
   it('cheap optic: demand per $1k of initial cost', () => {

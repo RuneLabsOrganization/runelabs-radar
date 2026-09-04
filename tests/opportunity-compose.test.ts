@@ -211,7 +211,10 @@ describe('composeLeads', () => {
     expect(res.leads[0].thesisSkeleton).not.toContain('are hit by');
   });
 
-  it('scores a pain strictly above a same-intensity story on the same wedge', () => {
+  it('score is type-free: a pain and a story with the same intensity and wedge score identically (F4)', () => {
+    // pre-fix a 0-20 TYPE_BONUS sat inside the score while TYPE_RANK was also
+    // the sort key — type was counted twice. Now the score is pure quality;
+    // type preference lives only in the get_leads sort (see mcp-leads.test.ts).
     const space = openWedgeSpace();
     const pain = prim('P1', 'Code review backlogs block small teams', ['devtools'], 80);
     const story = prim('S1', 'A new open-source model dropped', ['devtools'], 80, 'story');
@@ -228,10 +231,38 @@ describe('composeLeads', () => {
     const storyLead = res.leads.find((l) => l.primitiveRefs.includes('S1'));
     expect(painLead).toBeDefined();
     expect(storyLead).toBeDefined();
-    expect(painLead!.heuristicScore).toBeGreaterThan(storyLead!.heuristicScore);
+    expect(painLead!.heuristicScore).toBe(storyLead!.heuristicScore);
   });
 
-  it('scores a pain on the weakest wedge above a same-intensity story on the strongest', () => {
+  it('is anchored to a true 0-100 scale (F4): 0 = no signal on the weakest wedge, 100 = max signal on the strongest', () => {
+    // anchors: intensity contributes ≤70, wedge weight 8..15 maps to 0..30
+    const zeroLead = composeLeads({
+      primitives: [prim('P1', 'Code review backlogs block small teams', ['devtools'], 0)],
+      space: weightedWedgeSpace(8),
+      ownerKey: 'user:1', day: '2026-08-25', cursor: 0, limit: 1,
+    }).leads[0];
+    expect(zeroLead!.heuristicScore).toBe(0);
+
+    const maxLead = composeLeads({
+      primitives: [prim('P1', 'Code review backlogs block small teams', ['devtools'], 100)],
+      space: weightedWedgeSpace(15),
+      ownerKey: 'user:1', day: '2026-08-25', cursor: 0, limit: 1,
+    }).leads[0];
+    expect(maxLead!.heuristicScore).toBe(100);
+
+    // mid anchor: intensity 50 (≈35) on a mid wedge (11.5 ≈ 15) ≈ 50
+    const midLead = composeLeads({
+      primitives: [prim('P1', 'Code review backlogs block small teams', ['devtools'], 50)],
+      space: weightedWedgeSpace(11.5),
+      ownerKey: 'user:1', day: '2026-08-25', cursor: 0, limit: 1,
+    }).leads[0];
+    expect(midLead!.heuristicScore).toBe(50);
+  });
+
+  it('quality-first: at equal intensity a strong wedge outranks a weak one regardless of type (F4)', () => {
+    // pre-fix the type bonus dominated wedge variance, so ANY pain beat ANY
+    // story; now wedge quality moves the score and type is a sort-time
+    // tie-break only
     const pain = prim('P1', 'Code review backlogs block small teams', ['devtools'], 80);
     const story = prim('S1', 'A new open-source model dropped', ['devtools'], 80, 'story');
     const painLead = composeLeads({
@@ -252,6 +283,6 @@ describe('composeLeads', () => {
     }).leads[0];
     expect(painLead).toBeDefined();
     expect(storyLead).toBeDefined();
-    expect(painLead!.heuristicScore).toBeGreaterThan(storyLead!.heuristicScore);
+    expect(storyLead!.heuristicScore).toBeGreaterThan(painLead!.heuristicScore);
   });
 });

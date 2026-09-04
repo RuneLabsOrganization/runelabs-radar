@@ -5,6 +5,8 @@ import { comps, opportunities, painPoints, stacks } from '../db/schema';
 import { chatJSON } from '../llm/minimax';
 import { promptLine, stripCjkDeep } from '../prompt-hygiene';
 import { VENTURES } from '../stacks/generate';
+import { KPI_BOUNDS } from './kpi-bounds';
+import { valuePicks } from './value-picks';
 import { visibleTo } from './scope';
 
 export interface UnitEconomics {
@@ -35,8 +37,10 @@ function strList(v: unknown, maxItems: number, maxLen: number): string[] {
     .slice(0, maxItems);
 }
 
-function posNum(v: unknown, max = 1e7): number | null {
-  return typeof v === 'number' && Number.isFinite(v) && v > 0 && v < max ? Math.round(v * 100) / 100 : null;
+// bounds come from the ONE shared module (kpi-bounds.ts) so a number that
+// passes the engine's KPI sanitizer can never be judged differently here
+function posNum(v: unknown, max: number): number | null {
+  return typeof v === 'number' && Number.isFinite(v) && v > 0 && v <= max ? Math.round(v * 100) / 100 : null;
 }
 
 /** Validates the LLM's launch brief. Exported for tests. */
@@ -65,9 +69,9 @@ export function sanitizeBrief(v: unknown): OppBrief | null {
     stackNotes: typeof rec.stackNotes === 'string' ? promptLine(rec.stackNotes, 250) : null,
     unitEconomics: {
       assumptions: strList(ue.assumptions, 5, 160),
-      monthlyCostUsd: posNum(ue.monthlyCostUsd),
-      suggestedPriceUsd: posNum(ue.suggestedPriceUsd),
-      breakEvenCustomers: posNum(ue.breakEvenCustomers, 1e6),
+      monthlyCostUsd: posNum(ue.monthlyCostUsd, KPI_BOUNDS.monthlyCostUsd),
+      suggestedPriceUsd: posNum(ue.suggestedPriceUsd, KPI_BOUNDS.priceUsd),
+      breakEvenCustomers: posNum(ue.breakEvenCustomers, KPI_BOUNDS.breakEvenCustomers),
     },
     gtm,
     risks,
@@ -139,10 +143,7 @@ async function generateBriefInner(
   // AA redistribution terms: market prices only enter the prompt for callers allowed to see them
   const aa = allowMarket ? aaModels() : null;
   const marketText = aa
-    ? aa.models
-        .filter((m) => m.priceIn !== null && m.priceOut !== null)
-        .sort((a, b) => b.intelligence / b.price - a.intelligence / a.price)
-        .slice(0, 6)
+    ? valuePicks(aa.models, { limit: 6, requireBothSides: true })
         .map((m) => `- ${promptLine(m.name, 60)}: intel ${m.intelligence}, in $${m.priceIn}/1M, out $${m.priceOut}/1M`)
         .join('\n')
     : allowMarket

@@ -7,10 +7,11 @@ import { normalizeSlug, type OppDraft, type ScoutConstraints } from '../../src/l
 import { composeLeads } from '../../src/lib/opportunities/compose';
 import { dismissedSlugs, insertLeads } from '../../src/lib/opportunities/leads';
 import { persistScoutDrafts } from '../../src/lib/opportunities/persist-scout';
-import { loadPrimitives } from '../../src/lib/opportunities/primitives';
+import { loadPrimitives, PRIMITIVE_LOOKBACK_DAYS } from '../../src/lib/opportunities/primitives';
 import { refineLeads } from '../../src/lib/opportunities/refine';
 import { publicOnly } from '../../src/lib/opportunities/scope';
 import { dayKey } from '../../src/lib/opportunities/seed';
+import { MIN_SIGNALS } from '../../src/lib/opportunities/signals';
 import { loadWedges } from '../../src/lib/opportunities/wedges';
 import { getProfile } from '../../src/lib/personalization';
 import { can } from '../../src/lib/entitlements';
@@ -165,7 +166,7 @@ export function registerScoutTools(server: McpServer, auth: AuthContext): void {
       try {
         const primitives = loadPrimitives();
         signalCount = primitives.length;
-        if (signalCount >= 5) {
+        if (signalCount >= MIN_SIGNALS) {
           const owner = { ownerKey: auth.rateKey, userId: auth.userId };
           const composed = composeLeads({
             primitives,
@@ -195,11 +196,11 @@ export function registerScoutTools(server: McpServer, auth: AuthContext): void {
         );
       }
 
-      if (signalCount < 5) {
+      if (signalCount < MIN_SIGNALS) {
         return respond(
           {
             ok: false,
-            error: `the scope is too thin to scout (${signalCount} signals in the last 2 weeks; need at least 5) — let the daily ingest accumulate and try again`,
+            error: `the scope is too thin to scout (${signalCount} signals in the last ${PRIMITIVE_LOOKBACK_DAYS} days; need at least ${MIN_SIGNALS}) — let the daily ingest accumulate and try again`,
             openings: [],
             skipped_existing: 0,
           },

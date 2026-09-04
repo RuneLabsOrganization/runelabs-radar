@@ -28,6 +28,12 @@ export interface GateKpis {
   initialCostUsd: number | null;
   monthlyCostUsd: number | null;
   priceUsd: number | null;
+  /**
+   * Consumed by R8 as the STEADY-STATE paying-customer count the formula
+   * needs (steady-state monthly revenue = count × price) — not the LLM's
+   * "customers needed to break even". The engine prompt asks for exactly
+   * this meaning; the historical name is kept for stored-row compatibility.
+   */
   breakEvenCustomers: number | null;
   competitorCount: number | null;
 }
@@ -38,6 +44,10 @@ export interface GateInput {
   windowMonths: number | null;
   evidenceCount: number;
   legacy: boolean;
+  /** KPI fields the sanitizer had to clamp into range — R8 still evaluates, loudly. */
+  kpiClamped?: string[];
+  /** Axes absent/non-numeric in the stored payload, zero-filled by parseSubScores. */
+  missingAxes?: SubKey[];
 }
 
 export interface CapNote {
@@ -72,9 +82,20 @@ const clamp20 = (v: number): number => Math.max(0, Math.min(20, Math.round(v)));
 const VERDICT_RANK: Record<Verdict, number> = { reject: 0, watch: 1, pursue: 2 };
 
 /**
+ * Hard ceiling for a stated window, in months. ONE value shared by the parser
+ * below, sanitizeOpportunities (engine.ts) and the proposer prompt text — the
+ * prompt asks for ≤ this, anything above is out-of-contract and reads as
+ * "window unknown" rather than silently escaping the R1–R4 caps.
+ */
+export const MAX_WINDOW_MONTHS = 36;
+
+/**
  * "3-4 months before saturation" → 3 (the pessimistic low end — a rocksolid
  * gate prices the risk arriving early, not late). Handles weeks/years.
- * Returns null when no duration is stated.
+ * Weeks round UP with a 1-month floor: the shortest windows are the riskiest,
+ * so "1 week" parses to 1 month and hits the R1 ≤2mo cap instead of rounding
+ * to 0 → null → skipping every window cap. Returns null when no duration is
+ * stated.
  */
 export function parseWindowMonths(text: string | null): number | null {
   if (!text) return null;
@@ -82,8 +103,8 @@ export function parseWindowMonths(text: string | null): number | null {
   if (!m) return null;
   const n = parseInt(m[1], 10);
   const unit = m[2].toLowerCase();
-  const months = unit.startsWith('y') ? n * 12 : unit.startsWith('w') ? Math.round(n / 4.33) : n;
-  return months > 0 && months <= 120 ? months : null;
+  const months = unit.startsWith('y') ? n * 12 : unit.startsWith('w') ? Math.max(1, Math.ceil(n / 4.33)) : n;
+  return months > 0 && months <= MAX_WINDOW_MONTHS ? months : null;
 }
 
 /** Refresh hysteresis: 70% new + 30% prior — kills day-to-day score oscillation. */
@@ -146,6 +167,18 @@ export function applyGate(input: GateInput, critic: CriticResult): GateOutput {
 
   const flags = [...critic.flags];
 
+  // F2: clamped KPIs stay in the economics check — but never silently
+  if (input.kpiClamped && input.kpiClamped.length > 0) {
+    flags.push(`kpi clamped into valid range: ${input.kpiClamped.join(', ')}`);
+  }
+
+  // F10: axes absent from the stored payload were zero-filled — a partial
+  // assessment must not read as "terrible on every axis" without a flag
+  const missingAxes = input.missingAxes ?? [];
+  if (missingAxes.length > 0) {
+    flags.push(`axes zero-filled from a partial payload: ${missingAxes.join(', ')}`);
+  }
+
   // R7: "wide-open field" contradicted by named competitors — force coherence
   const comp = input.kpis?.competitorCount ?? null;
   if (comp !== null && comp >= 5 && adjusted.competition >= 15) {
@@ -182,13 +215,16 @@ export function applyGate(input: GateInput, critic: CriticResult): GateOutput {
   if (adjusted.moat <= 5) cap('hold', 'moat ≤ 5', 50);
   else if (adjusted.moat <= 8) cap('hold', 'moat ≤ 8', 60);
 
-  // R8: the economics must close inside the window at the stated break-even scale
-  const be = input.kpis?.breakEvenCustomers ?? null;
+  // R8: the economics must close inside the window at the stated steady-state
+  // scale. `breakEvenCustomers` is consumed as the steady-state paying-customer
+  // count (see GateKpis): steady-state monthly profit = customers × price −
+  // run cost, and the initial build pays back in init / profit months.
+  const steadyStateCustomers = input.kpis?.breakEvenCustomers ?? null;
   const price = input.kpis?.priceUsd ?? null;
   const run = input.kpis?.monthlyCostUsd ?? null;
   const init = input.kpis?.initialCostUsd ?? null;
-  if (be !== null && price !== null && run !== null && init !== null && w !== null) {
-    const monthlyProfit = be * price - run;
+  if (steadyStateCustomers !== null && price !== null && run !== null && init !== null && w !== null) {
+    const monthlyProfit = steadyStateCustomers * price - run;
     if (monthlyProfit <= 0) {
       flags.push('never breaks even at stated economics');
       cap('both', 'economics don’t close', 50);
@@ -201,8 +237,12 @@ export function applyGate(input: GateInput, critic: CriticResult): GateOutput {
     }
   }
 
-  // R9: evidence floor — confidence follows citation depth
+  // R9: evidence floor — confidence follows citation depth. More than two
+  // zero-filled axes is the same kind of thin input: cap it identically.
   let confidence = Math.max(0, Math.min(100, Math.round(critic.confidence)));
+  if (missingAxes.length > 2) {
+    confidence = Math.min(confidence, 30);
+  }
   if (input.evidenceCount === 0) {
     confidence = Math.min(confidence, 30);
     flags.push('no cited evidence');

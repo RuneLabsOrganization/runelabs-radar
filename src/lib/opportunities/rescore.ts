@@ -2,29 +2,13 @@ import { and, eq } from 'drizzle-orm';
 import { getDb } from '../db';
 import { opportunities } from '../db/schema';
 import { drainLlmUsageStats } from '../llm/minimax';
-import { SUB_KEYS, type SubScores } from './axes';
+import { parseSubScores, type SubKey } from './axes';
 import { sanitizeKpis, type OppDraft, type OppKpis } from './engine';
 import { applyGate, parseWindowMonths, unverifiedCritic } from './gate';
 import { runCritique } from './critic';
 import { publicOnly } from './scope';
 
 type OppRow = typeof opportunities.$inferSelect;
-
-function parseSub(json: string): { sub: SubScores; legacy: boolean } {
-  const zero = Object.fromEntries(SUB_KEYS.map((k) => [k, 0])) as SubScores;
-  try {
-    const parsed = JSON.parse(json) as Record<string, unknown>;
-    // R10: rows pre-dating the 10-axis dossier stay legacy — next sweep re-scores them
-    if (typeof parsed.moat !== 'number') return { sub: zero, legacy: true };
-    for (const k of SUB_KEYS) {
-      if (typeof parsed[k] === 'number')
-        zero[k] = Math.max(0, Math.min(20, Math.round(parsed[k] as number)));
-    }
-    return { sub: zero, legacy: false };
-  } catch {
-    return { sub: zero, legacy: true };
-  }
-}
 
 export function parseKpis(json: string | null): OppKpis {
   if (!json) return sanitizeKpis(null);
@@ -68,9 +52,9 @@ export async function runOppRescore(): Promise<{
     .where(and(eq(opportunities.status, 'active'), publicOnly()))
     .all();
 
-  const targets: { row: OppRow; draft: OppDraft; evidenceCount: number }[] = [];
+  const targets: { row: OppRow; draft: OppDraft; evidenceCount: number; missingAxes: SubKey[] }[] = [];
   for (const row of rows) {
-    const { sub, legacy } = parseSub(row.scores);
+    const { sub, legacy, missing } = parseSubScores(row.scores);
     if (legacy) continue;
     targets.push({
       row,
@@ -86,6 +70,7 @@ export async function runOppRescore(): Promise<{
         evidenceRefs: [], // filled below with per-row stored-evidence refs
       },
       evidenceCount: 0,
+      missingAxes: missing,
     });
   }
 
@@ -120,6 +105,7 @@ export async function runOppRescore(): Promise<{
         windowMonths: t.draft.windowMonths,
         evidenceCount: t.evidenceCount,
         legacy: false,
+        missingAxes: t.missingAxes,
       },
       critic,
     );

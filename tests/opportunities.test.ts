@@ -24,6 +24,10 @@ import {
 } from '@/lib/opportunities/engine';
 // eslint-disable-next-line import/first
 import { sanitizeBrief } from '@/lib/opportunities/brief';
+// eslint-disable-next-line import/first
+import { KPI_BOUNDS } from '@/lib/opportunities/kpi-bounds';
+// eslint-disable-next-line import/first
+import { MIN_SIGNALS } from '@/lib/opportunities/signals';
 
 const BASE: SubScores = {
   demand: 10,
@@ -56,7 +60,8 @@ describe('scoring', () => {
     expect(SUB_KEYS.reduce((a, k) => a + HOLD_WEIGHTS[k], 0)).toBeCloseTo(1, 8);
   });
 
-  it('sanitizeKpis bounds numbers and lines up notes', () => {
+  it('sanitizeKpis clamps out-of-range numbers instead of nulling them (fail-closed F2)', () => {
+    const clamped: string[] = [];
     const k = sanitizeKpis({
       initialCostUsd: 450,
       monthlyCostUsd: -3,
@@ -66,14 +71,45 @@ describe('scoring', () => {
       competitorCount: 3,
       competitionNote: 'remove.bg\nand canva dominate',
       regulatoryNote: null,
-    });
+    }, clamped);
     expect(k.initialCostUsd).toBe(450);
-    expect(k.monthlyCostUsd).toBeNull(); // negative rejected
+    // pre-fix these nulled out and skipped the R8 economics check entirely —
+    // now they clamp to the bound and the clamp is recorded for the gate trail
+    expect(k.monthlyCostUsd).toBe(0); // negative clamps to the 0 floor
+    expect(k.timeToMvpDays).toBe(365); // over the cap clamps to the cap
+    expect(clamped.sort()).toEqual(['monthlyCostUsd', 'timeToMvpDays']);
     expect(k.priceUsd).toBe(30);
-    expect(k.timeToMvpDays).toBeNull(); // >365 rejected
     expect(k.competitionNote).toBe('remove.bg and canva dominate'); // newline flattened
     expect(k.regulatoryNote).toBeNull();
+    // non-numbers/non-finite are unclampable — those still null out
     expect(sanitizeKpis('garbage')).toMatchObject({ initialCostUsd: null, competitorCount: null });
+    expect(sanitizeKpis({ priceUsd: 'free', monthlyCostUsd: NaN })).toMatchObject({
+      priceUsd: null,
+      monthlyCostUsd: null,
+    });
+  });
+
+  it('shares one set of KPI bounds with sanitizeBrief (F2 unification)', () => {
+    // the same absurd price is judged identically on both paths: the engine
+    // clamps+flags it, the brief nulls it — but the BOUND is the same number
+    const clamped: string[] = [];
+    const k = sanitizeKpis({ priceUsd: 50_000, monthlyCostUsd: 200_000 }, clamped);
+    expect(k.priceUsd).toBe(KPI_BOUNDS.priceUsd);
+    expect(k.monthlyCostUsd).toBe(KPI_BOUNDS.monthlyCostUsd);
+    expect(clamped.sort()).toEqual(['monthlyCostUsd', 'priceUsd']);
+    const brief = sanitizeBrief({
+      icp: 'E-commerce operators with large catalogs who pay per-image editors',
+      mvp: ['upload API', 'background removal worker', 'credit billing'],
+      gtm: ['shopify app store'],
+      risks: ['platform dependency'],
+      unitEconomics: { assumptions: [], monthlyCostUsd: 200_000, suggestedPriceUsd: 50_000, breakEvenCustomers: 3 },
+    })!;
+    expect(brief.unitEconomics.suggestedPriceUsd).toBeNull(); // brief keeps its null semantics
+    expect(brief.unitEconomics.monthlyCostUsd).toBeNull();
+    // but inside the shared bounds both paths accept the same values
+    const inBounds = sanitizeKpis({ priceUsd: KPI_BOUNDS.priceUsd, monthlyCostUsd: KPI_BOUNDS.monthlyCostUsd });
+    expect(inBounds.priceUsd).toBe(KPI_BOUNDS.priceUsd);
+    expect(inBounds.monthlyCostUsd).toBe(KPI_BOUNDS.monthlyCostUsd);
   });
 
   it('normalizeSlug produces stable kebab ids', () => {
@@ -166,6 +202,26 @@ describe('sanitizeOpportunities', () => {
     );
     expect(out).toHaveLength(0);
     expect(rejects.some((r) => r.reason === 'missing-or-invalid-sub-score:demand')).toBe(true);
+  });
+
+  it('applies the SAME window ceiling as the parser and prompt (F1)', () => {
+    const inContract = sanitizeOpportunities([{ ...valid, windowMonths: 36 }], refs);
+    expect(inContract[0].windowMonths).toBe(36);
+    // 40 > MAX_WINDOW_MONTHS → out-of-contract → falls back to parsing the window text
+    const outOfContract = sanitizeOpportunities([{ ...valid, windowMonths: 40 }], refs);
+    expect(outOfContract[0].windowMonths).toBe(1); // '4-8 weeks' → 1 (weeks round UP)
+    // pre-fix the sanitizer allowed up to 240 while the parser stopped at 120 and the prompt asked ≤36
+  });
+
+  it('carries clamped KPI fields onto the draft for the gate trail (F2)', () => {
+    const out = sanitizeOpportunities(
+      [{ ...valid, kpis: { ...valid.kpis, priceUsd: 50_000 } }],
+      refs,
+    );
+    expect(out[0].kpis.priceUsd).toBe(10_000); // clamped to the shared bound
+    expect(out[0].kpiClamped).toEqual(['priceUsd']);
+    const clean = sanitizeOpportunities([valid], refs);
+    expect(clean[0].kpiClamped).toEqual([]);
   });
 });
 
@@ -320,6 +376,28 @@ describe('runOpportunities lifecycle', () => {
     const res = await runOpportunities();
     expect(res).toEqual({ proposed: 0, critiqued: 0, created: 0, refreshed: 0, archived: 0, debated: 0 });
     expect(vi.mocked(chatJSON)).not.toHaveBeenCalled();
+  });
+
+  it('treats exactly MIN_SIGNALS signals as enough and one fewer as too thin (F8 boundary)', async () => {
+    const db = useTestDb();
+    // MIN_SIGNALS − 1 signals → no LLM spend
+    for (let i = 0; i < MIN_SIGNALS - 1; i++) {
+      db.insert(painPoints)
+        .values({ summary: `paid need number ${i} that keeps recurring`, intensity: 2, evidence: '[]', lastSeenAt: new Date(), createdAt: new Date() })
+        .run();
+    }
+    let res = await runOpportunities();
+    expect(res.proposed).toBe(0);
+    expect(vi.mocked(chatJSON)).not.toHaveBeenCalled();
+
+    // the MIN_SIGNALS-th signal crosses the threshold — the proposer runs
+    db.insert(painPoints)
+      .values({ summary: 'one more paid need that crosses the threshold', intensity: 2, evidence: '[]', lastSeenAt: new Date(), createdAt: new Date() })
+      .run();
+    vi.mocked(chatJSON).mockResolvedValueOnce({ opportunities: [] } as never);
+    res = await runOpportunities();
+    expect(vi.mocked(chatJSON)).toHaveBeenCalledTimes(1);
+    expect(res.proposed).toBe(0);
   });
 
   it('layered pipeline: critic adjustments + gate + trail persisted', async () => {

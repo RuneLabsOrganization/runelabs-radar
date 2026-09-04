@@ -22,7 +22,7 @@ export default function LagPanel({
                 </span>{' '}
                 lead <span className="font-semibold">{f.follower}</span> by ~{f.lagDays}d
                 <span className="mono ml-2 text-[10.5px]" style={{ color: 'var(--ink-4)' }}>
-                  r = {f.coefficient.toFixed(2)}
+                  r = {f.coefficient.toFixed(2)} · n = {f.n} · bar |r|≥{f.threshold.toFixed(2)}
                 </span>
               </li>
             ))}

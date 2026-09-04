@@ -3,19 +3,33 @@ import { dailyDomainCounts, topEntities } from '../analytics';
 import { getDb } from '../db';
 import { metricPoints, painPoints, patterns, topicClusters } from '../db/schema';
 import { DOMAIN_LABELS, isDomain } from '../domains';
+import { fmtUsdCompact } from '../format';
 import { chatJSON } from '../llm/minimax';
 import { utcDay } from '../metrics';
 import { promptLine } from '../prompt-hygiene';
-import { zScore } from './math';
+import { mean, poissonZ, sampleStd, shrinkRatio } from '../stats';
+import { zGate, zScore } from './math';
 
 const MAX_PATTERNS = 8;
 
 export interface RawDetection {
-  kind: 'sector-spike' | 'entity-surge' | 'price-drop' | 'launch-spike' | 'cluster-heat' | 'pain-cluster';
+  kind: 'sector-spike' | 'entity-surge' | 'entity-debut' | 'price-drop' | 'launch-spike' | 'cluster-heat' | 'pain-cluster';
   subject: string;
   /** template narration — used verbatim when the LLM polish fails */
   fallback: string;
+  /**
+   * Kind-NATIVE magnitude stored in patterns.score and rendered by the feed
+   * chip — σ for spikes, shrunk WoW ratio for surges, raw count for debuts,
+   * drop·10 for price drops, actual heat for cluster-heat, observation count
+   * for pains. Never one scale dressed as another.
+   */
   score: number;
+  /**
+   * Standardized significance (a z-scale across all kinds) — the ONLY scale
+   * used for ranking/selection. Sorting the six native scales against each
+   * other ranked a z=2.1 blip above a 90% price drop.
+   */
+  significance: number;
   evidence: { label: string }[];
 }
 
@@ -39,17 +53,23 @@ export function detectSectorSpikes(): RawDetection[] {
       .slice(0, -2)
       .filter((d) => new Date(`${d.date}T00:00:00Z`).getUTCDay() === targetDow)
       .map((d) => d.byDomain[domain as keyof typeof d.byDomain]);
-    const baseline = sameWeekday.length >= 3 ? sameWeekday : flat;
-    const nonzeroDays = flat.filter((v) => v > 0).length;
-    if (nonzeroDays < 5 || count < 3) continue;
+    const weekday = sameWeekday.length >= 3;
+    const baseline = weekday ? sameWeekday : flat;
+    // The "enough real activity" guard must cover the baseline actually
+    // scored — the flat baseline can look healthy while the weekday one has
+    // a single nonzero sample, which used to publish on 1 point of evidence.
+    const nonzeroDays = baseline.filter((v) => v > 0).length;
+    const minNonzero = baseline.length < 5 ? 2 : 5;
+    if (nonzeroDays < minNonzero || count < 3) continue;
     const z = zScore(count, baseline);
-    if (z >= 2) {
+    if (z >= zGate(baseline.length)) {
       const label = isDomain(domain) ? DOMAIN_LABELS[domain] : domain;
       out.push({
         kind: 'sector-spike',
         subject: domain,
-        fallback: `${label} sector ran ${z.toFixed(1)}σ above its weekday baseline yesterday (${count} stories).`,
+        fallback: `${label} sector ran ${z.toFixed(1)}σ above its ${weekday ? 'weekday' : '3-week'} baseline yesterday (${count} stories).`,
         score: z,
+        significance: z,
         evidence: [{ label: `${count} stories yesterday vs baseline` }],
       });
     }
@@ -57,25 +77,57 @@ export function detectSectorSpikes(): RawDetection[] {
   return out;
 }
 
-/** Entities mentioned far more this week than last. */
+/**
+ * Entities mentioned far more this week than last. Candidates come from the
+ * top-50, not just the visible top-15 — a surge ranked #20 was invisible —
+ * but ranks beyond 15 must clear a higher significance bar to earn a slot.
+ * Significance is an add-k smoothed Poisson z, so prev=1 → 4 mentions (z≈1.7)
+ * no longer reads as a "4× surge".
+ */
 export function detectEntitySurges(): RawDetection[] {
   const out: RawDetection[] = [];
-  for (const e of topEntities(15)) {
-    const surged = e.prev === 0 ? e.count >= 5 : e.count >= 4 && e.count / e.prev >= 3;
-    if (!surged) continue;
-    const ratio = e.prev === 0 ? e.count : e.count / e.prev;
+  topEntities(50).forEach((e, rank) => {
+    if (e.count < 4) return;
+    const z = poissonZ(e.count + 2, e.prev + 2);
+    const bar = rank < 15 ? 2 : 3;
+    if (z < bar) return;
+    if (e.prev === 0) {
+      if (e.count < 5) return;
+      out.push({
+        kind: 'entity-debut',
+        subject: e.name,
+        fallback: `${e.name} appeared from nowhere: ${e.count} mentions this week, zero last week.`,
+        score: e.count, // a raw count — the chip renders it as a count, never as "×"
+        significance: z,
+        evidence: [{ label: `${e.count} mentions (prev 0)` }],
+      });
+      return;
+    }
+    const ratio = shrinkRatio(e.count, e.prev, 2);
     out.push({
       kind: 'entity-surge',
       subject: e.name,
-      fallback:
-        e.prev === 0
-          ? `${e.name} appeared from nowhere: ${e.count} mentions this week, zero last week.`
-          : `${e.name} mentions up ${Math.round(ratio)}× week-over-week (${e.prev} → ${e.count}).`,
+      fallback: `${e.name} mentions up ${ratio.toFixed(1)}× week-over-week (${e.prev} → ${e.count}).`,
       score: ratio,
+      significance: z,
       evidence: [{ label: `${e.count} mentions (prev ${e.prev})` }],
     });
-  }
+  });
   return out;
+}
+
+/**
+ * Significance of a price drop against the entity's OWN history of relative
+ * moves (signed, positive = drop). Fallback with <3 historical intervals:
+ * anchor the 15% admission bar at z=2 and scale linearly — a documented
+ * heuristic, since no drop distribution exists yet.
+ */
+function dropSignificance(drop: number, history: number[]): number {
+  if (history.length < 3) return (2 * drop) / 0.15;
+  const m = mean(history);
+  const s = sampleStd(history);
+  if (s < 1e-9) return drop > m ? Math.max(2, (2 * drop) / 0.15) : 0;
+  return (drop - m) / s;
 }
 
 /** Model price drops between the two most recent snapshot days (≥15%). */
@@ -102,20 +154,34 @@ export function detectPriceDrops(): RawDetection[] {
     if (latest.date < cutoff) continue;
     if (latest.date === prev.date || prev.value <= 0) continue;
     const drop = (prev.value - latest.value) / prev.value;
-    if (drop >= 0.15) {
-      out.push({
-        kind: 'price-drop',
-        subject: entity,
-        fallback: `${entity} blended price dropped ${(drop * 100).toFixed(0)}% (${prev.value} → ${latest.value} $/1M) — margin math just changed.`,
-        score: drop * 10,
-        evidence: [{ label: `$${prev.value} → $${latest.value} per 1M` }],
-      });
+    if (drop < 0.15) continue;
+    // the entity's own historical relative moves between consecutive
+    // snapshots (excluding the current one) — its private drop distribution
+    const history: number[] = [];
+    for (let i = 1; i + 1 < series.length; i++) {
+      const older = series[i + 1];
+      if (older.value > 0 && series[i].date !== older.date) {
+        history.push((older.value - series[i].value) / older.value);
+      }
     }
+    const spanDays = Math.round((Date.parse(latest.date) - Date.parse(prev.date)) / 864e5);
+    out.push({
+      kind: 'price-drop',
+      subject: entity,
+      fallback: `${entity} blended price dropped ${(drop * 100).toFixed(0)}% (${fmtUsdCompact(prev.value)} → ${fmtUsdCompact(latest.value)} /1M) over ${spanDays}d — margin math just changed.`,
+      score: drop * 10, // native % convention: the chip renders score·10 as %
+      significance: dropSignificance(drop, history),
+      evidence: [{ label: `${fmtUsdCompact(prev.value)} → ${fmtUsdCompact(latest.value)} per 1M over ${spanDays}d` }],
+    });
   }
   return out;
 }
 
-/** Launch-category volume spikes vs trailing history (needs ≥6 days of counts). */
+/**
+ * Launch-category volume spikes vs the trailing 26d baseline (needs ≥4
+ * in-window days of counts). An all-history baseline desensitizes over time:
+ * months of regime drift inflate its spread until a real spike reads as z<2.
+ */
 export function detectLaunchSpikes(): RawDetection[] {
   const db = getDb();
   const rows = db
@@ -131,23 +197,24 @@ export function detectLaunchSpikes(): RawDetection[] {
   }
   // evaluate yesterday (complete, and healed to full-day values by the 06:15
   // launches run) — today's partial count would bias toward false negatives
-  const today = utcDay();
   const target = utcDay(new Date(Date.now() - 864e5));
+  const windowStart = utcDay(new Date(Date.now() - 27 * 864e5));
   const out: RawDetection[] = [];
   for (const [cat, byDate] of byCat) {
     const dates = [...byDate.keys()].sort();
     if (dates.length < 6) continue;
     const targetCount = byDate.get(target);
     if (targetCount === undefined || targetCount < 4) continue;
-    const baseline = dates.filter((d) => d !== target && d !== today).map((d) => byDate.get(d) ?? 0);
+    const baseline = dates.filter((d) => d < target && d >= windowStart).map((d) => byDate.get(d) ?? 0);
     if (baseline.length < 4) continue;
     const z = zScore(targetCount, baseline);
-    if (z >= 2) {
+    if (z >= zGate(baseline.length)) {
       out.push({
         kind: 'launch-spike',
         subject: cat,
         fallback: `${cat} launches spiked yesterday: ${targetCount}, ${z.toFixed(1)}σ above baseline — a wave is forming.`,
         score: z,
+        significance: z,
         evidence: [{ label: `${targetCount} launches yesterday` }],
       });
     }
@@ -156,9 +223,11 @@ export function detectLaunchSpikes(): RawDetection[] {
 }
 
 /**
- * The hottest COHERENT subtopic from TODAY's run only — stale runs stay
+ * The hottest COHERENT subtopics from TODAY's run only — stale runs stay
  * silent, grab-bags (low mean cosine) never claim "hot topic". Subtopics
- * (not broad macros) are the level where "hot" is meaningful.
+ * (not broad macros) are the level where "hot" is meaningful. Significance
+ * incorporates the cluster's ACTUAL heat (recency-weighted activity, 0..1]:
+ * heat·√size — the old 2+size/10 ranked a marginal #1 the same as a runaway.
  */
 export function detectClusterHeat(): RawDetection[] {
   const db = getDb();
@@ -173,27 +242,36 @@ export function detectClusterHeat(): RawDetection[] {
       ),
     )
     .orderBy(desc(topicClusters.heat))
-    .limit(1)
-    .get();
-  if (!hot || hot.size < 5) return [];
-  return [
-    {
-      kind: 'cluster-heat',
-      subject: hot.label,
-      fallback: `"${hot.label}" is the hottest topic on the scope right now (${hot.size} stories, peak recency-weighted activity).`,
-      score: 2 + hot.size / 10,
-      evidence: [{ label: `${hot.size} stories in cluster` }],
-    },
-  ];
+    .limit(3)
+    .all();
+  return hot
+    .filter((c) => c.size >= 5)
+    .map((c) => ({
+      kind: 'cluster-heat' as const,
+      subject: c.label,
+      fallback: `"${c.label}" is heating up on the scope right now (${c.size} stories, heat ${c.heat.toFixed(2)}).`,
+      score: c.heat, // the cluster's actual heat — no fabricated ordering unit
+      significance: c.heat * Math.sqrt(c.size),
+      evidence: [{ label: `${c.size} stories in cluster, heat ${c.heat.toFixed(2)}` }],
+    }));
 }
 
 /** Recurring pains — the demand signal compounding. */
 export function detectPainClusters(): RawDetection[] {
   const db = getDb();
+  const weekAgo = new Date(Date.now() - 7 * 864e5);
+  // expected intensity = mean over ALL recently-seen pains, so significance
+  // is "how surprising is this count against the pain population" (Poisson z)
+  const recent = db
+    .select({ intensity: painPoints.intensity })
+    .from(painPoints)
+    .where(gte(painPoints.lastSeenAt, weekAgo))
+    .all();
+  const expected = recent.length > 0 ? mean(recent.map((p) => p.intensity)) : 0;
   const recurring = db
     .select()
     .from(painPoints)
-    .where(and(gte(painPoints.intensity, 3), gte(painPoints.lastSeenAt, new Date(Date.now() - 7 * 864e5))))
+    .where(and(gte(painPoints.intensity, 3), gte(painPoints.lastSeenAt, weekAgo)))
     .orderBy(desc(painPoints.intensity))
     .limit(3)
     .all();
@@ -201,7 +279,8 @@ export function detectPainClusters(): RawDetection[] {
     kind: 'pain-cluster' as const,
     subject: p.summary,
     fallback: `Recurring unmet need (seen ${p.intensity}×): ${p.summary}${p.sector ? ` [${p.sector}]` : ''}.`,
-    score: p.intensity,
+    score: p.intensity, // native observation count
+    significance: poissonZ(p.intensity, expected),
     evidence: [{ label: `observed ${p.intensity} times` }],
   }));
 }
@@ -230,6 +309,7 @@ export function sanitizeNarrations(
 const KIND_LABEL: Record<RawDetection['kind'], string> = {
   'sector-spike': 'Sector spike',
   'entity-surge': 'Entity surge',
+  'entity-debut': 'New entity',
   'price-drop': 'Price drop',
   'launch-spike': 'Launch wave',
   'cluster-heat': 'Hot topic',
@@ -258,7 +338,9 @@ export async function runAnomalies(): Promise<{ patterns: number }> {
     ...detectClusterHeat(),
     ...detectPainClusters(),
   ]
-    .sort((a, b) => b.score - a.score)
+    // rank by the standardized significance only — the native scores
+    // (σ, ×, %, heat, count) are display quantities, not a common scale
+    .sort((a, b) => b.significance - a.significance)
     .slice(0, MAX_PATTERNS);
 
   if (detections.length === 0) {

@@ -55,18 +55,44 @@ export function deriveTags(text: string, sector: string | null): string[] {
   return [...tags];
 }
 
-const LOOKBACK_DAYS = 21;
+/** Demand-pool lookback — the scout's "signals in the last N days" window. */
+export const PRIMITIVE_LOOKBACK_DAYS = 21;
+const LOOKBACK_DAYS = PRIMITIVE_LOOKBACK_DAYS;
 const MAX_PAINS = 40;
 /** Ceiling on the story candidate query — admission is capped by the context budget. */
 const MAX_STORIES = 30;
 
-/** Clamp an unbounded count into 1..100. */
-function normalize(value: number, ceiling: number): number {
-  return Math.max(1, Math.min(100, Math.round((value / ceiling) * 100)));
+/**
+ * Absolute intensity ceilings per type — the count at which a signal reads as
+ * loud as it gets (100). Justification: a pain seen 50× in the 21d lookback
+ * is a roar (the pain pipeline's own cap is far below that); 200 weekly
+ * mentions is the top of the observed entity range; 100 is the story
+ * curator's native topScore ceiling. Below the ceiling the scale is
+ * logarithmic so the gap between 2 and 10 sightings outweighs the gap
+ * between 30 and 38. ABSOLUTE is the point: the old per-day min-max mapped
+ * the day's weakest item to 0 and strongest to 100, so a pain seen 2× on a
+ * quiet week scored identically to one seen 50× on a busy week.
+ */
+const INTENSITY_CEILING = { pain: 50, entity: 200, story: 100 } as const;
+
+/** Patterns carry no count — latestPatterns ranks but does not quantify — so they sit at a fixed mid-loud value. */
+const PATTERN_INTENSITY = 60;
+
+function absoluteIntensity(count: number, type: keyof typeof INTENSITY_CEILING): number {
+  const ceiling = INTENSITY_CEILING[type];
+  return Math.max(
+    1,
+    Math.min(100, Math.round((100 * Math.log1p(Math.max(0, count))) / Math.log1p(ceiling))),
+  );
 }
 
-/** Map each type onto 0..100 using that type's own min/max. Same-value groups get 50. */
-function rescaleIntensityWithinType(prims: Primitive[]): Primitive[] {
+/**
+ * The per-day min-max, demoted to a fine tie-break: within one type it nudges
+ * an intensity by less than one point, so two signals whose absolute values
+ * round together still order by their relative standing today — without ever
+ * lifting a quiet week up the scale or dragging a loud week down.
+ */
+function applyRelativeTieBreak(prims: Primitive[]): Primitive[] {
   const bounds = new Map<PrimitiveType, { min: number; max: number }>();
   for (const p of prims) {
     const cur = bounds.get(p.type);
@@ -79,8 +105,8 @@ function rescaleIntensityWithinType(prims: Primitive[]): Primitive[] {
   }
   return prims.map((p) => {
     const { min, max } = bounds.get(p.type)!;
-    const intensity = max === min ? 50 : Math.round(((p.intensity - min) / (max - min)) * 100);
-    return { ...p, intensity };
+    const rel = max === min ? 0.5 : (p.intensity - min) / (max - min);
+    return { ...p, intensity: Math.min(100, p.intensity + rel * 0.99) };
   });
 }
 
@@ -111,7 +137,7 @@ export function loadPrimitives(): Primitive[] {
       label,
       sector: p.sector ?? null,
       tags: deriveTags(label, p.sector ?? null),
-      intensity: normalize(p.intensity, 20),
+      intensity: absoluteIntensity(p.intensity, 'pain'),
     });
   });
 
@@ -123,7 +149,7 @@ export function loadPrimitives(): Primitive[] {
       label,
       sector: null,
       tags: deriveTags(label, null),
-      intensity: 60,
+      intensity: PATTERN_INTENSITY,
     });
   });
 
@@ -131,7 +157,7 @@ export function loadPrimitives(): Primitive[] {
   // so pains+patterns stay a strict majority. Zero demand → empty pool, not
   // headlines crossed with business models.
   const contextBudget = Math.floor(demand.length / 2);
-  if (contextBudget === 0) return rescaleIntensityWithinType(demand);
+  if (contextBudget === 0) return applyRelativeTieBreak(demand);
 
   const candidates: ContextCandidate[] = [];
 
@@ -144,7 +170,7 @@ export function loadPrimitives(): Primitive[] {
       label,
       sector: null,
       tags,
-      intensity: normalize(e.count, 50),
+      intensity: absoluteIntensity(e.count, 'entity'),
     });
   }
 
@@ -164,7 +190,7 @@ export function loadPrimitives(): Primitive[] {
       label,
       sector: null,
       tags,
-      intensity: normalize(s.topScore ?? 0, 100),
+      intensity: absoluteIntensity(s.topScore ?? 0, 'story'),
     });
   }
 
@@ -178,5 +204,5 @@ export function loadPrimitives(): Primitive[] {
     ref: c.type === 'entity' ? `E${++entities}` : `S${++storyCount}`,
   }));
 
-  return rescaleIntensityWithinType([...demand, ...context]);
+  return applyRelativeTieBreak([...demand, ...context]);
 }

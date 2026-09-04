@@ -66,4 +66,12 @@ describe('wedge space', () => {
       seen.add(key);
     }
   });
+
+  it('throws a clear error on a zero-active-values axis instead of drifting into NaN (F14)', () => {
+    const space = loadWedges();
+    const degenerate = { ...space, buyer: [] };
+    // pre-fix: rest % 0 = NaN silently poisoned the decode — safe only because
+    // composeLeads happened to early-return on spaceSize===0
+    expect(() => wedgeAt(degenerate, 0)).toThrow(/no active values/);
+  });
 });

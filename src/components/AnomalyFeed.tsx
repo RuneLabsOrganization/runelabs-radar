@@ -6,17 +6,25 @@ import MiniTrend from './MiniTrend';
 const KIND: Record<string, { glyph: string; color: string; label: string }> = {
   'sector-spike': { glyph: '▲', color: 'var(--phosphor)', label: 'sector spike' },
   'entity-surge': { glyph: '▲', color: 'var(--phosphor)', label: 'entity surge' },
+  'entity-debut': { glyph: '▲', color: 'var(--phosphor)', label: 'new entity' },
   'launch-spike': { glyph: '▲', color: 'var(--phosphor)', label: 'launch wave' },
   'price-drop': { glyph: '▼', color: 'var(--phosphor)', label: 'price drop' },
   'cluster-heat': { glyph: '◆', color: 'var(--amber)', label: 'hot topic' },
   'pain-cluster': { glyph: '●', color: 'var(--amber)', label: 'recurring pain' },
 };
 
-function scoreChip(p: PatternRow): string {
+/**
+ * The chip shows the kind's NATIVE quantity — σ for z-detections, % for
+ * price drops, × only for a real (shrunk) week-over-week ratio, a count as
+ * a count — never one scale dressed as another. Exported for tests.
+ */
+export function scoreChip(p: PatternRow): string {
   if (p.kind === 'sector-spike' || p.kind === 'launch-spike') return `${p.score.toFixed(1)}σ`;
   if (p.kind === 'price-drop') return `−${Math.round(p.score * 10)}%`;
-  if (p.kind === 'entity-surge') return `${Math.round(p.score)}×`;
-  return `${Math.round(p.score)}`;
+  if (p.kind === 'entity-surge') return `${p.score.toFixed(1)}×`;
+  if (p.kind === 'entity-debut') return `+${Math.round(p.score)}`;
+  if (p.kind === 'cluster-heat') return p.score.toFixed(2);
+  return `${Math.round(p.score)}`; // pain-cluster: observation count
 }
 
 /**

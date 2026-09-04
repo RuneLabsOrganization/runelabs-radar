@@ -4,6 +4,7 @@ import { getDb } from '@/lib/db';
 import { kitPickHistory, stories } from '@/lib/db/schema';
 import { classifyFlip, type FlipInput } from '@/lib/kits/flip';
 import { runVerdictGrade } from '@/lib/science/verdicts';
+import { correctionRate } from '@/lib/science/verdict-accuracy';
 import { useTestDb } from './helpers/db';
 
 function flip(over: Partial<FlipInput> = {}): FlipInput {
@@ -43,6 +44,28 @@ describe('classifyFlip', () => {
     const r = classifyFlip(flip({ reason: 'Tool B was always stronger on long-context' }));
     expect(r.kind).toBe('correction');
     expect(r.why).toContain('available at call time');
+  });
+
+  it('grades a flip with no prior history as unknown — never an upgrade', () => {
+    // no prior history row → heldDays null → there is no call to grade against;
+    // the old code forced replacementExistedAtCall=false and published 'upgrade'
+    const r = classifyFlip(flip({ heldDays: null, replacementExistedAtCall: false }));
+    expect(r.kind).toBe('unknown');
+    expect(r.why).toContain('no prior history');
+  });
+
+  it('a reason admitting "we missed the cheaper option" is a correction, not drift', () => {
+    const r = classifyFlip(flip({ reason: 'great tool but we missed that X was cheaper' }));
+    expect(r.kind).toBe('correction');
+  });
+
+  it('a reason mentioning both a price event and a miss is a correction (correction wins)', () => {
+    const r = classifyFlip(flip({ reason: 'pricing changed, but honestly we missed that X was cheaper all along' }));
+    expect(r.kind).toBe('correction');
+  });
+
+  it('a vendor-side deprecation is drift even when the replacement existed', () => {
+    expect(classifyFlip(flip({ reason: 'vendor deprecated the API' })).kind).toBe('drift');
   });
 });
 
@@ -101,5 +124,24 @@ describe('runVerdictGrade', () => {
     await runVerdictGrade();
     const second = await runVerdictGrade();
     expect(second.graded).toBe(0);
+  });
+
+  it('a cell whose first history row has fromPick set grades unknown — excluded from every rate', async () => {
+    // history began mid-stream: fromPick is set but no prior row exists, so the
+    // original call is undatable. The old code forced this to 'upgrade',
+    // inflating upgrade and deflating the published correction rate.
+    addHistory({ fromPick: 'Tool A', toPick: 'Tool B', reason: 'Tool B is stronger', changedAt: new Date(Date.now() - 40 * DAY) });
+
+    const out = await runVerdictGrade();
+    expect(out.graded).toBe(1);
+
+    const flip = getDb().select().from(kitPickHistory).all().find((r) => r.toPick === 'Tool B')!;
+    expect(flip.changeKind).toBe('unclassified'); // stored form of 'unknown' — NOT 'upgrade'
+    expect(flip.heldDays).toBe(-1);
+    // excluded from both correction and upgrade denominators
+    expect(correctionRate()).toEqual({ corrections: 0, graded: 0, pct: null });
+
+    // and never re-graded
+    expect((await runVerdictGrade()).graded).toBe(0);
   });
 });

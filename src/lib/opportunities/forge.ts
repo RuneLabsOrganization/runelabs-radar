@@ -17,7 +17,7 @@
 import { and, eq } from 'drizzle-orm';
 import { getDb } from '../db';
 import { opportunities } from '../db/schema';
-import { SUB_KEYS, type SubScores } from './axes';
+import { parseSubScores } from './axes';
 import { runDebate } from './critic';
 import { applyGate, type CriticResult } from './gate';
 import { parseKpis, parseStoredEvidence } from './rescore';
@@ -35,21 +35,6 @@ export interface ForgeResult {
   killRisks?: string[];
   conditionsToSucceed?: string[];
   strengthenedVariants?: string[];
-}
-
-function parseSub(raw: string): SubScores {
-  const out = {} as SubScores;
-  let parsed: Record<string, unknown> = {};
-  try {
-    parsed = JSON.parse(raw) as Record<string, unknown>;
-  } catch {
-    /* fall through to zeros */
-  }
-  for (const k of SUB_KEYS) {
-    const v = parsed[k];
-    out[k] = typeof v === 'number' && Number.isFinite(v) ? Math.max(0, Math.min(20, v)) : 0;
-  }
-  return out;
 }
 
 /**
@@ -138,13 +123,17 @@ export async function forgeOpportunity(
     flags: ['forged'],
   };
 
+  // The stored row parses through the ONE shared sub-score parser — corrupt
+  // or pre-dossier rows flag legacy here like everywhere else.
+  const stored = parseSubScores(target.scores);
   const gate = applyGate(
     {
-      sub: parseSub(target.scores),
+      sub: stored.sub,
       kpis: parseKpis(target.kpis),
       windowMonths: target.windowMonths,
       evidenceCount: parseStoredEvidence(target.evidence).length,
-      legacy: false,
+      legacy: stored.legacy,
+      missingAxes: stored.missing,
     },
     critic,
   );

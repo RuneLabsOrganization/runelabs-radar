@@ -8,8 +8,10 @@ import {
   forecastGrades,
   gradingSince,
   pendingGrades,
+  rescoreBacklog,
   spearman,
 } from '@/lib/science/accuracy';
+import { HINDSIGHT_WEIGHTS } from '@/lib/science/hindsight';
 import { verdictSummary } from '@/lib/science/verdict-accuracy';
 import { freshnessStats } from '@/lib/freshness';
 import { paths } from '@/lib/urls';
@@ -29,12 +31,36 @@ const RUBRIC: { range: string; label: string; gloss: string }[] = [
   { range: '0–19', label: 'irrelevant', gloss: 'auto-filtered at curation, never shown' },
 ];
 
-/** The hindsight weights — mirrors lib/science/hindsight.ts (bar scale: 30 = full width). */
+/**
+ * The hindsight weights — derived from HINDSIGHT_WEIGHTS in
+ * lib/science/hindsight.ts, the single source of truth (a pinning test fails
+ * if they ever diverge). Bar scale: 30 = full width.
+ */
 const HINDSIGHT_PARTS: { name: string; weight: string; pct: string; gloss: string }[] = [
-  { name: 'entity echo', weight: '≤30', pct: '100%', gloss: 'later stories mention the same entities · 5+ = full marks' },
-  { name: 'launch materialized', weight: '25', pct: '83%', gloss: 'a tracked launch (Show HN / Product Hunt) ships a named entity' },
-  { name: 'follow-through', weight: '≤25', pct: '83%', gloss: 'later stories develop the same topic · 5+ = full marks' },
-  { name: 'team votes', weight: '±15', pct: '50%', gloss: '(up − down) × 5 — the human override' },
+  {
+    name: 'entity echo',
+    weight: `≤${HINDSIGHT_WEIGHTS.entityEcho.max}`,
+    pct: `${Math.round((HINDSIGHT_WEIGHTS.entityEcho.max / 30) * 100)}%`,
+    gloss: `later stories mention the same entities · idf-weighted, rare entities count more · ${HINDSIGHT_WEIGHTS.entityEcho.fullMarksAt}+ over the full 5-day window = full marks`,
+  },
+  {
+    name: 'launch materialized',
+    weight: `${HINDSIGHT_WEIGHTS.launch}`,
+    pct: `${Math.round((HINDSIGHT_WEIGHTS.launch / 30) * 100)}%`,
+    gloss: 'a tracked launch (Show HN / Product Hunt) ships a named entity',
+  },
+  {
+    name: 'follow-through',
+    weight: `≤${HINDSIGHT_WEIGHTS.followThrough.max}`,
+    pct: `${Math.round((HINDSIGHT_WEIGHTS.followThrough.max / 30) * 100)}%`,
+    gloss: `later stories develop the same topic without sharing an entity — never double-counted with echo · ${HINDSIGHT_WEIGHTS.followThrough.fullMarksAt}+ over the full window = full marks`,
+  },
+  {
+    name: 'team votes',
+    weight: `±${HINDSIGHT_WEIGHTS.votes.cap}`,
+    pct: `${Math.round((HINDSIGHT_WEIGHTS.votes.cap / 30) * 100)}%`,
+    gloss: `(up − down) × ${HINDSIGHT_WEIGHTS.votes.perNetVote} — the human override`,
+  },
 ];
 
 /**
@@ -190,6 +216,7 @@ export default async function AccuracyPage() {
   const since = gradingSince();
   const misses = accuracyMisses();
   const pending = pendingGrades();
+  const backlog = rescoreBacklog();
   const freshness = freshnessStats();
   const verdicts = verdictSummary();
   const rho = spearman(
@@ -240,7 +267,11 @@ export default async function AccuracyPage() {
       </div>
       {since && (
         <p className="mono mt-2 text-[10.5px] tracking-[0.06em] uppercase" style={{ color: 'var(--ink-4)' }}>
-          grading since {since} &middot; {totalHindsight} graded &middot; {pending} pending &middot; times in UTC
+          grading since {since} &middot; {totalHindsight} graded &middot; {pending} pending
+          {backlog > 0 && (
+            <span style={{ color: 'var(--amber)' }}> &middot; {backlog} backlog (past the 60h window, ungraded)</span>
+          )}{' '}
+          &middot; times in UTC
         </p>
       )}
 
@@ -297,7 +328,10 @@ export default async function AccuracyPage() {
               ))}
             </ul>
             <p className="mt-3 border-t border-[var(--grat-soft)] pt-2.5 text-[11.5px] leading-relaxed" style={{ color: 'var(--ink-4)' }}>
-              No LLM at grading — observed signals only. Each story is graded once; the grade never changes.
+              No LLM at grading — observed signals only. Each story is graded once; the grade never changes. Echo
+              and follow-through caps scale with the elapsed share of the 5-day observation window, so a story
+              graded 36h in is judged against what 36 hours could produce. The daily rescore grades oldest-first;
+              anything it can&rsquo;t reach stays in the window and is reported as backlog above, never dropped.
             </p>
           </div>
         </div>
@@ -342,14 +376,24 @@ export default async function AccuracyPage() {
                       />
                     )}
                   </div>
-                  <span className="mono shrink-0 text-[10.5px] sm:w-[250px] sm:text-right" style={{ color: 'var(--ink-3)' }}>
+                  <span className="mono shrink-0 text-[10.5px] sm:w-[310px] sm:text-right" style={{ color: 'var(--ink-3)' }}>
                     median {b.medianHindsight ?? '—'} &middot; mean {b.meanHindsight ?? '—'} &middot; n={b.count} &middot;{' '}
-                    {b.followThroughRate}% followed
+                    {b.followThroughRate}% followed &middot;{' '}
+                    <span
+                      style={{
+                        color: b.coveragePct !== null && b.coveragePct < 90 ? 'var(--amber)' : undefined,
+                      }}
+                    >
+                      coverage {b.coveragePct === null ? '—' : `${b.coveragePct}%`}
+                      {b.coveragePct !== null && b.coveragePct < 90 && ' ⚠'}
+                    </span>
                   </span>
                 </div>
               ))}
               <p className="mono mt-1 text-[10px]" style={{ color: 'var(--ink-4)' }}>
                 bar = median hindsight &middot; % followed = stories with any follow-through at all (hindsight &gt; 0)
+                &middot; coverage = graded ÷ stories old enough to grade — below 90% the band is survivors
+                (missed stories vanish instead of counting) and is marked ⚠
               </p>
             </div>
           </>
@@ -375,7 +419,10 @@ export default async function AccuracyPage() {
         <p className="mb-3 text-[12px] leading-relaxed" style={{ color: 'var(--ink-3)' }}>
           Every night we record the projected price of frontier intelligence — cheapest blended $/1M tokens among
           models within 90% of the day&rsquo;s intelligence ceiling (Artificial Analysis), from a log-linear fit,
-          30 days out. Realized = the actual frontier price on the target date.
+          30 days out. Realized = the actual frontier price at the 30d target (first series point on/after it —
+          the date we read is shown per grade). Error is the signed log error, ln(realized/predicted): symmetric,
+          so aiming 2× too high and 2× too low score the same magnitude. Positive means the price came in above
+          the forecast — we aimed low.
         </p>
         {grades.length === 0 ? (
           <p className="text-[13px]" style={{ color: 'var(--ink-3)' }}>
@@ -397,7 +444,18 @@ export default async function AccuracyPage() {
                   <td className="mono text-[11px]" style={{ color: 'var(--ink-3)' }}>{g.date}</td>
                   <td className="mono text-right text-[11px]">${g.predicted.toFixed(2)}</td>
                   <td className="mono text-right text-[11px]">
-                    {g.realized !== null ? `$${g.realized.toFixed(2)}` : <span style={{ color: 'var(--ink-4)' }}>pending</span>}
+                    {g.realized !== null ? (
+                      <>
+                        ${g.realized.toFixed(2)}
+                        {g.realizedDate !== null && (
+                          <span className="block text-[9.5px]" style={{ color: 'var(--ink-4)' }}>
+                            read {g.realizedDate}
+                          </span>
+                        )}
+                      </>
+                    ) : (
+                      <span style={{ color: 'var(--ink-4)' }}>pending</span>
+                    )}
                   </td>
                   <td
                     className="mono text-right text-[11px]"
@@ -424,7 +482,7 @@ export default async function AccuracyPage() {
         )}
         {graded.length > 0 && (
           <p className="mono mt-2 text-[10.5px]" style={{ color: 'var(--ink-3)' }}>
-            mean abs error: {Math.round(graded.reduce((a, g) => a + Math.abs(g.errorPct ?? 0), 0) / graded.length)}%
+            mean |log error|: {Math.round(graded.reduce((a, g) => a + Math.abs(g.errorPct ?? 0), 0) / graded.length)}%
             across {graded.length} graded forecasts
           </p>
         )}
@@ -530,17 +588,31 @@ export default async function AccuracyPage() {
             Story scores are graded above. These grade the <em>verdicts</em> — every &ldquo;use X for Y&rdquo; on the
             board. When a pick changes we record why, and only one of the three reasons is a miss.
           </p>
-          <dl className="grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-4">
+          <dl className="grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-5">
             <div>
-              <dt className="mono text-[10px]" style={{ color: 'var(--ink-4)' }}>pick half-life</dt>
+              <dt className="mono text-[10px]" style={{ color: 'var(--ink-4)' }}>median held — closed flips</dt>
               <dd className="text-[15px]">
-                {verdicts.halfLifeDays === null ? '—' : `${verdicts.halfLifeDays}d`}
+                {verdicts.longevity.medianHeldDays === null ? '—' : `${verdicts.longevity.medianHeldDays}d`}{' '}
+                <span className="mono text-[10px]" style={{ color: 'var(--ink-4)' }}>
+                  n={verdicts.longevity.closedFlips}
+                </span>
+              </dd>
+            </div>
+            <div>
+              <dt className="mono text-[10px]" style={{ color: 'var(--ink-4)' }}>
+                still standing ≥{verdicts.longevity.horizonDays}d
+              </dt>
+              <dd className="text-[15px]">
+                {verdicts.longevity.standingPct === null ? '—' : `${verdicts.longevity.standingPct}%`}{' '}
+                <span className="mono text-[10px]" style={{ color: 'var(--ink-4)' }}>
+                  n={verdicts.longevity.standingDatable}
+                </span>
               </dd>
             </div>
             <div>
               <dt className="mono text-[10px]" style={{ color: 'var(--ink-4)' }}>correction rate</dt>
               <dd className="text-[15px]">
-                {verdicts.correction.pct}%{' '}
+                {verdicts.correction.pct === null ? '—' : `${verdicts.correction.pct}%`}{' '}
                 <span className="mono text-[10px]" style={{ color: 'var(--ink-4)' }}>
                   n={verdicts.correction.graded}
                 </span>
@@ -549,7 +621,7 @@ export default async function AccuracyPage() {
             <div>
               <dt className="mono text-[10px]" style={{ color: 'var(--ink-4)' }}>reversal rate</dt>
               <dd className="text-[15px]">
-                {verdicts.reversal.pct}%{' '}
+                {verdicts.reversal.pct === null ? '—' : `${verdicts.reversal.pct}%`}{' '}
                 <span className="mono text-[10px]" style={{ color: 'var(--ink-4)' }}>
                   n={verdicts.reversal.cells}
                 </span>
@@ -558,7 +630,7 @@ export default async function AccuracyPage() {
             <div>
               <dt className="mono text-[10px]" style={{ color: 'var(--ink-4)' }}>falsifier coverage</dt>
               <dd className="text-[15px]">
-                {verdicts.coverage.pct}%{' '}
+                {verdicts.coverage.pct === null ? '—' : `${verdicts.coverage.pct}%`}{' '}
                 <span className="mono text-[10px]" style={{ color: 'var(--ink-4)' }}>
                   {verdicts.coverage.registered}/{verdicts.coverage.open}
                 </span>
@@ -566,10 +638,21 @@ export default async function AccuracyPage() {
             </div>
           </dl>
           <p className="mt-3">
+            <strong>Median held is right-censored.</strong> It measures only picks that already ended — the picks
+            still standing (the longest-lived, our best calls) are excluded by construction, so on its own the
+            number would understate longevity and look worse exactly when the calls are good. That is why it is
+            always published next to the survival figure: the share of live picks still standing after{' '}
+            {verdicts.longevity.horizonDays} days. Read the two together; never the median alone.
+          </p>
+          <p className="mt-2">
             <strong>Correction</strong> is the only miss: a better option was already available and we did not pick
-            it. <strong>Upgrade</strong> (something new shipped) and <strong>drift</strong> (price or licence moved)
-            are the field changing, not our judgement failing — collapsing all three into one number would make a
-            fast field look like incompetence.
+            it — including when the reason mentions price, because &ldquo;we missed the cheaper tool&rdquo; is our
+            miss, not the market&rsquo;s. <strong>Upgrade</strong> (something new shipped) and <strong>drift</strong>{' '}
+            (a vendor-side event: deprecation, shutdown, relicensing, a vendor price move) are the field changing,
+            not our judgement failing — collapsing all three into one number would make a fast field look like
+            incompetence. Flips with no prior history to grade against are recorded as <strong>unknown</strong> and
+            excluded from every denominator, not counted as upgrades. A rate with n=0 shows &ldquo;—&rdquo;, never
+            0%: zero percent of nothing is not a perfect record.
           </p>
           <p className="mt-2">
             <strong>Falsifier coverage</strong> is the share of live picks that state, in advance, what would prove

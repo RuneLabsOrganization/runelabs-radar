@@ -5,7 +5,7 @@
  * no "list all leads" call: leads are private by construction, and a helper
  * that forgets the owner is how private pools leak.
  */
-import { and, desc, eq, isNotNull, isNull, lt } from 'drizzle-orm';
+import { and, desc, eq, isNotNull, isNull, lt, or } from 'drizzle-orm';
 import { getDb } from '../db';
 import { leads } from '../db/schema';
 import type { LeadDraft } from './compose';
@@ -111,7 +111,26 @@ export function insertLeads(owner: Owner, drafts: LeadDraft[]): LeadRow[] {
 
 export interface LeadPage {
   leads: LeadRow[];
+  /**
+   * Opaque keyset token for the next page (null when no page remains) — NOT
+   * an offset. It encodes the (heuristicScore, id) of the last row served,
+   * so leads inserted between pages can never shift later rows across page
+   * boundaries the way offset pagination did (overlaps and silent skips).
+   */
   nextCursor: number | null;
+}
+
+/**
+ * Keyset encoding for the (heuristicScore DESC, id DESC) ordering. Packed
+ * into one exact integer (score ≤ 100, id < 2^32 ≪ 2^53) so the existing
+ * numeric cursor shape survives — callers must treat it as opaque.
+ */
+function packCursor(score: number, id: number): number {
+  return score * 2 ** 32 + id;
+}
+
+function unpackCursor(cursor: number): { score: number; id: number } {
+  return { score: Math.floor(cursor / 2 ** 32), id: cursor % 2 ** 32 };
 }
 
 /** This owner's undismissed leads, strongest heuristic first. */
@@ -120,9 +139,15 @@ export function listLeads(
   opts: { limit: number; cursor?: number; sector?: string },
 ): LeadPage {
   const db = getDb();
-  const cursor = opts.cursor ?? 0;
   const conds = [eq(leads.ownerKey, owner.ownerKey), isNull(leads.dismissedAt)];
   if (opts.sector) conds.push(eq(leads.sector, opts.sector));
+  if (opts.cursor !== undefined && opts.cursor > 0) {
+    const { score, id } = unpackCursor(opts.cursor);
+    // rows strictly AFTER the served key in (score DESC, id DESC) order
+    conds.push(
+      or(lt(leads.heuristicScore, score), and(eq(leads.heuristicScore, score), lt(leads.id, id)))!,
+    );
+  }
 
   // fetch one extra to decide whether another page exists
   const rows = db
@@ -131,13 +156,13 @@ export function listLeads(
     .where(and(...conds))
     .orderBy(desc(leads.heuristicScore), desc(leads.id))
     .limit(opts.limit + 1)
-    .offset(cursor)
     .all();
 
   const page = rows.slice(0, opts.limit);
+  const last = page[page.length - 1];
   return {
     leads: page.map(toLead),
-    nextCursor: rows.length > opts.limit ? cursor + page.length : null,
+    nextCursor: rows.length > opts.limit && last ? packCursor(last.heuristicScore, last.id) : null,
   };
 }
 

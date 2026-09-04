@@ -13,12 +13,14 @@ const PLOT_H = H - PAD.top - PAD.bottom;
 
 /**
  * Price of frontier intelligence: history (solid), log-linear projection
- * (dashed) with an uncertainty band that widens with distance from data.
+ * (dashed) with a heuristic band that widens with distance from data (±1σ in
+ * log space — NOT a confidence interval; the caption says so). The displayed
+ * r² is the fit's, computed in LOG price space, and is labeled as such.
  * Honest warming-up state until enough snapshot days exist.
  */
 export default function ForecastChart({ forecast }: { forecast: Forecast }) {
   const [hover, setHover] = useState<{ x: number; label: string; value: string } | null>(null);
-  const { history, projection, fit, daysOfHistory } = forecast;
+  const { history, projection, fit, daysOfHistory, droppedFromFit } = forecast;
   if (history.length === 0) {
     return (
       <p className="mono py-3 text-[12px]" style={{ color: 'var(--ink-4)' }}>
@@ -69,7 +71,7 @@ export default function ForecastChart({ forecast }: { forecast: Forecast }) {
           ),
         )}
 
-        {/* uncertainty band */}
+        {/* heuristic ±1σ band (log space) — not a confidence interval */}
         {projection.length > 1 && (
           <polygon
             points={[
@@ -132,13 +134,16 @@ export default function ForecastChart({ forecast }: { forecast: Forecast }) {
         {projection.length > 0 && fit ? (
           <>
             {' '}
-            &middot; log-linear projection, 30d &middot; r&sup2; {fit.r2.toFixed(2)} &middot; band widens with
-            distance from data
+            &middot; log-linear projection, 30d &middot; r&sup2; (log price) {fit.r2.toFixed(2)} &middot;
+            shaded band: heuristic &plusmn;1&sigma; in log space, not a confidence interval
+            {droppedFromFit > 0 && (
+              <> &middot; {droppedFromFit} non-positive day{droppedFromFit === 1 ? '' : 's'} excluded from the fit</>
+            )}
           </>
         ) : (
           <span style={{ color: 'var(--amber)' }}>
             {' '}
-            &middot; warming up — projection unlocks at 5 snapshot days ({daysOfHistory} so far)
+            &middot; warming up — projection unlocks at 5 usable snapshot days ({daysOfHistory} so far)
           </span>
         )}
       </p>

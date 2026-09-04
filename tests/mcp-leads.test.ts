@@ -132,9 +132,12 @@ describe('get_leads', () => {
     expect(p.count).toBe(3);
   });
 
-  it('places every pain-derived lead before every story-derived lead even when the story scores higher', async () => {
-    // Tagged stories so loadPrimitives admits them; high topScore so a story's
-    // own heuristic can beat a weak pain after the intensity/wedge swing.
+  it('orders by pure score first with type preference only as the tie-break (F4)', async () => {
+    // Tagged stories so loadPrimitives admits them, with high topScores so a
+    // story's quality CAN beat a weak pain. Pre-fix, TYPE_RANK was the
+    // primary sort key (and a type bonus also sat inside the score — type
+    // counted twice), so every pain outranked every story; now ordering is
+    // score desc, then explicit type preference, then slug.
     for (const score of [15, 90, 40, 75, 20, 60, 55, 80]) {
       db.insert(stories)
         .values({
@@ -151,22 +154,31 @@ describe('get_leads', () => {
     const p = (await client.callTool({ name: 'get_leads', arguments: { limit: 25 } }))
       .structuredContent as unknown as LeadsPayload;
 
-    const isPain = (l: LeadsPayload['leads'][number]) =>
-      l.evidence_refs.some((r) => r.startsWith('P'));
-    const isStory = (l: LeadsPayload['leads'][number]) =>
-      l.evidence_refs.some((r) => r.startsWith('S'));
-    const pains = p.leads.filter(isPain);
-    const storyLeads = p.leads.filter(isStory);
+    const typeRank = (l: LeadsPayload['leads'][number]) =>
+      l.evidence_refs.some((r) => r.startsWith('P')) ? 0
+        : l.evidence_refs.some((r) => r.startsWith('A')) ? 1
+          : l.evidence_refs.some((r) => r.startsWith('E')) ? 2 : 3;
+    const pains = p.leads.filter((l) => typeRank(l) === 0);
+    const storyLeads = p.leads.filter((l) => typeRank(l) === 3);
     expect(pains.length).toBeGreaterThan(0);
     expect(storyLeads.length).toBeGreaterThan(0);
+
+    // the documented contract: score desc, then type preference (slug is the
+    // final tie-break, asserted loosely — localeCompare and code-unit order
+    // can disagree on hyphenated slugs)
+    for (let i = 1; i < p.leads.length; i++) {
+      const prev = p.leads[i - 1]!;
+      const cur = p.leads[i]!;
+      const ok =
+        prev.heuristic_score > cur.heuristic_score ||
+        (prev.heuristic_score === cur.heuristic_score && typeRank(prev) <= typeRank(cur));
+      expect(ok, `${prev.slug} → ${cur.slug}`).toBe(true);
+    }
+
+    // quality-first: a loud story now outranks at least one quieter pain
     expect(Math.max(...storyLeads.map((l) => l.heuristic_score))).toBeGreaterThan(
       Math.min(...pains.map((l) => l.heuristic_score)),
     );
-
-    const lastPainIdx = p.leads.reduce((last, l, i) => (isPain(l) ? i : last), -1);
-    const firstStoryIdx = p.leads.findIndex(isStory);
-    expect(lastPainIdx).toBeGreaterThanOrEqual(0);
-    expect(firstStoryIdx).toBeGreaterThan(lastPainIdx);
   });
 
   it('explains itself when the stream is too thin', async () => {

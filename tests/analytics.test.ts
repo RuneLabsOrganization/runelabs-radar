@@ -100,24 +100,35 @@ describe('analytics', () => {
     expect(top[1]).toMatchObject({ name: 'Claude Code', count: 1, prev: 0 });
   });
 
-  it('echoStats counts multi-source stories and finds the strongest echo', () => {
-    const src = db
+  it('echoStats counts stories corroborated by 2+ DISTINCT sources', () => {
+    // justification for the changed expectation: the KPI is labeled
+    // "corroborated by 2+ sources" but the old query counted ITEMS — three
+    // items from a single feed passed as corroboration
+    const srcA = db
       .insert(sources)
-      .values({ type: 'rss', name: 'test', config: '{}' })
+      .values({ type: 'rss', name: 'feed-a', config: '{}' })
       .returning()
       .get();
-    const single = insertStory(db, { title: 'single-source', daysAgo: 1, coding: 80 });
-    const multi = insertStory(db, { title: 'multi-source story', daysAgo: 1, coding: 80 });
+    const srcB = db
+      .insert(sources)
+      .values({ type: 'rss', name: 'feed-b', config: '{}' })
+      .returning()
+      .get();
+    const oneFeed = insertStory(db, { title: 'single-feed echo', daysAgo: 1, coding: 80 });
+    const twoFeeds = insertStory(db, { title: 'two-source story', daysAgo: 1, coding: 80 });
     const now = new Date();
     db.insert(items).values([
-      { sourceId: src.id, url: 'https://a.example/1', title: 'a', fetchedAt: now, storyId: single.id },
-      { sourceId: src.id, url: 'https://a.example/2', title: 'b', fetchedAt: now, storyId: multi.id },
-      { sourceId: src.id, url: 'https://a.example/3', title: 'c', fetchedAt: now, storyId: multi.id },
-      { sourceId: src.id, url: 'https://a.example/4', title: 'd', fetchedAt: now, storyId: multi.id },
+      // 3 items from ONE source ≠ corroborated
+      { sourceId: srcA.id, url: 'https://a.example/1', title: 'a', fetchedAt: now, storyId: oneFeed.id },
+      { sourceId: srcA.id, url: 'https://a.example/2', title: 'b', fetchedAt: now, storyId: oneFeed.id },
+      { sourceId: srcA.id, url: 'https://a.example/3', title: 'c', fetchedAt: now, storyId: oneFeed.id },
+      // 2 items from 2 sources = corroborated
+      { sourceId: srcA.id, url: 'https://a.example/4', title: 'd', fetchedAt: now, storyId: twoFeeds.id },
+      { sourceId: srcB.id, url: 'https://b.example/1', title: 'e', fetchedAt: now, storyId: twoFeeds.id },
     ]).run();
     const echoes = echoStats();
     expect(echoes.multiSource).toBe(1);
-    expect(echoes.strongest).toEqual({ title: 'multi-source story', sources: 3 });
+    expect(echoes.strongest).toEqual({ title: 'two-source story', sources: 2 });
   });
 });
 

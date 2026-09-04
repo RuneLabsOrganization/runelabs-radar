@@ -128,8 +128,11 @@ export function registerLeadTools(server: McpServer, auth: AuthContext): void {
         );
       }
 
-      // Type is the primary key so a maximally-strong story cannot outrank a
-      // maximally-weak pain. Same relative order as TYPE_BONUS in compose.ts.
+      // Ordering contract: pure quality first (the type-free heuristic
+      // score), then an EXPLICIT type preference as the tie-break — pains
+      // outrank stories at equal quality because a first-person hurt is
+      // direct demand evidence while news is context. Type is counted here
+      // and ONLY here (compose.ts's score deliberately excludes it).
       const TYPE_RANK: Record<PrimitiveType, number> = {
         pain: 0,
         pattern: 1,
@@ -138,8 +141,8 @@ export function registerLeadTools(server: McpServer, auth: AuthContext): void {
       };
       composed.leads.sort(
         (a, b) =>
-          TYPE_RANK[a.primitiveType] - TYPE_RANK[b.primitiveType] ||
           b.heuristicScore - a.heuristicScore ||
+          TYPE_RANK[a.primitiveType] - TYPE_RANK[b.primitiveType] ||
           a.slug.localeCompare(b.slug),
       );
 

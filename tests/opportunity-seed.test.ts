@@ -36,6 +36,27 @@ describe('permuteIndex', () => {
   it('handles n = 0 without dividing by zero', () => {
     expect(permuteIndex(0, 0, 42)).toBe(0);
   });
+
+  it('diverges for two seeds whose first-stage affine parameters collide (F6)', () => {
+    // n=97 is prime, so seeds 5 and 102 (= 5 + 97) produce the SAME multiplier
+    // a=5 and shift b=5 in a single-stage affine map — byte-identical
+    // permutations, contradicting "two callers never get the same leads".
+    // The seed-remixed second stage must separate them.
+    const n = 97;
+    const a = Array.from({ length: n }, (_, i) => permuteIndex(i, n, 5));
+    const b = Array.from({ length: n }, (_, i) => permuteIndex(i, n, 102));
+    expect(a).not.toEqual(b);
+    // and the difference is not a mere phase shift of the same sequence
+    const shift = (b[0]! - a[0]! + n) % n;
+    expect(b).not.toEqual(a.map((v) => (v + shift) % n));
+  });
+
+  it('no longer maps consecutive cursors to indices a fixed stride apart (F6)', () => {
+    const n = 1000;
+    const page = Array.from({ length: 50 }, (_, i) => permuteIndex(i, n, 12345));
+    const strides = new Set(page.slice(1).map((v, i) => (v - page[i]! + n) % n));
+    expect(strides.size).toBeGreaterThan(1);
+  });
 });
 
 describe('sliceFor', () => {

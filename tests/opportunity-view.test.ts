@@ -68,8 +68,8 @@ describe('oppViewFromRow — current shape', () => {
         kpis: JSON.stringify({
           initialCostUsd: 250.456,
           monthlyCostUsd: 40,
-          priceUsd: -5, // negative → null
-          timeToMvpDays: 400, // over the 365 cap → null
+          priceUsd: -5, // negative clamps to the 0 floor (F2 — was null)
+          timeToMvpDays: 400, // over the 365 cap clamps to the cap (F2 — was null)
           breakEvenCustomers: 2,
           competitorCount: 3,
           competitionNote: 'crowded at the low end',
@@ -97,12 +97,13 @@ describe('oppViewFromRow — current shape', () => {
     expect(view.sub.demand).toBe(16);
     expect(view.sub.moat).toBe(12);
 
-    // kpis sanitized: rounded, out-of-range and negative numbers nulled
+    // kpis sanitized: rounded; out-of-range numbers CLAMP (fail-closed F2 —
+    // pre-fix they nulled out, which skipped the R8 economics check entirely)
     expect(view.kpis).toEqual({
       initialCostUsd: 250.46,
       monthlyCostUsd: 40,
-      priceUsd: null,
-      timeToMvpDays: null,
+      priceUsd: 0,
+      timeToMvpDays: 365,
       breakEvenCustomers: 2,
       competitorCount: 3,
       competitionNote: 'crowded at the low end',

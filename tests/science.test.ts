@@ -73,7 +73,11 @@ describe('science math', () => {
 
   it('meanStd and zScore behave on known data', () => {
     expect(meanStd([2, 4, 4, 4, 5, 5, 7, 9])).toEqual({ mean: 5, std: 2 });
-    expect(zScore(9, [2, 4, 4, 4, 5, 5, 7, 9])).toBeCloseTo(2, 5);
+    // JUSTIFICATION for the changed constant: was toBeCloseTo(2) under
+    // population std (÷n). A baseline of past days is a sample — ÷n
+    // underestimates σ by √(n/(n−1)), enough to manufacture z≥2 from noise.
+    // zScore now uses the sample std below 30 points: 4 / (2·√(8/7)) ≈ 1.871.
+    expect(zScore(9, [2, 4, 4, 4, 5, 5, 7, 9])).toBeCloseTo(4 / (2 * Math.sqrt(8 / 7)), 5);
     expect(zScore(5, [5, 5, 5])).toBe(0); // degenerate baseline, not above mean
   });
 
@@ -84,13 +88,28 @@ describe('science math', () => {
     expect(fit.r2).toBeCloseTo(1, 8);
   });
 
-  it('crossCorrelate finds a planted 3-day lag', () => {
+  it('linearFit on a flat series reports r2 = 0, not a "perfect fit"', () => {
+    // ssTot≈0 used to yield r2 = 1 — a constant series claimed perfect
+    // explanatory power and projected with a near-zero confidence band
+    const fit = linearFit([0, 1, 2, 3].map((x) => ({ x, y: 7 })))!;
+    expect(fit.slope).toBeCloseTo(0, 10);
+    expect(fit.r2).toBe(0);
+  });
+
+  it('crossCorrelate finds a planted 3-day lag on a fixed comparable window', () => {
     const rng = makeRng(3);
     const a = Array.from({ length: 40 }, () => (rng() > 0.7 ? 5 : 1));
     const b = [0, 0, 0, ...a.slice(0, 37)]; // b follows a by 3
     const best = crossCorrelate(a, b, 6)!;
     expect(best.lag).toBe(3);
     expect(best.coefficient).toBeGreaterThan(0.9);
+    expect(best.n).toBe(34); // 40 − maxLag: every lag scored the same points
+  });
+
+  it('crossCorrelate refuses thin overlaps instead of scoring them', () => {
+    const a = Array.from({ length: 20 }, (_, i) => i % 5);
+    const b = Array.from({ length: 20 }, (_, i) => (i + 2) % 5);
+    expect(crossCorrelate(a, b, 10)).toBeNull(); // window 10 < 14 minimum
   });
 });
 
@@ -184,10 +203,39 @@ describe('anomaly detectors', () => {
           .run();
       }
     };
-    for (let d = 2; d <= 9; d++) insert(d, 1); // steady baseline
-    insert(1, 8); // yesterday's spike — quiet today
+    // JUSTIFICATION for the fixture change: the old 1/day baseline + 8-spike
+    // fixture now (correctly) stays silent — its weekday baseline has a single
+    // nonzero sample, and the activity guard must cover the baseline actually
+    // scored (see the dedicated test below). A healthy 6/day flat weekday
+    // baseline hit by a doubling keeps this test focused on its real intent:
+    // yesterday is evaluated, not the partial today.
+    for (let d = 2; d <= 22; d++) insert(d, 6); // steady baseline
+    insert(1, 13); // yesterday: 13 vs flat 6 — Poisson z = 7/√6 ≈ 2.86
     const hits = detectSectorSpikes();
     expect(hits.some((h) => h.subject === 'coding' && h.score >= 2)).toBe(true);
+  });
+
+  it('a weekday baseline with a single nonzero sample does NOT fire', () => {
+    // regression: the activity guard used to run against the FLAT baseline
+    // while the WEEKDAY baseline (here [1,0,0] — one real sample) was the one
+    // scored, publishing a "9σ spike" on one point of evidence
+    const db = useTestDb();
+    const insert = (daysAgo: number, n: number) => {
+      for (let i = 0; i < n; i++) {
+        db.insert(stories)
+          .values({
+            title: `g${daysAgo}-${i}`,
+            status: 'curated',
+            topScore: 50,
+            domainScores: JSON.stringify({ coding: 80, copy: 0, image: 0, video: 0, ads: 0, agentic: 0 }),
+            createdAt: new Date(Date.now() - daysAgo * 864e5),
+          })
+          .run();
+      }
+    };
+    for (let d = 2; d <= 9; d++) insert(d, 1);
+    insert(1, 8);
+    expect(detectSectorSpikes()).toEqual([]);
   });
 
   it('weekday-aware baseline catches a same-weekday spike the flat baseline dilutes', () => {
@@ -212,6 +260,8 @@ describe('anomaly detectors', () => {
     insert(1, 10); // yesterday: huge for ITS weekday (10 vs 2,2,2), invisible vs the flat ~11 mean
     const hits = detectSectorSpikes();
     expect(hits.some((h) => h.subject === 'coding' && h.score >= 2)).toBe(true);
+    // the text names the baseline actually used
+    expect(hits.find((h) => h.subject === 'coding')!.fallback).toContain('weekday baseline');
   });
 
   it('detectEntitySurges fires on new and surging entities', () => {
@@ -228,7 +278,41 @@ describe('anomaly detectors', () => {
         .run();
     for (let i = 0; i < 6; i++) add('NovaModel', i % 5); // 6 mentions this week, 0 last week
     const hits = detectEntitySurges();
-    expect(hits.some((h) => h.subject === 'NovaModel')).toBe(true);
+    const nova = hits.find((h) => h.subject === 'NovaModel')!;
+    expect(nova).toBeDefined();
+    // from-zero is a DEBUT: the native quantity is the raw count, not a ratio
+    expect(nova.kind).toBe('entity-debut');
+    expect(nova.score).toBe(6);
+    expect(nova.significance).toBeGreaterThanOrEqual(2);
+  });
+
+  it('a prev=1 → 4 mentions ratio mirage does not top the ranking', () => {
+    // 4/1 is a "4× surge" by raw ratio but add-k smoothed Poisson z ≈ 1.7 —
+    // below the bar. A real surge (45 vs 20, z ≈ 5.3) must outrank it.
+    const db = useTestDb();
+    const add = (name: string, daysAgo: number) =>
+      db.insert(stories)
+        .values({
+          title: `${name} ${daysAgo} ${Math.random()}`,
+          status: 'curated',
+          topScore: 50,
+          entities: JSON.stringify([{ name, kind: 'model' }]),
+          createdAt: new Date(Date.now() - daysAgo * 864e5),
+        })
+        .run();
+    for (let i = 0; i < 45; i++) add('RealSurge', i % 7); // 45 this week
+    // NOTE: last-week fixtures sit at 8-13 days, never exactly 7 — createdAt
+    // is stored at second precision, so a story at exactly 7·864e5 ms lands
+    // on either side of the week boundary depending on sub-second timing
+    for (let i = 0; i < 20; i++) add('RealSurge', 8 + (i % 6)); // 20 last week
+    for (let i = 0; i < 4; i++) add('Noisy', i); // 4 this week
+    add('Noisy', 8); // 1 last week
+    const hits = detectEntitySurges();
+    expect(hits.some((h) => h.subject === 'Noisy')).toBe(false);
+    const real = hits.find((h) => h.subject === 'RealSurge')!;
+    expect(real.kind).toBe('entity-surge');
+    expect(real.score).toBeCloseTo((45 + 2) / (20 + 2), 5); // shrunk ratio, not 2.25 raw
+    expect(real.significance).toBeGreaterThan(real.score); // poisson z drives ranking
   });
 
   it('detectPriceDrops needs two snapshot days and a ≥15% drop', () => {
@@ -248,6 +332,36 @@ describe('anomaly detectors', () => {
     upsertMetric({ source: 'aa', entity: 'Ghost', metric: 'price_blended', value: 20, date: utcDay(new Date(Date.now() - 11 * 864e5)) });
     upsertMetric({ source: 'aa', entity: 'Ghost', metric: 'price_blended', value: 15, date: utcDay(new Date(Date.now() - 10 * 864e5)) });
     expect(detectPriceDrops()).toEqual([]);
+  });
+
+  it('detectPriceDrops rounds prices in the published text and discloses the snapshot span', () => {
+    // regression: raw floats went straight into text ("0.30000000000000004 →
+    // 0.15") and a 15% drop over 1 day read the same as over 3 months
+    useTestDb();
+    upsertMetric({ source: 'aa', entity: 'Floaty', metric: 'price_blended', value: 0.30000000000000004, date: utcDay(new Date(Date.now() - 4 * 864e5)) });
+    upsertMetric({ source: 'aa', entity: 'Floaty', metric: 'price_blended', value: 0.15 });
+    const hits = detectPriceDrops();
+    expect(hits).toHaveLength(1);
+    expect(hits[0]!.fallback).toContain('$0.3 → $0.15');
+    expect(hits[0]!.fallback).not.toContain('0.30000000000000004');
+    expect(hits[0]!.fallback).toContain('over 4d');
+    // no drop history → documented fallback: z anchored at the 15% bar
+    expect(hits[0]!.significance).toBeCloseTo((2 * 0.5) / 0.15, 1);
+  });
+
+  it('detectPriceDrops scores against the entity’s own drop history when it exists', () => {
+    useTestDb();
+    const day = (ago: number) => utcDay(new Date(Date.now() - ago * 864e5));
+    upsertMetric({ source: 'aa', entity: 'Hist', metric: 'price_blended', value: 10, date: day(4) });
+    upsertMetric({ source: 'aa', entity: 'Hist', metric: 'price_blended', value: 9.8, date: day(3) });
+    upsertMetric({ source: 'aa', entity: 'Hist', metric: 'price_blended', value: 10.1, date: day(2) });
+    upsertMetric({ source: 'aa', entity: 'Hist', metric: 'price_blended', value: 9.9, date: day(1) });
+    upsertMetric({ source: 'aa', entity: 'Hist', metric: 'price_blended', value: 6, date: day(0) });
+    const hits = detectPriceDrops();
+    expect(hits).toHaveLength(1);
+    expect(hits[0]!.score).toBeCloseTo(3.94, 1); // native drop·10 convention
+    // ~39% drop against a history of ±3% wiggles → very high z
+    expect(hits[0]!.significance).toBeGreaterThan(10);
   });
 
   it('detectClusterHeat fires only for fresh, coherent SUBTOPICS', () => {
@@ -278,6 +392,24 @@ describe('anomaly detectors', () => {
     expect(hits[0].subject).toBe('Hot subtopic');
   });
 
+  it('detectClusterHeat scores by ACTUAL heat: a hotter cluster of the same size ranks higher', () => {
+    // regression: score was 2+size/10 — heat only picked the candidate, so a
+    // marginal #1 scored identically to a runaway
+    const db = useTestDb();
+    db.insert(topicClusters)
+      .values([
+        { parentId: 1, label: 'Lukewarm subtopic', size: 9, heat: 0.6, coherence: 0.8, date: utcDay(), createdAt: new Date() },
+        { parentId: 1, label: 'Runaway subtopic', size: 9, heat: 1, coherence: 0.8, date: utcDay(), createdAt: new Date() },
+      ])
+      .run();
+    const hits = detectClusterHeat();
+    expect(hits).toHaveLength(2);
+    expect(hits[0]!.subject).toBe('Runaway subtopic');
+    expect(hits[0]!.score).toBe(1); // native heat, no fabricated 2+size/10
+    expect(hits[0]!.significance).toBeGreaterThan(hits[1]!.significance);
+    expect(hits[0]!.significance).toBeCloseTo(1 * Math.sqrt(9), 8);
+  });
+
   it('runAnomalies clears today rows on a zero-detection run and writes distinct fallback headlines otherwise', async () => {
     const db = useTestDb();
     db.insert(patterns)
@@ -296,6 +428,47 @@ describe('anomaly detectors', () => {
     expect(rows).toHaveLength(1);
     expect(rows[0].headline).not.toBe(rows[0].detail);
     expect(rows[0].headline.length).toBeLessThanOrEqual(110);
+  });
+
+  it('runAnomalies ranks across kinds by SIGNIFICANCE, not by the native score scales', async () => {
+    // regression: the sort mixed six incomparable scales. Here the surge's
+    // native score (shrunk ratio 2.8) is BELOW the launch spike's (z 3.0),
+    // but its significance (poisson z ≈ 4.0) is ABOVE (3.0) — the surge must
+    // be inserted first regardless.
+    const db = useTestDb();
+    const add = (name: string, daysAgo: number) =>
+      db.insert(stories)
+        .values({
+          title: `${name} ${daysAgo} ${Math.random()}`,
+          status: 'curated',
+          topScore: 50,
+          entities: JSON.stringify([{ name, kind: 'model' }]),
+          createdAt: new Date(Date.now() - daysAgo * 864e5),
+        })
+        .run();
+    for (let i = 0; i < 12; i++) add('SurgeAI', i % 7); // 12 this week
+    for (let i = 0; i < 3; i++) add('SurgeAI', 8 + (i % 6)); // 3 last week (8-13d ago: off the second-precision 7d boundary)
+    for (const [d, c] of [[6, 2], [5, 4], [4, 2], [3, 4], [2, 3]] as const) {
+      db.insert(metricPoints)
+        .values({
+          source: 'launches',
+          entity: 'agents',
+          metric: 'count',
+          value: c,
+          date: utcDay(new Date(Date.now() - d * 864e5)),
+          createdAt: new Date(),
+        })
+        .run();
+    }
+    db.insert(metricPoints)
+      .values({ source: 'launches', entity: 'agents', metric: 'count', value: 6, date: utcDay(new Date(Date.now() - 864e5)), createdAt: new Date() })
+      .run();
+    vi.mocked(chatJSON).mockRejectedValueOnce(new Error('cap'));
+    expect((await runAnomalies()).patterns).toBe(2);
+    const rows = db.select().from(patterns).orderBy(patterns.id).all();
+    expect(rows.map((r) => r.kind)).toEqual(['entity-surge', 'launch-spike']);
+    // the stored native scores would have ranked them the OTHER way
+    expect(rows[0].score).toBeLessThan(rows[1].score);
   });
 
   it('detectPainClusters surfaces recurring pains only', () => {

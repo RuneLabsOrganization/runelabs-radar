@@ -300,6 +300,32 @@ describe('forgeOpportunity', () => {
     expect(rows.some((r) => r.feature === 'forge' && r.userId === 1)).toBe(true);
   });
 
+  it('flags corrupt stored scores as legacy instead of gating all-zeros as "terrible" (F7)', async () => {
+    const now = new Date();
+    const id = db
+      .insert(opportunities)
+      .values({
+        slug: 'corrupt-scores', ownerUserId: 1, title: 'Corrupt stored scores',
+        thesis: 'A sufficiently long thesis for the forge to work against.',
+        sector: 'devtools', status: 'active', flipScore: 70, holdScore: 50,
+        scores: '{not-json',
+        evidence: JSON.stringify([{ type: 'pain', label: 'P1' }, { type: 'pattern', label: 'A1' }]),
+        firstSeenAt: now, lastSeenAt: now,
+      })
+      .returning({ id: opportunities.id })
+      .get()!.id;
+
+    const res = await forgeOpportunity(id, 1);
+    expect(res.ok).toBe(true);
+    const row = db.select().from(opportunities).where(eq(opportunities.id, id)).get()!;
+    const review = JSON.parse(row.review!);
+    // pre-fix: forge's private parser zero-filled corrupt JSON with NO legacy
+    // flag, so the gate treated the row as genuinely zero on every axis
+    expect(review.flags).toContain('legacy-row');
+    expect(row.verdict).toBe('watch');
+    expect(row.confidence).toBe(40); // R10: legacy rows are never gated strong
+  });
+
   it('does not NaN when stored kpis or evidence JSON is malformed', async () => {
     const now = new Date();
     const sub = Object.fromEntries(SUB_KEYS.map((k) => [k, 14]));

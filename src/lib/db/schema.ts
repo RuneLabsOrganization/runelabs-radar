@@ -366,7 +366,7 @@ export const patterns = sqliteTable(
   'patterns',
   {
     id: integer('id').primaryKey({ autoIncrement: true }),
-    kind: text('kind').notNull(), // 'sector-spike' | 'entity-surge' | 'price-drop' | 'launch-spike' | 'cluster-heat' | 'pain-cluster'
+    kind: text('kind').notNull(), // 'sector-spike' | 'entity-surge' | 'entity-debut' | 'price-drop' | 'launch-spike' | 'cluster-heat' | 'pain-cluster'
     // what the detection is about (entity name, sector slug, model name…) —
     // lets the UI fetch the underlying series for a per-pattern trend chart
     subject: text('subject'),

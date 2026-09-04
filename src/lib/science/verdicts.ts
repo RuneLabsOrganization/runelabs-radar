@@ -61,13 +61,22 @@ export async function runVerdictGrade(): Promise<{ graded: number }> {
       replacementExistedAtCall,
     });
 
+    // 'unknown' (no prior history to grade against) has no change_kind enum
+    // value of its own; it is stored as 'unclassified' with the heldDays -1
+    // sentinel, which verdict-accuracy.ts excludes from every denominator.
+    // The re-grade filter keys on heldDays === null, so these rows are graded
+    // exactly once. The old behaviour forced replacementExistedAtCall=false
+    // here and published these flips as upgrades.
+    const stored: 'upgrade' | 'drift' | 'correction' | 'unclassified' =
+      kind === 'unknown' ? 'unclassified' : kind;
+
     db.update(kitPickHistory)
-      .set({ changeKind: kind, heldDays: heldDays ?? -1 })
+      .set({ changeKind: stored, heldDays: heldDays ?? -1 })
       .where(eq(kitPickHistory.id, row.id))
       .run();
 
     // Mirror the judgement onto the claim that just closed, if there is one.
-    if (kind !== 'unclassified') {
+    if (stored !== 'unclassified') {
       const claim = db
         .select()
         .from(verdictClaims)
@@ -84,7 +93,7 @@ export async function runVerdictGrade(): Promise<{ graded: number }> {
         .all()
         .at(-1);
       if (claim) {
-        db.update(verdictClaims).set({ outcome: kind }).where(eq(verdictClaims.id, claim.id)).run();
+        db.update(verdictClaims).set({ outcome: stored }).where(eq(verdictClaims.id, claim.id)).run();
       }
     }
 

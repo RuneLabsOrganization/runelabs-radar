@@ -98,7 +98,10 @@ describe('merged first-party market reader (§6d)', () => {
     expect(marketModels()).toBeNull();
   });
 
-  it('elo-only models get a cohort min-max 0-100 capability index', () => {
+  it('elo-only models get a robust-scaled 0-100 index, flagged elo-mapped with the seed date', () => {
+    // replaces the old min-max expectation (hi 100 / lo 0): min-max let one
+    // arena outlier compress the whole Elo cohort, and the mapped values were
+    // merged with true AA intelligence with no way to tell them apart
     recordMetrics([
       { source: 'open-bench', entity: 'EloHi', metric: 'elo', value: 1450 },
       { source: 'open-bench', entity: 'EloLo', metric: 'elo', value: 1400 },
@@ -110,10 +113,31 @@ describe('merged first-party market reader (§6d)', () => {
     ]);
     const res = marketModels();
     const byName = new Map(res!.models.map((m) => [m.name, m]));
-    expect(byName.get('EloHi')!.intelligence).toBe(100);
-    expect(byName.get('EloLo')!.intelligence).toBe(0);
-    expect(byName.get('Intel Model')!.intelligence).toBe(60);
-    expect(byName.get('Intel Model')!.source).toBe('first_party');
+    // cohort [1450, 1400]: median 1425, MAD 25 → ±1 MAD → 66.1 / 33.9
+    expect(byName.get('EloHi')!.intelligence).toBe(66.1);
+    expect(byName.get('EloLo')!.intelligence).toBe(33.9);
+    expect(byName.get('EloHi')).toMatchObject({ intelligenceSource: 'elo-mapped', intelligenceSeededAt: '2026-08' });
+    expect(byName.get('Intel Model')).toMatchObject({
+      intelligence: 60,
+      source: 'first_party',
+      intelligenceSource: 'aa',
+      intelligenceSeededAt: null,
+    });
+  });
+
+  it('a constant Elo cohort maps to the neutral 50 — and is still flagged elo-mapped', () => {
+    recordMetrics([
+      { source: 'open-bench', entity: 'OnlyElo', metric: 'elo', value: 1450 },
+      { source: 'provider-pricing', entity: 'OnlyElo', metric: 'price_in', value: 5 },
+    ]);
+    const res = marketModels();
+    expect(res!.models).toHaveLength(1);
+    expect(res!.models[0]).toMatchObject({
+      name: 'OnlyElo',
+      intelligence: 50, // no spread → no information → neutral, not 100
+      intelligenceSource: 'elo-mapped',
+      intelligenceSeededAt: '2026-08',
+    });
   });
 
   it('first-party coverage beats the AA row for the same model; uncovered models fall back to AA', () => {
@@ -149,7 +173,7 @@ describe('merged first-party market reader (§6d)', () => {
     expect(byName.get('GPT-5.5')!.source).toBe('first_party');
     // a stored snapshot means AA was configured at fetch time — it backstops
     // uncovered models during the transition (matches runBoardSync's policy)
-    expect(byName.get('MiniMax M2')!.source).toBe('artificial_analysis');
+    expect(byName.get('MiniMax M2')).toMatchObject({ source: 'artificial_analysis', intelligenceSource: 'aa' });
   });
 
   it('no key and no snapshot: uncovered models are absent', () => {

@@ -56,14 +56,40 @@ describe('lead repository', () => {
       .toEqual(['high', 'mid', 'low']);
   });
 
-  it('paginates with a cursor', () => {
+  it('paginates with a keyset cursor (opaque token, F11)', () => {
     insertLeads(ALICE, Array.from({ length: 7 }, (_, i) => draft(`s${i}`, 100 - i)));
     const first = listLeads(ALICE, { limit: 3 });
     expect(first.leads).toHaveLength(3);
-    expect(first.nextCursor).toBe(3);
+    // the cursor is a packed (score, id) key, NOT an offset
+    expect(first.nextCursor).not.toBeNull();
+    expect(first.nextCursor).not.toBe(3);
     const second = listLeads(ALICE, { limit: 3, cursor: first.nextCursor! });
     expect(second.leads.map((l) => l.slug))
       .not.toEqual(expect.arrayContaining(first.leads.map((l) => l.slug)));
+  });
+
+  it('never duplicates or skips a lead inserted between pages (F11 keyset regression)', () => {
+    insertLeads(ALICE, Array.from({ length: 6 }, (_, i) => draft(`k${i}`, 60 - i)));
+    const first = listLeads(ALICE, { limit: 2 });
+    // a new lead lands BETWEEN the pages — offset pagination would shift every
+    // row after it and re-serve or skip one
+    insertLeads(ALICE, [draft('late-arrival', 55)]);
+    const seen = new Set(first.leads.map((l) => l.slug));
+    let cursor = first.nextCursor;
+    while (cursor !== null) {
+      const page = listLeads(ALICE, { limit: 2, cursor });
+      for (const l of page.leads) {
+        expect(seen.has(l.slug), `duplicate: ${l.slug}`).toBe(false);
+        seen.add(l.slug);
+      }
+      cursor = page.nextCursor;
+    }
+    // every pre-existing lead was served exactly once (the newcomer may or may
+    // not appear — it can sort ahead of the cursor into already-served
+    // territory — but it must never cause a dup or a skip)
+    for (const slug of Array.from({ length: 6 }, (_, i) => `k${i}`)) {
+      expect(seen.has(slug), `skipped: ${slug}`).toBe(true);
+    }
   });
 
   it('hides dismissed leads and records the reason', () => {

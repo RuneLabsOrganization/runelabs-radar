@@ -1,24 +1,12 @@
 import { sanitizeBrief } from './brief';
 import { enrichEvidence, type EvidenceItem } from './evidence';
-import { sanitizeKpis, SUB_KEYS, type OppKpis, type SubScores } from './engine';
+import { parseSubScores } from './axes';
+import { sanitizeKpis, type OppKpis } from './engine';
 import { timeAgo } from '../feed';
 import type { opportunities } from '../db/schema';
 import type { OppReview, OppView, Verdict } from '@/components/OppDossier';
 
 type OppRow = typeof opportunities.$inferSelect;
-
-function parseSub(json: string): SubScores {
-  const zero = Object.fromEntries(SUB_KEYS.map((k) => [k, 0])) as SubScores;
-  try {
-    const parsed = JSON.parse(json) as Record<string, unknown>;
-    for (const k of SUB_KEYS) {
-      if (typeof parsed[k] === 'number') zero[k] = parsed[k] as number;
-    }
-    return zero;
-  } catch {
-    return zero;
-  }
-}
 
 function parseEvidence(json: string): { type: string; label: string }[] {
   try {
@@ -78,13 +66,10 @@ export function oppViewFromRow(r: OppRow): OppView {
       kpis = null;
     }
   }
-  let legacy = true;
-  try {
-    const raw = JSON.parse(r.scores) as Record<string, unknown>;
-    legacy = typeof raw.moat !== 'number'; // pre-dossier assessments lack the new axes
-  } catch {
-    legacy = true;
-  }
+  // the ONE shared parser decides both the sub-scores and the legacy flag —
+  // the dossier never scores a stored row differently from rescore/forge
+  const parsedScores = parseSubScores(r.scores);
+  const legacy = parsedScores.legacy;
   const evidence: EvidenceItem[] = enrichEvidence(parseEvidence(r.evidence));
   return {
     id: r.id,
@@ -97,7 +82,7 @@ export function oppViewFromRow(r: OppRow): OppView {
     verdict: r.verdict as Verdict,
     confidence: r.confidence,
     review: parseReview(r.review),
-    sub: parseSub(r.scores),
+    sub: parsedScores.sub,
     kpis,
     legacy,
     evidence,

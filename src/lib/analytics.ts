@@ -26,6 +26,7 @@ import { safeHttpUrl } from './safe-url';
 import { parseDomainScores, topDomain } from '@/components/DomainChips';
 import { utcDay } from './metrics';
 import { blendedPrice } from './market-price';
+import { robustScale } from './stats';
 
 const DAY_MS = 864e5;
 
@@ -256,7 +257,7 @@ function _topEntities(limit = 8): EntityCount[] {
 }
 
 export interface EchoStats {
-  /** Stories in the last 7 days corroborated by 2+ sources. */
+  /** Stories in the last 7 days corroborated by 2+ DISTINCT sources. */
   multiSource: number;
   strongest: { title: string; sources: number } | null;
 }
@@ -272,21 +273,26 @@ function _echoStats(): EchoStats {
     .all();
   if (recent.length === 0) return { multiSource: 0, strongest: null };
 
-  const counts = new Map<number, number>();
+  // DISTINCT source ids per story — items.sourceId is the sources FK, so no
+  // join is needed. The old count(items) let three items from a single feed
+  // pass as "corroborated by 2+ sources".
+  const sourcesByStory = new Map<number, Set<number>>();
   const itemRows = db
-    .select({ storyId: items.storyId })
+    .select({ storyId: items.storyId, sourceId: items.sourceId })
     .from(items)
     .where(inArray(items.storyId, recent.map((s) => s.id)))
     .all();
   for (const row of itemRows) {
     if (row.storyId == null) continue;
-    counts.set(row.storyId, (counts.get(row.storyId) ?? 0) + 1);
+    const set = sourcesByStory.get(row.storyId) ?? new Set<number>();
+    set.add(row.sourceId);
+    sourcesByStory.set(row.storyId, set);
   }
 
   let multiSource = 0;
   let strongest: { title: string; sources: number } | null = null;
   for (const s of recent) {
-    const n = counts.get(s.id) ?? 0;
+    const n = sourcesByStory.get(s.id)?.size ?? 0;
     if (n >= 2) multiSource += 1;
     if (n >= 2 && (!strongest || n > strongest.sources)) {
       strongest = { title: s.title, sources: n };
@@ -323,6 +329,16 @@ export type MarketSource = 'first_party' | 'artificial_analysis';
 
 export interface MarketModel extends AaModel {
   source: MarketSource;
+  /**
+   * Provenance of the `intelligence` number: 'aa' = a genuine AA-style 0-100
+   * index (open-bench transcription or the AA snapshot); 'elo-mapped' = an
+   * LMArena Elo robust-scaled onto that index within the Elo cohort. The two
+   * are NOT the same quantity — the old silent min-max merge ranked them
+   * together with no way to tell them apart.
+   */
+  intelligenceSource: 'aa' | 'elo-mapped';
+  /** For 'elo-mapped' rows: the manual-review date of the transcribed Elo seeds. */
+  intelligenceSeededAt: string | null;
 }
 
 /** Latest compact AA snapshot parsed into AaModel rows (genuine AA data only — never first-party). */
@@ -385,13 +401,23 @@ interface FpModel {
 }
 
 /**
+ * Last manual review of the transcribed LMArena Elo seeds — keep in sync with
+ * the "last manual review" line on SEED_MODELS in ingest/openbench.ts. The
+ * Elo→index mapping below must be datable: the values are hand-transcribed
+ * seeds, not a live feed.
+ */
+const ELO_SEED_REVIEW = '2026-08';
+
+/**
  * First-party market rows assembled from our own metric_points series
  * (§6a/§6b): capability from 'open-bench' (metric 'intelligence'; 'elo'
- * min-max-mapped onto the 0-100 index when a model has no composite), prices
- * from 'provider-pricing' with 'openrouter' filling the gaps, speed from the
- * 'radar-speed' rollup (§6e). The media/livebench metric keys ('image_elo' /
- * 'video_elo' / 'livebench') are deliberately NOT capability evidence here —
- * different arenas must not qualify a model as covered (§6b note to 6d).
+ * robust-scaled onto the 0-100 index within the Elo cohort when a model has
+ * no composite — flagged 'elo-mapped' with the seed review date, never
+ * silently merged with true index values), prices from 'provider-pricing'
+ * with 'openrouter' filling the gaps, speed from the 'radar-speed' rollup
+ * (§6e). The media/livebench metric keys ('image_elo' / 'video_elo' /
+ * 'livebench') are deliberately NOT capability evidence here — different
+ * arenas must not qualify a model as covered (§6b note to 6d).
  * A model is first-party-covered when it has a capability signal AND at least
  * one price signal; everything else stays on the AA backstop.
  */
@@ -442,10 +468,12 @@ function firstPartyModels(): { latestDate: string | null; models: MarketModel[] 
     acc.set(key, cur);
   }
 
-  // ELO-only models land on the 0-100 index via min-max over the ELO cohort.
+  // ELO-only models land on the 0-100 index via a robust (median/MAD) scale
+  // over the ELO cohort — min-max let a single arena outlier compress everyone
+  // else. The mapped values are still NOT AA intelligence: they leave here
+  // flagged 'elo-mapped' with the seed review date so nothing downstream can
+  // merge them into true index values silently.
   const elos = [...acc.values()].filter((m) => m.elo !== null).map((m) => m.elo!);
-  const eloLo = elos.length > 0 ? Math.min(...elos) : 0;
-  const eloHi = elos.length > 0 ? Math.max(...elos) : 0;
 
   const models: MarketModel[] = [];
   for (const m of acc.values()) {
@@ -453,8 +481,8 @@ function firstPartyModels(): { latestDate: string | null; models: MarketModel[] 
     const priceOut = m.ppOut ?? m.orOut;
     const covered = (m.intelligence !== null || m.elo !== null) && (priceIn !== null || priceOut !== null);
     if (!covered) continue;
-    const intelligence =
-      m.intelligence ?? (eloHi === eloLo ? 50 : Math.round(((m.elo! - eloLo) / (eloHi - eloLo)) * 1000) / 10);
+    const eloMapped = m.intelligence === null;
+    const intelligence = m.intelligence ?? robustScale(m.elo!, elos) * 100;
     const price = blendedPrice(priceIn, priceOut).price!;
     models.push({
       name: m.name ?? '?',
@@ -467,6 +495,8 @@ function firstPartyModels(): { latestDate: string | null; models: MarketModel[] 
       speed: m.speed,
       released: null,
       source: 'first_party',
+      intelligenceSource: eloMapped ? 'elo-mapped' : 'aa',
+      intelligenceSeededAt: eloMapped ? ELO_SEED_REVIEW : null,
     });
   }
   models.sort((a, b) => b.intelligence - a.intelligence);
@@ -495,7 +525,7 @@ function _marketModels(limit = 60): { fetchedAt: string; models: MarketModel[] }
   if (aa) {
     for (const m of aa.models) {
       if (covered.has(normalizeModelKey(m.name))) continue;
-      models.push({ ...m, source: 'artificial_analysis' });
+      models.push({ ...m, source: 'artificial_analysis', intelligenceSource: 'aa', intelligenceSeededAt: null });
     }
   }
   if (models.length === 0) return null;

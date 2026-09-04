@@ -8,6 +8,7 @@ import { promptLine, stripCjkDeep } from '../prompt-hygiene';
 import { SUB_KEYS, type SubKey } from './axes';
 import type { AxisAdjustment, CriticResult } from './gate';
 import type { OppDraft } from './engine';
+import { valuePicks } from './value-picks';
 import { visibleTo } from './scope';
 
 /**
@@ -267,10 +268,7 @@ function realistGrounding(sector: string | null, marketVisible: boolean): string
     ? (() => {
         const market = marketModels();
         const marketText = market
-          ? market.models
-              .filter((m) => m.priceIn !== null && m.priceOut !== null)
-              .sort((a, b) => b.intelligence / b.price - a.intelligence / a.price)
-              .slice(0, 6)
+          ? valuePicks(market.models, { limit: 6, requireBothSides: true })
               .map(
                 (m) =>
                   `- ${promptLine(m.name, 60)}: intel ${m.intelligence}, in $${m.priceIn}/1M, out $${m.priceOut}/1M`,

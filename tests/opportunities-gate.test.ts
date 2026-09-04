@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   applyGate,
   blendScore,
+  MAX_WINDOW_MONTHS,
   parseWindowMonths,
   unverifiedCritic,
   type CriticResult,
@@ -54,6 +55,21 @@ describe('parseWindowMonths', () => {
     expect(parseWindowMonths('4-8 weeks')).toBe(1);
     expect(parseWindowMonths('whenever the market feels like it')).toBeNull();
     expect(parseWindowMonths(null)).toBeNull();
+  });
+
+  it('rounds weeks UP with a 1-month floor — the shortest windows hit the caps, never escape them', () => {
+    // pre-fix: Math.round(1/4.33) = 0 → null → every R1–R4 window cap skipped
+    expect(parseWindowMonths('1 week')).toBe(1);
+    expect(parseWindowMonths('2 weeks')).toBe(1);
+    expect(parseWindowMonths('1-2 weeks before the incumbent ships this')).toBe(1);
+    expect(parseWindowMonths('6 weeks')).toBe(2); // ceil(6/4.33)
+  });
+
+  it('shares one ceiling with the sanitizer and the prompt (MAX_WINDOW_MONTHS)', () => {
+    expect(MAX_WINDOW_MONTHS).toBe(36);
+    expect(parseWindowMonths('3 years')).toBe(36);
+    expect(parseWindowMonths('4 years')).toBeNull(); // out-of-contract → unknown window
+    expect(parseWindowMonths('10 years')).toBeNull();
   });
 });
 
@@ -128,6 +144,50 @@ describe('applyGate', () => {
     expect(applyGate(input({ evidenceCount: 0 }), critic()).confidence).toBeLessThanOrEqual(30);
     expect(applyGate(input({ evidenceCount: 1 }), critic()).confidence).toBeLessThanOrEqual(50);
     expect(applyGate(input({ evidenceCount: 0 }), critic()).verdict).toBe('watch');
+  });
+
+  it('F1: a parsed "1 week" window lands on the R1 ≤2mo cap instead of skipping it', () => {
+    const w = parseWindowMonths('1 week before the platform ships this natively');
+    expect(w).toBe(1);
+    const out = applyGate(input({ windowMonths: w }), critic());
+    expect(out.review.capsApplied).toContainEqual({ play: 'flip', rule: 'window ≤ 2mo', from: 75, to: 40 });
+    expect(out.verdict).toBe('reject'); // r1 forces reject
+  });
+
+  it('F2: clamped KPIs are flagged AND still evaluated by R8 (a $50k price cannot escape silently)', () => {
+    // sanitizeKpis clamps priceUsd 50000 → 10000 (KPI_BOUNDS.priceUsd) and records it
+    const kpis = { initialCostUsd: 10000, monthlyCostUsd: 500, priceUsd: 10000, breakEvenCustomers: 1, competitorCount: null };
+    const out = applyGate(input({ kpis, windowMonths: 6, kpiClamped: ['priceUsd'] }), critic());
+    expect(out.review.flags).toContain('kpi clamped into valid range: priceUsd');
+    // R8 evaluated on the clamped numbers: 1×10000−500 = 9500/mo → payback ~2mo ≤ 6mo → no cap,
+    // but the flag alone downgrades pursue → watch
+    expect(out.verdict).toBe('watch');
+    // and when the clamped economics don't close, the cap fires
+    const underwater = applyGate(
+      input({ kpis: { ...kpis, monthlyCostUsd: 99999 }, windowMonths: 6, kpiClamped: ['priceUsd'] }),
+      critic(),
+    );
+    expect(underwater.review.flags).toContain('never breaks even at stated economics');
+    expect(underwater.flipScore).toBeLessThanOrEqual(50);
+  });
+
+  it('F10: >2 zero-filled axes flag the trail and cap confidence like thin evidence', () => {
+    const partial = sub({ moat: 0, regClear: 0, platformSafe: 0 });
+    const out = applyGate(
+      input({ sub: partial, missingAxes: ['moat', 'regClear', 'platformSafe'] }),
+      critic(),
+    );
+    expect(out.review.flags).toContain('axes zero-filled from a partial payload: moat, regClear, platformSafe');
+    expect(out.confidence).toBeLessThanOrEqual(30);
+  });
+
+  it('F10: 1-2 zero-filled axes flag without capping; a complete payload is unchanged', () => {
+    const one = applyGate(input({ missingAxes: ['moat'] }), critic());
+    expect(one.review.flags.some((f) => f.includes('moat'))).toBe(true);
+    expect(one.confidence).toBe(80);
+    const complete = applyGate(input(), critic());
+    expect(complete.confidence).toBe(80);
+    expect(complete.review.flags).toEqual([]);
   });
 
   it('critic axis adjustments apply clamped, and land in the trail', () => {

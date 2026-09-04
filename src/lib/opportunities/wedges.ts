@@ -145,13 +145,19 @@ export function wedgeSpaceSize(space: WedgeSpace): number {
 /**
  * Mixed-radix decode: index → exactly one wedge. Bijective over
  * [0, wedgeSpaceSize), which is what lets composition enumerate the space by
- * integer without materialising it.
+ * integer without materialising it. Throws on a degenerate axis (no active
+ * values) instead of drifting into `rest % 0 = NaN` — today composeLeads'
+ * spaceSize===0 early-return is the only thing standing between a fully
+ * deactivated axis and that NaN, so the guard lives at the source.
  */
 export function wedgeAt(space: WedgeSpace, index: number): Wedge {
   let rest = index;
   const out = {} as Wedge;
   for (const axis of WEDGE_AXES) {
     const values = space[axis];
+    if (values.length === 0) {
+      throw new Error(`wedgeAt: wedge axis "${axis}" has no active values — the taxonomy space is degenerate`);
+    }
     out[axis] = values[rest % values.length];
     rest = Math.floor(rest / values.length);
   }

@@ -35,7 +35,14 @@ export interface LeadDraft {
 
 export interface ComposeResult {
   leads: LeadDraft[];
-  /** Feed back as `cursor` for the next page; null when the space is exhausted. */
+  /**
+   * Feed back as `cursor` for the next page; null when the space is
+   * exhausted. The cursor is a position in TODAY's permutation of the
+   * CURRENT pool — if the pool size changes (new primitives ingest, stories
+   * curated), the permutation rescrambles and an outstanding cursor no
+   * longer points at the same combinations. pool.ts's per-day in-memory
+   * snapshot is what keeps this stable within one process/day.
+   */
   nextCursor: number | null;
   spaceSize: number;
   /** Combinations examined, including those rejected — for observability. */
@@ -82,13 +89,27 @@ function phrase(words: string[]): string {
 const TRAILER =
   'Composed from live signal and not yet validated — refine it to get scores and KPIs.';
 
-/** Evidence strength by primitive type — a flat, legible ordering term. */
-const TYPE_BONUS: Record<PrimitiveType, number> = {
-  pain: 20,      // someone said they hurt: direct demand evidence
-  pattern: 12,   // capability or timing shift: strong circumstantial
-  entity: 4,
-  story: 0,      // news: context only
-};
+/**
+ * Heuristic score — pure composition quality, deliberately TYPE-FREE.
+ * Anchors (true 0-100, both ends reachable):
+ *   - signal strength (primitive.intensity, 0..100) contributes up to 70
+ *   - average wedge weight contributes up to 30, mapped from the taxonomy's
+ *     current 8..15 extremes (weakest shipped wedge .. strongest)
+ * So 0 = no signal on the weakest wedge, ~50 = a mid-strength signal on a
+ * mid-weight wedge, 100 = ceiling-level signal on the strongest wedge.
+ * Type preference (pain > pattern > entity > story) is NOT part of the
+ * score — it lives only in the get_leads sort (mcp/tools/leads.ts), so the
+ * primitive's type is never counted twice.
+ */
+const WEDGE_WEIGHT_MIN = 8;
+const WEDGE_WEIGHT_MAX = 15;
+
+function heuristicScore(intensity: number, avgWeight: number): number {
+  const signal = Math.max(0, Math.min(100, intensity)) * 0.7;
+  const wedgeSpan = WEDGE_WEIGHT_MAX - WEDGE_WEIGHT_MIN;
+  const wedge = Math.max(0, Math.min(1, (avgWeight - WEDGE_WEIGHT_MIN) / wedgeSpan)) * 30;
+  return Math.round(signal + wedge);
+}
 
 function thesisSkeleton(type: PrimitiveType, label: string, wedge: Wedge): string {
   const buyer = wedge.buyer.label;
@@ -154,16 +175,10 @@ export function composeLeads(opts: ComposeOptions): ComposeResult {
       const slug = normalizeSlug(`${head}-${unique}`);
       if (!slug || exclude.has(slug) || emitted.has(slug)) continue;
 
-      // intensity + wedge weight + a type bonus that dominates wedge variance
+      // signal strength + wedge weight only — type stays out of the score
       const avgWeight =
         WEDGE_AXES.reduce((n, axis) => n + wedge[axis].weight, 0) / WEDGE_AXES.length;
-      const heuristicScore = Math.max(
-        0,
-        Math.min(
-          100,
-          Math.round(primitive.intensity * 0.35 + avgWeight * 1.5 + TYPE_BONUS[primitive.type]),
-        ),
-      );
+      const score = heuristicScore(primitive.intensity, avgWeight);
 
       emitted.add(slug);
       leads.push({
@@ -180,7 +195,7 @@ export function composeLeads(opts: ComposeOptions): ComposeResult {
           buyer: wedge.buyer.slug,
           moat_play: wedge.moat_play.slug,
         },
-        heuristicScore,
+        heuristicScore: score,
         combinationIndex: index,
       });
 

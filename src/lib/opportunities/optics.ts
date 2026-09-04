@@ -31,10 +31,17 @@ export const OPTICS: Optic[] = [
   {
     id: 'mrr',
     label: 'best mrr',
-    caption: 'area = est MRR = price/mo × demand÷20 · brighter = better hold score',
+    // MRR only exists when a CUSTOMER COUNT exists: price × steady-state
+    // customers × demand weight — the same semantics as sizing.ts (its
+    // annual figure ÷ 12). Without customers there is no revenue estimate,
+    // so the tile falls back to demand-only hatching instead of printing a
+    // dimensionally wrong "MRR".
+    caption: 'area = est MRR = price/mo × steady-state customers × demand÷20 (hatched when no customer count) · brighter = better hold score',
     areaOf: (k, sub) =>
-      k?.priceUsd != null && k.priceUsd > 0 && demand(sub) > 0
-        ? Math.round(k.priceUsd * (demand(sub) / 20))
+      k?.priceUsd != null && k.priceUsd > 0 &&
+      k.breakEvenCustomers != null && k.breakEvenCustomers > 0 &&
+      demand(sub) > 0
+        ? Math.round(k.priceUsd * k.breakEvenCustomers * (demand(sub) / 20))
         : null,
     colorOf: (o, sortKey) => (sortKey === 'flip' ? o.flipScore : o.holdScore),
     colorLabel: 'hold',
