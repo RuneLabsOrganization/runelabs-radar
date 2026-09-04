@@ -7,6 +7,7 @@ import { requireViewer } from '@/lib/auth/user';
 import { getDb } from '@/lib/db';
 import { metricPoints, stories } from '@/lib/db/schema';
 import { entityDailySeries } from '@/lib/analytics';
+import { fmtCompact } from '@/lib/format';
 import { hypeIndex } from '@/lib/science/hype';
 import { timeAgo } from '@/lib/feed';
 import { getIdentity } from '@/lib/identity';
@@ -36,11 +37,7 @@ export async function generateMetadata({ params }: { params: Promise<{ name: str
 }
 
 function fmtNum(v: number): string {
-  if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(1)}M`;
-  if (v >= 10_000) return `${Math.round(v / 1000)}k`;
-  if (v >= 1000) return `${(v / 1000).toFixed(1)}k`;
-  // small values can be raw floats (metric deltas) — trim binary-float noise
-  return String(Number(v.toFixed(2)));
+  return fmtCompact(v);
 }
 
 /** Stake/Yahoo delta chip: arrow + abs + % + range label, direction-colored. */

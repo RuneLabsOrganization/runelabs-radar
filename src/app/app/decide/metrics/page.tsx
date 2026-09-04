@@ -6,6 +6,7 @@ import { requireViewer } from '@/lib/auth/user';
 import { config } from '@/lib/config';
 import { getIdentity } from '@/lib/identity';
 import { seriesFor, utcDay } from '@/lib/metrics';
+import { fmtCompact, fmtPct as sharedFmtPct } from '@/lib/format';
 import { AGENT_PLANS } from '@/lib/agent-plans';
 import {
   aaPricePressure,
@@ -48,13 +49,11 @@ function decodeKey(s: string): { source: string; entity: string; metric: string 
 }
 
 function fmtVal(v: number): string {
-  return new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 2 }).format(v);
+  return fmtCompact(v);
 }
 
 function fmtPct(pct: number | null | undefined): string {
-  if (pct == null || !Number.isFinite(pct)) return '—';
-  const s = Math.abs(pct) >= 10 ? pct.toFixed(0) : pct.toFixed(1);
-  return `${pct > 0 ? '+' : ''}${s}%`;
+  return sharedFmtPct(pct ?? null) ?? '—';
 }
 
 function explorerHref(keys: { source: string; entity: string; metric: string }[]): string {

@@ -3,6 +3,7 @@ import { getDb } from '../db';
 import { forecasts, stories } from '../db/schema';
 import { forecastFrontierPrice, frontierPriceSeries } from './forecast';
 import { utcDay } from '../metrics';
+import { median } from '../stats';
 
 export interface CalibrationBucket {
   label: string;
@@ -14,11 +15,10 @@ export interface CalibrationBucket {
   followThroughRate: number;
 }
 
-function median(values: number[]): number | null {
-  if (values.length === 0) return null;
-  const sorted = [...values].sort((a, b) => a - b);
-  const mid = Math.floor(sorted.length / 2);
-  return sorted.length % 2 === 1 ? sorted[mid] : Math.round((sorted[mid - 1] + sorted[mid]) / 2);
+/** Display-level integer median (hindsight points are integers; float median lives in stats). */
+function medianInt(values: number[]): number | null {
+  const m = median(values);
+  return m === null ? null : Math.round(m);
 }
 
 /** Average ranks (1-based); tied values share the mean of their positions. */
@@ -92,7 +92,7 @@ export function calibrationBuckets(): CalibrationBucket[] {
     meanHindsight: b.hindsights.length
       ? Math.round(b.hindsights.reduce((a, h) => a + h, 0) / b.hindsights.length)
       : null,
-    medianHindsight: median(b.hindsights),
+    medianHindsight: medianInt(b.hindsights),
     followThroughRate: b.hindsights.length
       ? Math.round((b.hindsights.filter((h) => h > 0).length / b.hindsights.length) * 100)
       : 0,

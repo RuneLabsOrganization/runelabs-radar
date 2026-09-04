@@ -2,12 +2,9 @@ import { and, desc, eq, gte, inArray } from 'drizzle-orm';
 import { TIER_PRICES, quotaFor, type Tier } from './billing';
 import { getDb } from './db';
 import { llmCalls, metricPoints, users } from './db/schema';
+import { utcDay } from './metrics';
 
 const DAY_MS = 864e5;
-
-function utcDay(d: Date): string {
-  return d.toISOString().slice(0, 10);
-}
 
 /**
  * One plan generation = 6 metered calls tagged 'plan' + 'plan-phase' (1 frame

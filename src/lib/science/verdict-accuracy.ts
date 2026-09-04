@@ -12,15 +12,15 @@ import { isNull, ne } from 'drizzle-orm';
 import { getDb } from '../db';
 import { kitPickHistory, verdictClaims } from '../db/schema';
 import { UNREGISTERED } from '../kits/claims';
+import { median } from '../stats';
 
 /** heldDays sentinel written by the grader when the span is unknowable. */
 const UNKNOWN_HELD = -1;
 
-function median(values: number[]): number | null {
-  if (values.length === 0) return null;
-  const sorted = [...values].sort((a, b) => a - b);
-  const mid = Math.floor(sorted.length / 2);
-  return sorted.length % 2 === 1 ? sorted[mid]! : Math.round((sorted[mid - 1]! + sorted[mid]!) / 2);
+/** Display-level integer median over whole-day spans (float median lives in stats). */
+function medianInt(values: number[]): number | null {
+  const m = median(values);
+  return m === null ? null : Math.round(m);
 }
 
 function gradedFlips() {
@@ -36,7 +36,7 @@ export function pickHalfLife(): number | null {
   const held = gradedFlips()
     .map((r) => r.heldDays)
     .filter((d): d is number => d !== null && d !== UNKNOWN_HELD);
-  return median(held);
+  return medianInt(held);
 }
 
 /** How often we were actually wrong, as opposed to overtaken. */

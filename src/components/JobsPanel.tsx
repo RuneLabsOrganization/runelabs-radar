@@ -1,5 +1,6 @@
 import type { CSSProperties, ReactNode } from 'react';
 import type { jobRuns } from '@/lib/db/schema';
+import { fmtDurationMs } from '@/lib/format';
 
 export type JobRun = typeof jobRuns.$inferSelect;
 
@@ -15,10 +16,7 @@ function fmtStarted(d: Date): string {
 
 function fmtDuration(run: JobRun): string {
   if (!run.finishedAt) return '—';
-  const ms = run.finishedAt.getTime() - run.startedAt.getTime();
-  if (ms < 1000) return `${ms}ms`;
-  if (ms < 90_000) return `${(ms / 1000).toFixed(1)}s`;
-  return `${(ms / 60_000).toFixed(1)}m`;
+  return fmtDurationMs(run.finishedAt.getTime() - run.startedAt.getTime());
 }
 
 function statusBadge(status: JobRun['status']): ReactNode {

@@ -1,5 +1,6 @@
 import type { OppKpis } from './engine';
 import type { SubScores } from './axes';
+import { fmtUsdCompact } from '../format';
 
 /**
  * Opportunity size estimate — annualized break-even revenue weighted by the
@@ -26,10 +27,7 @@ export function oppSizeEstimate(kpis: OppKpis | null, sub: SubScores): SizeEstim
   return { usd: 0, demandOnly: true };
 }
 
-/** Compact money: $900 / $12.5k / $340k / $1.2M. */
+/** Compact money: $900 / $12.5k / $340k / $1.2M (shared floored formatter). */
 export function fmtMoney(usd: number): string {
-  if (usd >= 1_000_000) return `$${(usd / 1_000_000).toFixed(1).replace(/\.0$/, '')}M`;
-  if (usd >= 10_000) return `$${Math.round(usd / 1000)}k`;
-  if (usd >= 1000) return `$${(usd / 1000).toFixed(1).replace(/\.0$/, '')}k`;
-  return `$${Math.round(usd)}`;
+  return fmtUsdCompact(usd);
 }

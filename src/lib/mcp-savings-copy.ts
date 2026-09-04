@@ -3,6 +3,8 @@
  * Source: tests/mcp-savings-bench.test.ts on a fat seeded catalog (chars÷4).
  * Round DOWN from the bench so we under-claim. DIY constants live in mcp-economy.ts.
  */
+import { fmtCompact } from './format';
+
 export const PUBLISHED_SAVINGS = {
   /** Mean tokens returned on compact job/read tools in the bench. */
   compactAvgReturned: 300,
@@ -26,6 +28,5 @@ export const PUBLISHED_SAVINGS = {
 } as const;
 
 export function fmtTokens(n: number): string {
-  if (n >= 1_000) return `${Math.round(n / 1_000)}k`;
-  return String(n);
+  return fmtCompact(n);
 }

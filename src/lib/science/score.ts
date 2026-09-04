@@ -29,13 +29,11 @@ import { llmCalls, metricPoints } from '../db/schema';
 import { recordMetrics, utcDay } from '../metrics';
 import { aaSnapshotModels, entityDailySeries, normalizeModelKey } from '../analytics';
 import { canonicalEntityKey } from '../entity';
+import { blendedPrice } from '../market-price';
 
 // v1 weights — tunable after calibration (§6e checklist)
 const WEIGHTS = { capability: 0.45, costEfficiency: 0.25, speed: 0.15, momentum: 0.15 } as const;
 // costEfficiency = capability / max(price_blended, floor) — floored to avoid div-by-zero on free models
-
-/** Blended price ($/1M) = PRICE_BLEND_IN*price_in + (1-w)*price_out — 3:1 in:out, AA's convention, keeps cost efficiency comparable during calibration. */
-const PRICE_BLEND_IN = 0.75;
 
 /** $/1M floor on the cost-efficiency denominator: free/0-priced models can't divide by zero or score infinite value. */
 const PRICE_FLOOR_USD = 0.05;
@@ -167,12 +165,9 @@ export function computeRadarScores(date: string = utcDay()): { scored: number } 
     // blend activates only when the radar-eval series exists for this model
     const capability =
       evalScore !== undefined ? RADAR_EVAL_WEIGHT * evalScore + (1 - RADAR_EVAL_WEIGHT) * intel : intel;
-    const pIn = priceIn.get(entity);
-    const pOut = priceOut.get(entity);
-    const blended =
-      pIn !== undefined && pOut !== undefined
-        ? PRICE_BLEND_IN * pIn + (1 - PRICE_BLEND_IN) * pOut
-        : (pIn ?? pOut);
+    const pIn = priceIn.get(entity) ?? null;
+    const pOut = priceOut.get(entity) ?? null;
+    const blended = blendedPrice(pIn, pOut).price ?? undefined;
     const costEfficiency = blended !== undefined ? capability / Math.max(blended, PRICE_FLOOR_USD) : null;
     const series = heat.get(canonicalEntityKey(entity)) ?? [];
     // mention-heat delta: recent 7 days minus prior 7 days

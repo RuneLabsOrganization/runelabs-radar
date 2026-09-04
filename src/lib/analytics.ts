@@ -24,12 +24,10 @@ import { canonicalEntityKey, canonicalEntityName } from './entity';
 import { RUNNING_FRESH_MS, type JobName } from './jobs';
 import { safeHttpUrl } from './safe-url';
 import { parseDomainScores, topDomain } from '@/components/DomainChips';
+import { utcDay } from './metrics';
+import { blendedPrice } from './market-price';
 
 const DAY_MS = 864e5;
-
-function utcDay(d: Date): string {
-  return d.toISOString().slice(0, 10);
-}
 
 export interface DayCount {
   date: string; // YYYY-MM-DD (UTC)
@@ -457,10 +455,7 @@ function firstPartyModels(): { latestDate: string | null; models: MarketModel[] 
     if (!covered) continue;
     const intelligence =
       m.intelligence ?? (eloHi === eloLo ? 50 : Math.round(((m.elo! - eloLo) / (eloHi - eloLo)) * 1000) / 10);
-    const price =
-      priceIn !== null && priceOut !== null
-        ? (3 * priceIn + priceOut) / 4 // AA-convention 3:1 blend, keeps value math comparable
-        : (priceIn ?? priceOut)!;
+    const price = blendedPrice(priceIn, priceOut).price!;
     models.push({
       name: m.name ?? '?',
       org: null, // no first-party org signal yet

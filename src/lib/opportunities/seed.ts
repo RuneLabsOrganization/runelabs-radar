@@ -11,15 +11,7 @@
  * space is ~10^5 entries and never needs materialising.
  */
 
-/** FNV-1a 32-bit — the hash family already used for ordering salt in mcp/tools/opportunities.ts. */
-function fnv1a(s: string): number {
-  let h = 0x811c9dc5;
-  for (let i = 0; i < s.length; i++) {
-    h ^= s.charCodeAt(i);
-    h = Math.imul(h, 0x01000193);
-  }
-  return h >>> 0;
-}
+import { fnv1a } from '../hash';
 
 /** Stable seed for one caller on one UTC day. */
 export function seedFor(ownerKey: string, day: string): number {

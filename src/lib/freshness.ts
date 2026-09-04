@@ -1,6 +1,7 @@
 import { and, asc, eq, gte } from 'drizzle-orm';
 import { getDb } from './db';
 import { boardHistory, stories } from './db/schema';
+import { median } from './stats';
 
 /**
  * Freshness — how fast the radar reflects what's happening (the trust-page
@@ -54,13 +55,6 @@ export interface FreshnessStats {
     medianMinutes: number | null;
     count: number;
   };
-}
-
-function median(values: number[]): number | null {
-  if (values.length === 0) return null;
-  const sorted = [...values].sort((a, b) => a - b);
-  const mid = Math.floor(sorted.length / 2);
-  return sorted.length % 2 === 1 ? sorted[mid]! : (sorted[mid - 1]! + sorted[mid]!) / 2;
 }
 
 /** Entity names from the curation JSON ([{name, kind}]) — lowercased, non-empty; [] on any malformation. */

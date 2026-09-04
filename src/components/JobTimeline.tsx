@@ -2,6 +2,7 @@
 import * as React from 'react';
 import type { JobRunCell } from '@/lib/analytics';
 import { timeAgo } from '@/lib/feed';
+import { fmtDurationMs } from '@/lib/format';
 
 const STATUS_COLOR: Record<JobRunCell['status'], string> = {
   ok: 'var(--phosphor)',
@@ -10,10 +11,7 @@ const STATUS_COLOR: Record<JobRunCell['status'], string> = {
 };
 
 function fmtDuration(ms: number | null): string {
-  if (ms === null) return '…';
-  if (ms < 1000) return '<1s';
-  const s = Math.round(ms / 1000);
-  return s < 90 ? `${s}s` : `${Math.round(s / 60)}m`;
+  return ms === null ? '…' : fmtDurationMs(ms);
 }
 
 /** Run-by-run health strip per job — errors jump out as red blocks. */

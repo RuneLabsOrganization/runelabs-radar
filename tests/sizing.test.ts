@@ -50,10 +50,10 @@ describe('oppSizeEstimate', () => {
 });
 
 describe('fmtMoney', () => {
-  it('formats compactly at each scale', () => {
+  it('formats compactly at each scale — floored, never overstated', () => {
     expect(fmtMoney(900)).toBe('$900');
     expect(fmtMoney(1200)).toBe('$1.2k');
-    expect(fmtMoney(12500)).toBe('$13k'); // rounds up from 12.5k
+    expect(fmtMoney(12500)).toBe('$12.5k'); // shared formatter floors (was "$13k")
     expect(fmtMoney(340000)).toBe('$340k');
     expect(fmtMoney(1200000)).toBe('$1.2M');
     expect(fmtMoney(1000000)).toBe('$1M');

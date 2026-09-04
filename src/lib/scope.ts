@@ -1,4 +1,5 @@
 import { DOMAINS, type Domain } from './domains';
+import { fmtCompact } from './format';
 
 /**
  * Pure helpers for the ScopeHero radar — client-safe (no DB, no ONNX).
@@ -55,8 +56,7 @@ export function tweenNumber(from: number, to: number, t: number): number {
   return from + (to - from) * easeOutExpo(t);
 }
 
-/** Compact KPI numerals: 1234 -> "1.2k". */
+/** Compact KPI numerals: 1234 -> "1.2k" (shared formatter — floored). */
 export function kpiFormat(n: number): string {
-  if (n >= 1000) return `${(n / 1000).toFixed(1).replace(/\.0$/, '')}k`;
-  return String(Math.round(n));
+  return fmtCompact(n);
 }

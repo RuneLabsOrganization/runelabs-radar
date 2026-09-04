@@ -7,6 +7,7 @@ import { urls } from '../../src/lib/urls';
 import { can } from '../../src/lib/entitlements';
 import { fitBonus, getProfile, getSession, setSession } from '../../src/lib/personalization';
 import { estimateTokens } from '../../src/lib/mcp-economy';
+import { fnv1a } from '../../src/lib/hash';
 import {
   detailSchema,
   envelopeSchema,
@@ -125,13 +126,7 @@ function effectiveScore(o: OppRow, fit: number): number {
  * see different orders. Used only to break effective-score ties.
  */
 function saltHash(rateKey: string, slug: string): number {
-  let h = 0x811c9dc5;
-  const s = `${rateKey}:${slug}`;
-  for (let i = 0; i < s.length; i++) {
-    h ^= s.charCodeAt(i);
-    h = Math.imul(h, 0x01000193);
-  }
-  return h >>> 0;
+  return fnv1a(`${rateKey}:${slug}`);
 }
 
 /** effectiveScore desc, salt-hash asc within equal scores — a total order. */

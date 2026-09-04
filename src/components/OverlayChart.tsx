@@ -3,6 +3,8 @@
  * one: each series min-max scaled to its own range (shapes comparable,
  * absolute values are not — say so under the chart).
  */
+import { fmtCompact } from '@/lib/format';
+
 export interface OverlaySeries {
   source: string;
   entity: string;
@@ -13,7 +15,7 @@ export interface OverlaySeries {
 const COLORS = ['var(--phosphor)', 'var(--amber)', 'var(--d-image)', 'var(--d-coding)', 'var(--alert)', 'var(--d-agentic)'];
 
 function fmtVal(v: number): string {
-  return new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 2 }).format(v);
+  return fmtCompact(v);
 }
 
 export default function OverlayChart({ series }: { series: OverlaySeries[] }) {

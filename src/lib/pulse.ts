@@ -62,13 +62,41 @@ export const FRONTIER_PRICE_MODELS = [
 ] as const;
 
 /**
+ * One mover computation behind every "% change" tile: latest in-window value
+ * vs the last baseline point before the window (fallback: first in-window
+ * point — a younger series, disclosed by the shorter span). `floorPct` is the
+ * noise gate: 10 for first-party series, 5 for AA prices (smoother data).
+ */
+function moverFromPts(
+  pts: { date: string; value: number }[],
+  sinceDay: string,
+  floorPct: number,
+): { from: number; to: number; pct: number } | null {
+  const inWindow = pts.filter((p) => p.date >= sinceDay);
+  if (inWindow.length === 0) return null;
+  const before = pts.filter((p) => p.date < sinceDay);
+  const base = before.length > 0 ? before[before.length - 1]! : inWindow[0]!;
+  const last = inWindow[inWindow.length - 1]!;
+  if (base.value === 0 || base.date === last.date) return null;
+  const pct = ((last.value - base.value) / Math.abs(base.value)) * 100;
+  if (Math.abs(pct) < floorPct) return null;
+  return { from: base.value, to: last.value, pct };
+}
+
+/** Lookback needed so every series has a pre-window baseline point. */
+function lookbackStart(sinceDay: string): string {
+  const windowMs = Date.parse(`${sinceDay}T00:00:00Z`);
+  const windowDays = Math.max(1, Math.round((Date.now() - windowMs) / 864e5));
+  return utcDay(new Date(Date.now() - (windowDays + 7) * 864e5));
+}
+
+/**
  * Biggest first-party series moves over the window: latest in-window value vs
  * the last baseline point before the window. AA-derived series are never
  * eligible (same `notLike source 'aa%'` rule as the public dump).
  */
 export function marketMovers(sinceDay: string, limit = 8): Mover[] {
   const db = getDb();
-  // 14d lookback so each series has a pre-window baseline point
   const rows = db
     .select({
       source: metricPoints.source,
@@ -78,7 +106,7 @@ export function marketMovers(sinceDay: string, limit = 8): Mover[] {
       date: metricPoints.date,
     })
     .from(metricPoints)
-    .where(and(notLike(metricPoints.source, 'aa%'), gte(metricPoints.date, utcDay(new Date(Date.now() - 14 * 864e5)))))
+    .where(and(notLike(metricPoints.source, 'aa%'), gte(metricPoints.date, lookbackStart(sinceDay))))
     .orderBy(metricPoints.date)
     .all();
 
@@ -92,15 +120,8 @@ export function marketMovers(sinceDay: string, limit = 8): Mover[] {
 
   const movers: Mover[] = [];
   for (const s of series.values()) {
-    const inWindow = s.pts.filter((p) => p.date >= sinceDay);
-    if (inWindow.length === 0) continue;
-    const before = s.pts.filter((p) => p.date < sinceDay);
-    const base = before.length > 0 ? before[before.length - 1]! : inWindow[0]!;
-    const last = inWindow[inWindow.length - 1]!;
-    if (base.value === 0 || base.date === last.date) continue;
-    const pct = ((last.value - base.value) / Math.abs(base.value)) * 100;
-    if (Math.abs(pct) < 10) continue; // noise floor — movers only
-    movers.push({ source: s.source, entity: s.entity, metric: s.metric, from: base.value, to: last.value, pct });
+    const m = moverFromPts(s.pts, sinceDay, 10); // noise floor — movers only
+    if (m) movers.push({ source: s.source, entity: s.entity, metric: s.metric, ...m });
   }
   return movers.sort((a, b) => Math.abs(b.pct) - Math.abs(a.pct)).slice(0, limit);
 }
@@ -154,7 +175,7 @@ export function aaPricePressure(limit = 1): Mover | null {
       and(
         eq(metricPoints.source, 'aa'),
         eq(metricPoints.metric, 'price_blended'),
-        gte(metricPoints.date, utcDay(new Date(Date.now() - 14 * 864e5))),
+        gte(metricPoints.date, lookbackStart(sinceDay)),
       ),
     )
     .orderBy(metricPoints.date)
@@ -169,15 +190,8 @@ export function aaPricePressure(limit = 1): Mover | null {
 
   const movers: Mover[] = [];
   for (const [entity, pts] of byEntity) {
-    const inWindow = pts.filter((p) => p.date >= sinceDay);
-    if (inWindow.length === 0) continue;
-    const before = pts.filter((p) => p.date < sinceDay);
-    const base = before.length > 0 ? before[before.length - 1]! : inWindow[0]!;
-    const last = inWindow[inWindow.length - 1]!;
-    if (base.value === 0 || base.date === last.date) continue;
-    const pct = ((last.value - base.value) / Math.abs(base.value)) * 100;
-    if (Math.abs(pct) < 5) continue;
-    movers.push({ source: 'aa', entity, metric: 'price_blended', from: base.value, to: last.value, pct });
+    const m = moverFromPts(pts, sinceDay, 5); // AA prices are smoother — lower noise floor
+    if (m) movers.push({ source: 'aa', entity, metric: 'price_blended', ...m });
   }
   movers.sort((a, b) => Math.abs(b.pct) - Math.abs(a.pct));
   return movers.slice(0, limit)[0] ?? null;
