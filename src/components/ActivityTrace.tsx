@@ -4,6 +4,7 @@ import * as React from 'react';
 import { useMemo, useState } from 'react';
 import { DOMAINS, DOMAIN_COLORS, DOMAIN_LABELS, isDomain, type Domain } from '@/lib/domains';
 import type { DayCount } from '@/lib/analytics';
+import { splitCompleteDays } from '@/lib/feed';
 
 const W = 640;
 const H = 180;
@@ -54,6 +55,9 @@ export default function ActivityTrace({
   }, []);
 
   const maxY = useMemo(() => Math.max(1, ...days.map((d) => d.total)), [days]);
+  // the trailing bucket is today's still-filling UTC day — band it so the
+  // rightmost dip doesn't read as a crash
+  const partialDate = useMemo(() => splitCompleteDays(days).partial?.date ?? null, [days]);
   const x = (i: number) => PAD.left + (days.length <= 1 ? 0 : (i / (days.length - 1)) * PLOT_W);
   const y = (v: number) => PAD.top + PLOT_H - (v / maxY) * PLOT_H;
 
@@ -111,6 +115,27 @@ export default function ActivityTrace({
             />
           );
         })}
+
+        {/* partial-today band: hatched so the still-filling last bucket reads
+            as provisional, not as a volume crash */}
+        {partialDate &&
+          (() => {
+            const i = days.findIndex((d) => d.date === partialDate);
+            if (i === -1) return null;
+            const half = days.length > 1 ? PLOT_W / (days.length - 1) / 2 : PLOT_W / 2;
+            return (
+              <rect
+                x={Math.max(PAD.left, x(i) - half)}
+                y={PAD.top}
+                width={Math.min(half * 2, PAD.left + PLOT_W - Math.max(PAD.left, x(i) - half))}
+                height={PLOT_H}
+                fill="var(--grat-strong)"
+                opacity={0.22}
+              >
+                <title>{`${partialDate} — today, still counting`}</title>
+              </rect>
+            );
+          })()}
 
         {/* graticule */}
         {yTicks.map((t) => (
@@ -238,7 +263,10 @@ export default function ActivityTrace({
             color: 'var(--ink-2)',
           }}
         >
-          <div style={{ color: 'var(--ink-3)' }}>{hover.date}</div>
+          <div style={{ color: 'var(--ink-3)' }}>
+            {hover.date}
+            {hover.date === partialDate ? ' · today, still counting' : ''}
+          </div>
           <div style={{ color: 'var(--ink)' }}>{hover.total} stories</div>
           {DOMAINS.filter((d) => !hidden.has(d) && hover.byDomain[d] > 0)
             .sort((a, b) => hover.byDomain[b] - hover.byDomain[a])
@@ -267,7 +295,7 @@ export default function ActivityTrace({
           </button>
         ))}
         <span className="mono ml-auto text-[10px]" style={{ color: 'var(--ink-4)' }}>
-          area = total volume
+          area = total volume{partialDate ? ' · shaded tail = today, still counting' : ''}
         </span>
       </div>
     </div>

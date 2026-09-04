@@ -9,7 +9,9 @@ import { eq, gte } from 'drizzle-orm';
 import { getDb } from '../db';
 import { items, sourceQuality, sources, stories } from '../db/schema';
 import { utcDay } from '../metrics';
-import { sourceVerdict, type SourceWindowStats } from './quality';
+import { CURATION_WINDOW_MS } from '../curate/cluster';
+import { pollMinutesFor } from './ingest';
+import { MIN_SAMPLE, sourceVerdict, type SourceWindowStats } from './quality';
 
 const WINDOW_DAYS = 30;
 const DAY_MS = 86_400_000;
@@ -17,6 +19,26 @@ const DAY_MS = 86_400_000;
 function mean(values: number[]): number | null {
   if (values.length === 0) return null;
   return values.reduce((a, v) => a + v, 0) / values.length;
+}
+
+/** Lenient config parse for cadence reads; malformed JSON falls back to the default cadence. */
+function readConfig(config: string): Record<string, unknown> {
+  try {
+    const parsed: unknown = JSON.parse(config);
+    return typeof parsed === 'object' && parsed !== null ? (parsed as Record<string, unknown>) : {};
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * Sample bar scaled to the source's poll cadence: a source polled every 30min
+ * gets the full MIN_SAMPLE, a weekly newsletter can't possibly reach 20 items
+ * in 30d and would sit in 'watch' forever — floor of 4 keeps the bar meaningful.
+ */
+export function minSampleFor(pollMinutes: number): number {
+  const expectedPolls = (WINDOW_DAYS * 24 * 60) / pollMinutes;
+  return Math.max(4, Math.min(MIN_SAMPLE, Math.round(expectedPolls)));
 }
 
 /**
@@ -29,17 +51,22 @@ interface SourceAcc {
   fetched: number;
   used: number;
   curated: number;
+  /** items inside the curation window or on a 'raw' story — pipeline backlog, not judged yet */
+  pending: number;
+  /** oldest fetchedAt seen, for the source-age proxy */
+  oldestFetchedAt: number | null;
   scores: Map<number, number>;
   hindsights: Map<number, number>;
 }
 
 function emptyAcc(): SourceAcc {
-  return { fetched: 0, used: 0, curated: 0, scores: new Map(), hindsights: new Map() };
+  return { fetched: 0, used: 0, curated: 0, pending: 0, oldestFetchedAt: null, scores: new Map(), hindsights: new Map() };
 }
 
 export async function runSourceReview(): Promise<{ reviewed: number; drop: number; demote: number }> {
   const db = getDb();
   const since = new Date(Date.now() - WINDOW_DAYS * DAY_MS);
+  const curationCutoff = Date.now() - CURATION_WINDOW_MS;
   const windowEnd = utcDay();
   const now = new Date();
 
@@ -47,6 +74,7 @@ export async function runSourceReview(): Promise<{ reviewed: number; drop: numbe
     .select({
       sourceId: items.sourceId,
       storyId: items.storyId,
+      fetchedAt: items.fetchedAt,
       status: stories.status,
       topScore: stories.topScore,
       hindsight: stories.hindsight,
@@ -60,7 +88,13 @@ export async function runSourceReview(): Promise<{ reviewed: number; drop: numbe
   for (const r of rows) {
     const acc = bySource.get(r.sourceId) ?? emptyAcc();
     acc.fetched += 1;
+    if (acc.oldestFetchedAt === null || r.fetchedAt.getTime() < acc.oldestFetchedAt) {
+      acc.oldestFetchedAt = r.fetchedAt.getTime();
+    }
     if (r.storyId !== null) acc.used += 1;
+    // still awaiting judgement: inside the curation window (curation may yet
+    // pick it up) or sitting on a 'raw' story (curated or filtered later)
+    if (r.fetchedAt.getTime() >= curationCutoff || r.status === 'raw') acc.pending += 1;
     if (r.status === 'curated' && r.storyId !== null) {
       acc.curated += 1;
       acc.scores.set(r.storyId, r.topScore ?? 0);
@@ -71,18 +105,24 @@ export async function runSourceReview(): Promise<{ reviewed: number; drop: numbe
 
   // Every source gets a row, including ones that ingested nothing — silence is
   // exactly the signal we are trying to surface.
-  const all = db.select({ id: sources.id }).from(sources).all();
+  const all = db.select({ id: sources.id, config: sources.config }).from(sources).all();
   let drop = 0;
   let demote = 0;
 
   for (const s of all) {
     const acc = bySource.get(s.id) ?? emptyAcc();
+    const pollMinutes = pollMinutesFor(readConfig(s.config));
     const stats: SourceWindowStats = {
       fetched: acc.fetched,
       used: acc.used,
       curated: acc.curated,
+      pending: acc.pending,
+      graded: acc.hindsights.size,
+      sourceAgeDays:
+        acc.oldestFetchedAt === null ? null : (now.getTime() - acc.oldestFetchedAt) / DAY_MS,
       meanTopScore: mean([...acc.scores.values()]),
       meanHindsight: mean([...acc.hindsights.values()]),
+      minSample: minSampleFor(pollMinutes),
     };
     const { verdict, reason } = sourceVerdict(stats);
     if (verdict === 'drop') drop += 1;

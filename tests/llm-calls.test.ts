@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { _setFetch, chatJSON } from '@/lib/llm/minimax';
-import { estimateCostUsd } from '@/lib/llm/pricing';
+import { UNMETERED_COST_USD, estimateCostUsd } from '@/lib/llm/pricing';
 import { generatePlan } from '@/lib/plans/generate';
 import { llmCalls, opportunities } from '@/lib/db/schema';
 import { useTestDb } from './helpers/db';
@@ -45,8 +45,11 @@ describe('estimateCostUsd', () => {
     expect(estimateCostUsd('MiniMax-M3', 2100, 1500)).toBeCloseTo(0.00243, 12);
   });
 
-  it('returns 0 for unmapped models', () => {
-    expect(estimateCostUsd('No-Such-Model', 1_000_000, 1_000_000)).toBe(0);
+  it('returns the unmetered sentinel for unmapped models — never a silent 0', () => {
+    // JUSTIFICATION (G1): unmapped models used to estimate as 0, under-reporting
+    // money with no signal. The sentinel lets usage aggregates count the calls
+    // as unmetered instead of summing them as $0.
+    expect(estimateCostUsd('No-Such-Model', 1_000_000, 1_000_000)).toBe(UNMETERED_COST_USD);
   });
 });
 
@@ -86,14 +89,16 @@ describe('chatJSON metering', () => {
     expect(db.select().from(llmCalls).all()).toHaveLength(0);
   });
 
-  it('estimates 0 cost when the configured model is unmapped', async () => {
+  it('meters the unmetered sentinel when the configured model is unmapped', async () => {
+    // JUSTIFICATION (G1): was "estimates 0 cost" — unmapped models now write
+    // the unmetered sentinel so the call surfaces in the unmetered counters.
     process.env.MINIMAX_MODEL = 'No-Such-Model';
     mockCompletion({ ok: true });
     await chatJSON('sys', 'user', { feature: 'x' });
     const rows = db.select().from(llmCalls).all();
     expect(rows).toHaveLength(1);
     expect(rows[0]!.model).toBe('No-Such-Model');
-    expect(rows[0]!.estCostUsd).toBe(0);
+    expect(rows[0]!.estCostUsd).toBe(UNMETERED_COST_USD);
   });
 });
 

@@ -3,6 +3,12 @@
 import * as React from 'react';
 import { useMemo, useState } from 'react';
 import { paretoFrontier, type AaModel } from '@/lib/pareto';
+import { fmtUsdCompact } from '@/lib/format';
+
+/** Hover-label price: shared compact USD, never a raw float like "$0.37000000000000005/1M". */
+export function scatterPriceLabel(price: number): string {
+  return `${fmtUsdCompact(price)}/1M`;
+}
 
 const W = 640;
 const H = 260;
@@ -248,8 +254,8 @@ export default function ModelScatter({
           <div style={{ color: 'var(--ink)' }}>{hovered.m.name}</div>
           {hovered.m.org && <div style={{ color: 'var(--ink-3)' }}>{hovered.m.org}</div>}
           <div>
-            {metric === 'speed' ? `${Math.round(hovered.y)} tok/s` : `${metric} ${hovered.y}`} &middot; $
-            {hovered.price}/1M
+            {metric === 'speed' ? `${Math.round(hovered.y)} tok/s` : `${metric} ${hovered.y}`} &middot;{' '}
+            {scatterPriceLabel(hovered.price)}
           </div>
           {metric !== 'speed' && hovered.m.speed !== null && <div>{Math.round(hovered.m.speed)} tok/s</div>}
           {metric === 'speed' && <div>intel {hovered.m.intelligence}</div>}

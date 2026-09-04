@@ -2,9 +2,7 @@ import { and, eq, gte, isNotNull, sql } from 'drizzle-orm';
 import { getDb } from '../db';
 import { items, stories, votes } from '../db/schema';
 import { bufferToVec, cosine } from '../vec';
-
-/** Stories created within this window are dedup candidates. */
-const WINDOW_MS = 72 * 36e5;
+import { CURATION_WINDOW_MS } from './cluster';
 /**
  * Cosine at/above this merges two curated stories. Conservative on purpose:
  * normalized MiniLM vectors put true duplicates at 0.90+, related-but-
@@ -27,8 +25,12 @@ interface Candidate {
  * Semantic dedup: merges curated stories that are the same news under
  * different titles (title-Jaccard misses those). Runs after the embed job
  * writes vectors. The YOUNGER story merges into the OLDER one: items and
- * votes move over, the better curated payload (higher top_score) wins, and
- * the younger story row is deleted. Every merge is logged.
+ * votes move over, the better curated payload (higher top_score) wins
+ * TOGETHER with the title it was scored against — scores computed against
+ * title B must never render under title A — the canonical's updatedAt is
+ * bumped (freshness merge-lag, "new since last visit" and the re-curation
+ * queue all read it), and the younger story row is deleted. Every merge is
+ * logged.
  */
 export async function mergeSimilarStories(
   now: number = Date.now(),
@@ -41,7 +43,7 @@ export async function mergeSimilarStories(
       and(
         eq(stories.status, 'curated'),
         isNotNull(stories.embedding),
-        gte(stories.createdAt, new Date(now - WINDOW_MS)),
+        gte(stories.createdAt, new Date(now - CURATION_WINDOW_MS)),
       ),
     )
     .all()
@@ -86,14 +88,18 @@ export async function mergeSimilarStories(
   }
 
   let merged = 0;
+  const mergedAt = new Date(now);
   for (const [rootId, members] of byRoot) {
     if (members.length === 0) continue;
     const canonical = candidates.find((c) => c.id === rootId)!;
     for (const dup of members) {
-      // better curated payload wins
+      // better curated payload wins — and its TITLE moves with it: the scores
+      // and tldr were computed against the dup's title, so grafting them onto
+      // the canonical's title would publish title A with the scores of B
       const takePayload = dup.topScore > canonical.topScore;
-      // vote move + item relink + payload swap + delete atomically: a crash
-      // mid-sequence must not leave half-moved votes or orphaned items
+      // vote move + item relink + payload swap + updatedAt bump + delete
+      // atomically: a crash mid-sequence must not leave half-moved votes,
+      // orphaned items, or a merge the re-curation queue never sees
       db.transaction((tx) => {
         // a user may have voted on both — drop the dup-side vote first
         tx.run(
@@ -102,21 +108,30 @@ export async function mergeSimilarStories(
         tx.update(votes).set({ storyId: rootId }).where(eq(votes.storyId, dup.id)).run();
         tx.update(items).set({ storyId: rootId }).where(eq(items.storyId, dup.id)).run();
 
-        if (takePayload) {
-          tx.update(stories)
-            .set({
-              topScore: dup.topScore,
-              domainScores: dup.domainScores,
-              tldr: dup.tldr,
-              whyItMatters: dup.whyItMatters,
-            })
-            .where(eq(stories.id, rootId))
-            .run();
-        }
+        tx.update(stories)
+          .set({
+            ...(takePayload
+              ? {
+                  title: dup.title,
+                  topScore: dup.topScore,
+                  domainScores: dup.domainScores,
+                  tldr: dup.tldr,
+                  whyItMatters: dup.whyItMatters,
+                }
+              : {}),
+            // a merge is fresh coverage: bump updatedAt so "new since last
+            // visit", the re-curation queue and freshness merge-lag all see it
+            updatedAt: mergedAt,
+          })
+          .where(eq(stories.id, rootId))
+          .run();
 
         tx.delete(stories).where(eq(stories.id, dup.id)).run();
       });
-      if (takePayload) canonical.topScore = dup.topScore;
+      if (takePayload) {
+        canonical.topScore = dup.topScore;
+        canonical.title = dup.title;
+      }
       merged++;
       console.log(`[dedup] merged "${dup.title}" → "${canonical.title}"`);
     }

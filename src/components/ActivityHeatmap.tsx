@@ -5,6 +5,7 @@ import { useMemo, useState } from 'react';
 import { DOMAINS, DOMAIN_COLORS, DOMAIN_LABELS, type Domain } from '@/lib/domains';
 import type { DayCount } from '@/lib/analytics';
 import { cellAlpha, globalMax, isWeekend, rowMaxes } from '@/lib/heat';
+import { splitCompleteDays } from '@/lib/feed';
 
 const W = 640;
 const LABEL_W = 66;
@@ -35,6 +36,9 @@ export default function ActivityHeatmap({
 
   const rows = useMemo(() => rowMaxes(days), [days]);
   const gmax = useMemo(() => globalMax(days), [days]);
+  // the trailing bucket is today's still-filling UTC day — attenuate the whole
+  // column so a half-counted day doesn't read as an activity crash
+  const partialDate = useMemo(() => splitCompleteDays(days).partial?.date ?? null, [days]);
   const cellW = days.length > 0 ? (W - LABEL_W - GAP) / days.length - GAP : 0;
   const H = LABEL_H + DOMAINS.length * (ROW_H + GAP);
 
@@ -85,7 +89,9 @@ export default function ActivityHeatmap({
               {days.map((day, i) => {
                 const v = day.byDomain[d] ?? 0;
                 const max = mode === 'per-sector' ? rows[d] : gmax;
-                const a = cellAlpha(v, max);
+                const isPartial = day.date === partialDate;
+                // partial-today cells: same hue, capped at 45% alpha + dashed rim
+                const a = cellAlpha(v, max) * (isPartial ? 0.45 : 1);
                 const isSpike = spikeSet.has(`${day.date}|${d}`);
                 return (
                   <g key={day.date}>
@@ -97,6 +103,8 @@ export default function ActivityHeatmap({
                       rx={2}
                       fill={a === 0 ? 'var(--grat-soft)' : DOMAIN_COLORS[d]}
                       fillOpacity={a === 0 ? 0.5 : a}
+                      stroke={isPartial ? 'var(--grat-strong)' : 'none'}
+                      strokeDasharray={isPartial ? '3 2' : undefined}
                       className="heat-cell"
                       style={{ animationDelay: `${(r * days.length + i) * 8}ms` }}
                       onMouseEnter={(e) => {
@@ -110,7 +118,7 @@ export default function ActivityHeatmap({
                       }}
                       onMouseLeave={() => setHover(null)}
                     >
-                      <title>{`${day.date} · ${DOMAIN_LABELS[d]} · ${v} stories`}</title>
+                      <title>{`${day.date} · ${DOMAIN_LABELS[d]} · ${v} stories${isPartial ? ' (today — still counting)' : ''}`}</title>
                     </rect>
                     {isSpike && (
                       <circle
@@ -157,6 +165,7 @@ export default function ActivityHeatmap({
           ))}
         </span>
         {mode === 'per-sector' ? 'scaled per sector — compare shape, not volume' : 'absolute volume — coding dominates by design'}
+        {partialDate && <span aria-hidden>&middot; last column = today, still counting</span>}
       </div>
 
       {hover && (
@@ -172,6 +181,7 @@ export default function ActivityHeatmap({
         >
           {hover.day.date} &middot; {DOMAIN_LABELS[hover.domain]} &middot;{' '}
           <span style={{ color: 'var(--ink)' }}>{hover.day.byDomain[hover.domain] ?? 0} stories</span>
+          {hover.day.date === partialDate && <span style={{ color: 'var(--ink-4)' }}> · today, still counting</span>}
         </div>
       )}
     </div>

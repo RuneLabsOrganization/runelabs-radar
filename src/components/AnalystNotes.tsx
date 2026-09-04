@@ -17,10 +17,13 @@ const DIRECTION: Record<Insight['direction'], { glyph: string; color: string; la
 export default function AnalystNotes({
   items,
   sectorSeries,
+  partialLast = false,
 }: {
   items: Insight[];
   /** per-domain daily story counts for the right-rail sparkline */
   sectorSeries?: Partial<Record<Domain, number[]>>;
+  /** the series' last bucket is today's partial UTC day — hatch it, don't accent it */
+  partialLast?: boolean;
 }) {
   return (
     <ul className="flex flex-col">
@@ -66,6 +69,7 @@ export default function AnalystNotes({
                   values={sectorSeries[n.domain] ?? null}
                   color={DOMAIN_COLORS[n.domain]}
                   caption={`${DOMAIN_LABELS[n.domain]} · 14d`}
+                  partialLast={partialLast}
                 />
               </div>
             )}

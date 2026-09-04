@@ -208,7 +208,8 @@ export default async function EntityPage({ params }: { params: Promise<{ name: s
       {series.length > 0 && (
         <div className="mt-5">
           <div className="readout mb-2">mentions · 14d</div>
-          <MiniTrend values={series} width={280} height={56} />
+          {/* entityDailySeries zero-fills through today — the trailing bucket is always today's still-filling UTC day */}
+          <MiniTrend values={series} width={280} height={56} partialLast />
         </div>
       )}
 

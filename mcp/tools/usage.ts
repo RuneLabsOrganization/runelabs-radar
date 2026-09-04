@@ -98,6 +98,7 @@ export function registerUsageTools(server: McpServer, auth: AuthContext): void {
           {
             summary:
               'get_usage is admin-only — per-feature cost and margin data is operator surface, not public data.',
+            economy: withUserEconomy(auth.userId, 'read'),
           },
         );
       }
@@ -149,6 +150,7 @@ export function registerUsageTools(server: McpServer, auth: AuthContext): void {
               (report.planCost.avgCostPerPlanUsd !== null && builder?.marginPct != null
                 ? `; avg plan ≈ $${r6(report.planCost.avgCostPerPlanUsd)}, builder margin ≈ ${Math.round(builder.marginPct)}%.`
                 : '.'),
+        economy: withUserEconomy(auth.userId, 'read'),
       });
     },
   );

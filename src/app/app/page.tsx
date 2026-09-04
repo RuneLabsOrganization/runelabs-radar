@@ -1,10 +1,10 @@
 // Namespace import keeps JSX working under vitest's classic transform (jsx: preserve).
 import * as React from 'react';
-import { and, count, desc, eq, gt } from 'drizzle-orm';
+import { and, count, countDistinct, desc, eq, gt, gte } from 'drizzle-orm';
 import Link from 'next/link';
 import { requireViewer } from '@/lib/auth/user';
 import { getDb } from '@/lib/db';
-import { launches, sources, stories, votes } from '@/lib/db/schema';
+import { items, launches, stories, votes } from '@/lib/db/schema';
 import { DOMAINS, DOMAIN_MEMBERSHIP_THRESHOLD, type Domain } from '@/lib/domains';
 import {
   dailyDomainCounts,
@@ -19,7 +19,7 @@ import {
 } from '@/lib/analytics';
 import { seriesFor } from '@/lib/metrics';
 import { isDomain } from '@/lib/domains';
-import { domainAffinity, personalScore, splitFeed, timeAgo } from '@/lib/feed';
+import { domainAffinity, personalScore, splitCompleteDays, splitFeed, timeAgo, utcDateLine } from '@/lib/feed';
 import { freshnessVsAnchor, itemAggByStory, voteAggByStory } from '@/lib/feed-agg';
 import { safeHttpUrl } from '@/lib/safe-url';
 import { visitAnchor } from '@/lib/visits';
@@ -58,13 +58,6 @@ type Contact = {
   /** merged-in coverage since the anchor but not itself new — gets the amber marker */
   isUpdated: boolean;
 };
-
-const WEEKDAYS = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
-const MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
-
-function dateLine(d: Date): string {
-  return `${WEEKDAYS[d.getDay()]} ${String(d.getDate()).padStart(2, '0')} ${MONTHS[d.getMonth()]} ${d.getFullYear()}`;
-}
 
 export default async function BriefingPage() {
   const user = await requireViewer();
@@ -163,6 +156,9 @@ export default async function BriefingPage() {
   const freshTotal = contacts.filter((c) => c.isNew).length;
 
   const days = dailyDomainCounts(14);
+  // every daily series zero-fills through TODAY — a still-filling UTC bucket
+  // that would read as a crash; surfaces render it hatched/attenuated
+  const todayPartial = splitCompleteDays(days).partial !== null;
   const entities = topEntities(8);
   // entities with no artifact series score null — no data, so no H/S chip at all
   const hype = new Map(
@@ -195,6 +191,11 @@ export default async function BriefingPage() {
     return null;
   };
   const patternTrends = noticed.map(trendFor);
+  // entity/sector series zero-fill through today (partial last bucket);
+  // price/launch series are sparse recorded snapshots — no partial bucket
+  const patternTrendPartial = noticed.map((p) =>
+    (p.kind === 'entity-surge' || p.kind === 'sector-spike') && todayPartial,
+  );
   const sectorSeries = Object.fromEntries(DOMAINS.map((d) => [d, days.map((x) => x.byDomain[d])]));
   const recentLaunches = db
     .select()
@@ -250,6 +251,7 @@ export default async function BriefingPage() {
   const notesShown = notes ? notes.items.slice(0, 2) : [];
   const noticedShown = noticed.slice(0, 3);
   const noticedTrends = patternTrends.slice(0, 3);
+  const noticedTrendPartial = patternTrendPartial.slice(0, 3);
   const worthKnowingDate = notes?.date ?? noticed[0]?.date ?? null;
 
   // ── hero scope data: real contacts, counters, rotating insights ──
@@ -259,8 +261,14 @@ export default async function BriefingPage() {
       .from(stories)
       .where(and(eq(stories.status, 'curated'), gt(stories.createdAt, new Date(now - 24 * 36e5))))
       .get()?.c ?? 0;
-  const enabledSources =
-    db.select({ c: count() }).from(sources).where(eq(sources.enabled, true)).get()?.c ?? 0;
+  // sources that actually yielded items in the last 24h — an enabled-but-dead
+  // feed must not inflate the "we read N sources" claim
+  const activeSources =
+    db
+      .select({ c: countDistinct(items.sourceId) })
+      .from(items)
+      .where(gte(items.fetchedAt, new Date(now - 24 * 36e5)))
+      .get()?.c ?? 0;
   // plot by domain MEMBERSHIP (score >= 40), not just top-domain — otherwise
   // quiet sectors (ads, copy) render empty although stories exist. Per-domain
   // cap keeps loud sectors from flooding the scope.
@@ -312,11 +320,11 @@ export default async function BriefingPage() {
 
       <div className="mb-5">
         <PageHeader
-          kicker={dateLine(new Date())}
+          kicker={utcDateLine(new Date())}
           title="Today"
           description={
             <>
-              We read {enabledSources} sources overnight so you don&apos;t have to. {tracked24h} things happened in
+              We read {activeSources} sources overnight so you don&apos;t have to. {tracked24h} things happened in
               the last 24 hours that are worth your attention — most important first, everything else filtered
               below. New here? Read the{' '}
               <Link
@@ -345,6 +353,7 @@ export default async function BriefingPage() {
             label: 'stories tracked · 24h',
             value: tracked24h,
             series: days.map((d) => d.total),
+            partialLast: todayPartial,
           },
           { label: 'new or updated since your last visit', value: freshTotal },
           { label: 'corroborated by 2+ sources · 7d', value: echoStats().multiSource },
@@ -379,8 +388,12 @@ export default async function BriefingPage() {
             tone="phosphor"
             count={noticedShown.length + notesShown.length}
           />
-          {noticedShown.length > 0 && <AnomalyFeed items={noticedShown} trends={noticedTrends} />}
-          {notesShown.length > 0 && <AnalystNotes items={notesShown} sectorSeries={sectorSeries} />}
+          {noticedShown.length > 0 && (
+            <AnomalyFeed items={noticedShown} trends={noticedTrends} trendPartial={noticedTrendPartial} />
+          )}
+          {notesShown.length > 0 && (
+            <AnalystNotes items={notesShown} sectorSeries={sectorSeries} partialLast={todayPartial} />
+          )}
         </>
       )}
 
@@ -395,7 +408,7 @@ export default async function BriefingPage() {
       {/* trends: the analytics block sits below the news */}
       <SectionHeader label="Trends — last 14 days" />
       <SectorStrip
-        stats={stats.map((s) => ({ ...s, series: sectorSeries[s.domain] ?? null }))}
+        stats={stats.map((s) => ({ ...s, series: sectorSeries[s.domain] ?? null, partialLast: todayPartial }))}
       />
       <div className="mt-5 flex flex-col gap-7 md:flex-row">
         <div className="min-w-0 flex-1">

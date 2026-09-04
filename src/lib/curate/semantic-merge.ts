@@ -2,13 +2,15 @@ import { and, desc, eq, gte, isNotNull, isNull, ne } from 'drizzle-orm';
 import { getDb } from '../db';
 import { items, stories } from '../db/schema';
 import { bufferToVec, cosine, vecToBuffer } from '../vec';
+import { CURATION_WINDOW_MS } from './cluster';
+import { MERGE_THRESHOLD } from './dedup';
 
-/** Same bar as the curated-story dedup: true dupes sit at 0.90+, related-but-distinct ~0.75-0.85. */
-const MERGE_THRESHOLD = 0.87;
-/** Candidates and targets both live in the 72h display window. */
-const WINDOW_MS = 72 * 36e5;
 /** Cap per run so a first-boot backlog can't block curation for minutes. */
 const TARGET_LIMIT = 100;
+/** Member-item titles embedded alongside the story title — the first item alone is often unrepresentative. */
+const EMBED_ITEM_TITLES = 3;
+/** Soft bound on the embedded text; MiniLM truncates hard at 256 tokens anyway. */
+const EMBED_TEXT_CHARS = 600;
 
 export type EmbedFn = (texts: string[]) => Promise<Float32Array[]>;
 
@@ -26,7 +28,7 @@ export type EmbedFn = (texts: string[]) => Promise<Float32Array[]>;
  */
 export async function semanticPreDedup(opts: { embed?: EmbedFn } = {}): Promise<{ embedded: number; merged: number }> {
   const db = getDb();
-  const cutoff = new Date(Date.now() - WINDOW_MS);
+  const cutoff = new Date(Date.now() - CURATION_WINDOW_MS);
 
   // 'filtered' stories are excluded: merging into one would keep it filtered
   // (the gate never re-runs) and the dupe's items would vanish with it.
@@ -48,16 +50,19 @@ export async function semanticPreDedup(opts: { embed?: EmbedFn } = {}): Promise<
 
   const embed = opts.embed ?? (await import('../embed')).embedTexts;
 
-  // text = story title + first member-item title when it adds signal
+  // text = story title + up to 3 member-item titles: a story whose FIRST item
+  // is unrepresentative would otherwise get a permanently skewed vector
   const texts = targets.map((t) => {
-    const first = db
+    const memberTitles = db
       .select({ title: items.title })
       .from(items)
       .where(eq(items.storyId, t.id))
       .orderBy(items.id)
-      .limit(1)
-      .get();
-    return first && first.title !== t.title ? `${t.title}\n${first.title}` : t.title;
+      .limit(EMBED_ITEM_TITLES)
+      .all();
+    return [t.title, ...memberTitles.map((r) => r.title).filter((x) => x !== t.title)]
+      .join('\n')
+      .slice(0, EMBED_TEXT_CHARS);
   });
   const vectors = await embed(texts);
 
@@ -88,6 +93,20 @@ export async function semanticPreDedup(opts: { embed?: EmbedFn } = {}): Promise<
       merged++;
       console.log(`[semantic-dedup] merged "${targets[i].title}" → "${canonical?.title ?? bestId}"`);
     } else {
+      // never persist a broken vector: NaN compares false against every bar,
+      // leaving the story as permanent dead weight in the candidate pool.
+      // embedding stays null so the next run retries it.
+      let finite = true;
+      for (const x of vec) {
+        if (!Number.isFinite(x)) {
+          finite = false;
+          break;
+        }
+      }
+      if (!finite) {
+        console.warn(`[semantic-dedup] non-finite embedding for story ${targets[i].id} — left null for retry`);
+        continue;
+      }
       // survivor: keep the vector so later targets in this batch (and the next
       // run) can match against it without re-embedding
       db.update(stories).set({ embedding: vecToBuffer(vec) }).where(eq(stories.id, targets[i].id)).run();

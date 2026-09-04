@@ -176,7 +176,8 @@ describe('runCurate', () => {
   });
 
   it('clamps scores to 0-100 integers and defaults missing domains to 0', async () => {
-    const story = insertStory('AI model with weird scores');
+    // strong-term title: E10 made weak-only single-location titles gate-filtered
+    const story = insertStory('OpenAI model with weird scores');
     mockChat.mockResolvedValueOnce({
       domain_scores: { coding: 150, copy: -20, image: 55.6 },
       tldr: 't',
@@ -199,8 +200,9 @@ describe('runCurate', () => {
   });
 
   it('retryable LlmError leaves the story raw, counts failed, continues the batch (newest first, 72h window)', async () => {
-    const older = insertStory('Older AI model story', new Date(Date.now() - 2 * 60 * 60 * 1000));
-    const newer = insertStory('Newer AI model story', new Date(Date.now() - 1 * 60 * 60 * 1000));
+    // strong-term titles: E10 made weak-only single-location titles gate-filtered
+    const older = insertStory('Older OpenAI model story', new Date(Date.now() - 2 * 60 * 60 * 1000));
+    const newer = insertStory('Newer OpenAI model story', new Date(Date.now() - 1 * 60 * 60 * 1000));
     // outside the 72h display window — must never be sent to the LLM
     const ancient = insertStory('Ancient backfill story', new Date(Date.now() - 80 * 60 * 60 * 1000));
 
@@ -230,9 +232,10 @@ describe('runCurate', () => {
   });
 
   it('non-retryable LlmError aborts the remaining batch', async () => {
-    insertStory('AI model story one', new Date(Date.now() - 3 * 60 * 60 * 1000));
-    insertStory('AI model story two', new Date(Date.now() - 2 * 60 * 60 * 1000));
-    insertStory('AI model story three', new Date(Date.now() - 1 * 60 * 60 * 1000));
+    // strong-term titles: E10 made weak-only single-location titles gate-filtered
+    insertStory('OpenAI model story one', new Date(Date.now() - 3 * 60 * 60 * 1000));
+    insertStory('OpenAI model story two', new Date(Date.now() - 2 * 60 * 60 * 1000));
+    insertStory('OpenAI model story three', new Date(Date.now() - 1 * 60 * 60 * 1000));
 
     mockChat.mockRejectedValue(new LlmError('Daily LLM call cap reached (500)', false));
 

@@ -119,6 +119,48 @@ describe('freshnessStats — board reflection', () => {
     expect(boardReflection.medianHours).toBeNull();
   });
 
+  it('a 2-char entity name fabricates nothing (E4)', () => {
+    const db = useTestDb();
+    const createdAt = new Date(NOW.getTime() - 10 * H);
+    // "o3" substring-matches any change text containing it incidentally —
+    // names < 3 chars are ignored (same bar as hindsight.ts's materialization)
+    addStory(db, { title: 'o3 launches', entities: [{ name: 'o3', kind: 'model' }], createdAt });
+    addBoardChange(db, 'bestOverall: o3-mini -> o4', new Date(createdAt.getTime() + H));
+    const { boardReflection } = freshnessStats(NOW);
+    expect(boardReflection.considered).toBe(0);
+    expect(boardReflection.matched).toBe(0);
+  });
+
+  it('one giant change row is claimed by at most one story — it cannot dominate the median (E4)', () => {
+    const db = useTestDb();
+    const base = NOW.getTime() - 100 * H;
+    // three stories, all "reflected" by the SAME sync row at a ~1h lag
+    for (let i = 0; i < 3; i++) {
+      addStory(db, {
+        title: `story ${i}`,
+        entities: [{ name: `SyncModel${i}`, kind: 'model' }],
+        createdAt: new Date(base + i * MIN),
+      });
+    }
+    addBoardChange(
+      db,
+      'bestOverall: x -> SyncModel0 + SyncModel1 + SyncModel2',
+      new Date(base + H + 90 * 1000),
+    );
+    // only the earliest-created story claims the row: 1 pair, not 3 same-lag pairs
+    const first = freshnessStats(NOW).boardReflection;
+    expect(first.matched).toBe(1);
+    expect(first.pairs[0]!.entity).toBe('syncmodel0');
+
+    // with their own rows, the other two stories match independently
+    addBoardChange(db, 'bestValue: y -> SyncModel1', new Date(base + MIN + 10 * H));
+    addBoardChange(db, 'cheapestViable: z -> SyncModel2', new Date(base + 2 * MIN + 20 * H));
+    const all = freshnessStats(NOW).boardReflection;
+    expect(all.matched).toBe(3);
+    // lags ≈ 1h, 10h, 20h → median 10h — the 1h row no longer triple-votes
+    expect(all.medianHours).toBe(10);
+  });
+
   it('excludes stories outside the 90-day window, non-curated stories, and unusable entities', () => {
     const db = useTestDb();
     const inWindow = new Date(NOW.getTime() - 24 * H);

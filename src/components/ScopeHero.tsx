@@ -21,6 +21,8 @@ export interface ScopeKpi {
   label: string;
   value: number;
   series?: number[] | null;
+  /** the series' last bucket is today's partial UTC day — hatch it, don't accent it */
+  partialLast?: boolean;
 }
 
 export interface ScopeInsight {
@@ -37,10 +39,14 @@ const DIRECTION_COLOR = { up: 'var(--phosphor)', down: 'var(--alert)', watch: 'v
 
 /** KPI numeral that tweens 0 → value on mount (final value instantly under reduced motion). */
 function Counter({ value }: { value: number }) {
-  const [display, setDisplay] = React.useState(value);
+  // start at 0: initializing at `value` flashed the real number for one frame
+  // before the effect snapped back to 0 and re-tweened
+  const [display, setDisplay] = React.useState(0);
   React.useEffect(() => {
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-    setDisplay(0);
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      setDisplay(value);
+      return;
+    }
     const t0 = performance.now();
     const D = 900;
     let raf = 0;
@@ -395,7 +401,7 @@ export default function ScopeHero({
               </div>
               {k.series && (
                 <div className="mt-2 max-w-[104px]">
-                  <MiniTrend values={k.series} height={20} fluid />
+                  <MiniTrend values={k.series} height={20} fluid partialLast={k.partialLast} />
                 </div>
               )}
             </div>

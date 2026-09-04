@@ -1,8 +1,10 @@
+// Namespace import keeps JSX working under vitest's classic transform (jsx: preserve).
+import * as React from 'react';
 import Link from 'next/link';
-import { count, eq, gte, isNotNull } from 'drizzle-orm';
+import { and, count, countDistinct, eq, gte, isNotNull } from 'drizzle-orm';
 import { ArrowRight, Radar, Layers, Sparkles, Cable } from 'lucide-react';
 import { getDb } from '@/lib/db';
-import { boardEntries, items, sources, stories } from '@/lib/db/schema';
+import { boardEntries, items, stories } from '@/lib/db/schema';
 import { getIdentity } from '@/lib/identity';
 import { landingJsonLd } from '@/lib/seo';
 import { paths } from '@/lib/urls';
@@ -32,7 +34,16 @@ export const metadata = {
 };
 
 /**
- * Hero numbers are READ LIVE, never hardcoded.
+ * Hero numbers are READ LIVE, never hardcoded — and each counts the unit its
+ * label claims:
+ *
+ * - storiesRead: CURATED stories (the clustered unit the rest of the product
+ *   calls a "story"), not raw feed items — items run ~5–15x higher because
+ *   several items merge into one story, so quoting items as "stories" was a
+ *   quiet 10x inflation of the headline.
+ * - sourcesOn: sources that actually YIELDED items in the window, not enabled
+ *   sources — an enabled-but-dead feed is not a source we read.
+ * - graded: all-time, and the label says so (sibling stats are 30d windows).
  *
  * The previous hero shipped "26 sources" and was still claiming it at 37 — the
  * exact failure this whole page argues against, sitting in our own hero. Every
@@ -63,7 +74,11 @@ function heroFacts(): HeroFacts {
   // daily number, still a hard measured count rather than a projection, and it
   // rises on its own as ingest volume grows.
   const storiesRead =
-    db.select({ c: count() }).from(items).where(gte(items.fetchedAt, monthAgo)).get()?.c ?? 0;
+    db
+      .select({ c: count() })
+      .from(stories)
+      .where(and(eq(stories.status, 'curated'), gte(stories.createdAt, monthAgo)))
+      .get()?.c ?? 0;
 
   const board = db.select().from(boardEntries).all();
   const verdicts = board.reduce(
@@ -73,7 +88,12 @@ function heroFacts(): HeroFacts {
 
   return {
     storiesRead,
-    sourcesOn: db.select({ c: count() }).from(sources).where(eq(sources.enabled, true)).get()?.c ?? 0,
+    sourcesOn:
+      db
+        .select({ c: countDistinct(items.sourceId) })
+        .from(items)
+        .where(gte(items.fetchedAt, monthAgo))
+        .get()?.c ?? 0,
     verdicts,
     graded: db.select({ c: count() }).from(stories).where(isNotNull(stories.hindsight)).get()?.c ?? 0,
   };
@@ -142,9 +162,9 @@ export default function LandingPage() {
   // collided with it — the hero promised 51 verdicts next to a verdict column
   // showing 17. Two different things, so two different words.
   const stats = [
-    { value: String(facts.sourcesOn), label: 'sources read daily' },
+    { value: String(facts.sourcesOn), label: 'sources read · 30d' },
     { value: String(facts.verdicts), label: 'picks on the board' },
-    { value: facts.graded.toLocaleString('en-US'), label: 'predictions graded' },
+    { value: facts.graded.toLocaleString('en-US'), label: 'predictions graded · all time' },
     { value: '$0', label: 'vendor money taken' },
   ];
   return (
@@ -173,7 +193,7 @@ export default function LandingPage() {
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-phosphor opacity-60" />
               <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-phosphor" />
             </span>
-            {facts.sourcesOn} sources · $0 vendor money
+            {facts.sourcesOn} active sources · $0 vendor money
           </div>
           {/* Ogilvy's Rolls-Royce move: lead with a verifiable fact, not a
               claim. "We reviewed the AI tools" is "the best car in the world" —

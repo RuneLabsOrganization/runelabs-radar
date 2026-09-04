@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { clampPublishedAt, clusterNewItems } from '@/lib/curate/cluster';
+import { clampPublishedAt, clusterNewItems, CURATION_WINDOW_MS } from '@/lib/curate/cluster';
 import { items, sources, stories } from '@/lib/db/schema';
 import type { Db } from '@/lib/db';
 import { useTestDb } from './helpers/db';
@@ -9,9 +9,12 @@ const H = 3_600_000;
 describe('clampPublishedAt', () => {
   const now = new Date('2026-08-20T12:00:00Z');
 
-  it('clamps a stale date to now-72h', () => {
+  it('clamps a stale date to now-71h (1h inside the 72h window)', () => {
+    // JUSTIFICATION for the changed constant: the floor used to be exactly
+    // now−72h — the same edge the curation window's gte() reads — so one slow
+    // tick could push a backfilled story out before it was ever scored (E6).
     const stale = new Date(now.getTime() - 100 * H);
-    expect(clampPublishedAt(stale, now).getTime()).toBe(now.getTime() - 72 * H);
+    expect(clampPublishedAt(stale, now).getTime()).toBe(now.getTime() - 71 * H);
   });
 
   it('clamps a far-future date to now+15min', () => {
@@ -44,15 +47,18 @@ describe('clusterNewItems story-date clamping', () => {
     db.insert(items).values({ sourceId, url, title, fetchedAt: new Date(), publishedAt }).run();
   }
 
-  it('a feed serving a stale date no longer buries the story: createdAt clamps to ~now-72h', async () => {
+  it('a feed serving a stale date no longer buries the story: createdAt clamps to ~now-71h, inside the curation window', async () => {
     insertItem('Ancient dated benchmark post', 'https://c.example/1', new Date(Date.now() - 400 * H));
 
     await clusterNewItems();
 
     const story = db.select().from(stories).all()[0];
     expect(story).toBeDefined();
-    const expected = Date.now() - 72 * H;
+    // 71h floor (was 72h — on the gte() edge, see the clampPublishedAt test above)
+    const expected = Date.now() - 71 * H;
     expect(Math.abs(story.createdAt.getTime() - expected)).toBeLessThan(30_000);
+    // ...so a backfilled story gets a REAL curation chance: strictly inside the 72h window
+    expect(story.createdAt.getTime()).toBeGreaterThan(Date.now() - CURATION_WINDOW_MS);
   });
 
   it('a feed serving a future date no longer pins the story: createdAt clamps to ~now+15min', async () => {

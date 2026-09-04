@@ -11,13 +11,19 @@ import { median } from './stats';
  * 1. BOARD REFLECTION (hours): a board_history row "reflects" a story when
  *    its change text contains one of the story's curated entity names,
  *    case-insensitive substring (change text is `bestOverall: X -> Y; …` —
- *    entity names appear verbatim). Lag = appliedAt − createdAt for the
- *    story's FIRST matching row at/after the story appeared; rows before
- *    createdAt can't reflect the story and would only fabricate negative
- *    lags. Caveat: name matching is a heuristic — a change can mention an
- *    entity for reasons unrelated to the story, and a real reflection that
- *    names no entity is missed. That's why the per-pair detail is returned
- *    for spot checks instead of only the aggregate.
+ *    entity names appear verbatim). Entity names shorter than 3 chars are
+ *    ignored (same bar as hindsight.ts's launch materialization): a 2-char
+ *    name like "o3" matches incidental substrings and fabricates reflections
+ *    with tiny lags. Each board_history row is claimed by at most ONE story
+ *    (earliest-created first) — one giant sync row naming a dozen entities
+ *    would otherwise contribute a dozen same-lag pairs and drag the median
+ *    down. Lag = appliedAt − createdAt for the story's FIRST matching
+ *    unclaimed row at/after the story appeared; rows before createdAt can't
+ *    reflect the story and would only fabricate negative lags. Caveat: name
+ *    matching is a heuristic — a change can mention an entity for reasons
+ *    unrelated to the story, and a real reflection that names no entity is
+ *    missed. That's why the per-pair detail is returned for spot checks
+ *    instead of only the aggregate.
  *
  * 2. MERGE LAG (minutes): stories.updatedAt is stamped when a new item
  *    merges into an existing story. Median createdAt → updatedAt over
@@ -57,7 +63,7 @@ export interface FreshnessStats {
   };
 }
 
-/** Entity names from the curation JSON ([{name, kind}]) — lowercased, non-empty; [] on any malformation. */
+/** Entity names from the curation JSON ([{name, kind}]) — lowercased, ≥3 chars (a 2-char name substring-matches everything); [] on any malformation. */
 function entityNames(entitiesJson: string | null): string[] {
   if (!entitiesJson) return [];
   try {
@@ -66,7 +72,7 @@ function entityNames(entitiesJson: string | null): string[] {
     return parsed
       .map((e) => (typeof (e as { name?: unknown })?.name === 'string' ? (e as { name: string }).name : ''))
       .map((n) => n.trim().toLowerCase())
-      .filter((n) => n.length > 0);
+      .filter((n) => n.length >= 3);
   } catch {
     return [];
   }
@@ -107,12 +113,19 @@ export function freshnessStats(now = new Date(), windowDays = 90): FreshnessStat
 
   const pairs: BoardReflection[] = [];
   let considered = 0;
-  for (const s of storyRows) {
+  // earliest-created story claims a contested row first: the closest thing to
+  // a fair assignment when one change names several stories' entities
+  const claimed = new Set<(typeof changes)[number]>();
+  const byAge = [...storyRows].sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+  for (const s of byAge) {
     const names = entityNames(s.entities);
     if (names.length === 0) continue;
     considered++;
-    const hit = changes.find((c) => c.appliedAt >= s.createdAt && names.some((n) => c.lower.includes(n)));
+    const hit = changes.find(
+      (c) => !claimed.has(c) && c.appliedAt >= s.createdAt && names.some((n) => c.lower.includes(n)),
+    );
     if (!hit) continue;
+    claimed.add(hit);
     pairs.push({
       storyId: s.id,
       storyTitle: s.title,

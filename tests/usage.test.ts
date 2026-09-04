@@ -5,14 +5,17 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { eq } from 'drizzle-orm';
 import {
   CALLS_PER_PLAN,
+  MARGIN_ASSUMPTION,
   dailyLlmCost,
   llmUsageByFeature,
   llmUsageByUser,
   marginByTier,
+  medianPlanUtilization,
   planCostStats,
   radarScoreDivergence,
   usageReport,
 } from '@/lib/usage';
+import { UNMETERED_COST_USD } from '@/lib/llm/pricing';
 import { llmCalls, metricPoints, users } from '@/lib/db/schema';
 import { registerUsageTools } from '../mcp/tools/usage';
 import type { AuthContext } from '../mcp/lib/auth';
@@ -88,6 +91,19 @@ describe('dailyLlmCost', () => {
     expect(daily.reduce((a, d) => a + d.calls, 0)).toBe(0);
     expect(daily.reduce((a, d) => a + d.costUsd, 0)).toBe(0);
   });
+
+  it('counts unmetered calls separately instead of summing them as $0', () => {
+    // JUSTIFICATION (G1): a model with no price entry writes the
+    // UNMETERED_COST_USD sentinel — it must surface in the unmetered counter,
+    // never quietly pad costUsd with 0 (or poison it with −1).
+    seedCall({ model: 'Unpriced-LLM-9', estCostUsd: UNMETERED_COST_USD, promptTokens: 5000 });
+    seedCall({ estCostUsd: 0.002 });
+    const daily = dailyLlmCost(30);
+    const today = daily.find((d) => d.date === day(new Date()))!;
+    expect(today.calls).toBe(2);
+    expect(today.unmetered).toBe(1);
+    expect(today.costUsd).toBeCloseTo(0.002, 12);
+  });
 });
 
 describe('llmUsageByFeature', () => {
@@ -106,6 +122,15 @@ describe('llmUsageByFeature', () => {
 
     expect(rows[1]).toMatchObject({ calls: 1, promptTokens: 2000, completionTokens: 1000, avgDurationMs: 4000 });
     expect(rows[2]).toMatchObject({ calls: 1, avgDurationMs: 800 });
+  });
+
+  it('carries an unmetered count per feature and excludes the sentinel from cost', () => {
+    seedCall({ feature: 'curate', estCostUsd: 0.002 });
+    seedCall({ feature: 'curate', model: 'Unpriced-LLM-9', estCostUsd: UNMETERED_COST_USD });
+    const rows = llmUsageByFeature(30);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ feature: 'curate', calls: 2, unmetered: 1 });
+    expect(rows[0]!.costUsd).toBeCloseTo(0.002, 12);
   });
 });
 
@@ -144,19 +169,61 @@ describe('llmUsageByUser', () => {
 });
 
 describe('planCostStats', () => {
-  it("counts feature='plan' rows with total and per-plan averages", () => {
+  it("counts feature='plan' rows but cannot price a plan from frames alone", () => {
+    // JUSTIFICATION (G4): per-plan is now measured by structure (mean frame +
+    // mean phase × phases), not avg-per-call × CALLS_PER_PLAN. A window with
+    // only frame rows is a partial population and must yield null, not an
+    // understated estimate.
     seedStandard();
     const stats = planCostStats(30);
     expect(stats.calls).toBe(3);
+    expect(stats.unmetered).toBe(0);
     expect(stats.totalCostUsd).toBeCloseTo(0.0045, 12);
     expect(stats.avgCostPerCallUsd).toBeCloseTo(0.0015, 12);
-    expect(stats.avgCostPerPlanUsd).toBeCloseTo(0.0015 * CALLS_PER_PLAN, 12);
+    expect(stats.avgFrameCostUsd).toBeCloseTo(0.0015, 12);
+    expect(stats.avgPhaseCostUsd).toBeNull();
+    expect(stats.avgCostPerPlanUsd).toBeNull();
+  });
+
+  it('measures frame and phase means by structure — a heavy frame never dilutes into the phase mean', () => {
+    // 2 frames @ $0.01 + 5 phases @ $0.001. The old formula averaged all 7
+    // calls and scaled by 6: 0.025/7×6 ≈ $0.0214 — biased by the sample's
+    // frame share. The structural estimate is frameMean + phaseMean × phases.
+    for (let i = 0; i < 2; i++) seedCall({ feature: 'plan', estCostUsd: 0.01 });
+    for (let i = 0; i < 5; i++) seedCall({ feature: 'plan-phase', estCostUsd: 0.001 });
+    const stats = planCostStats(30);
+    expect(stats.calls).toBe(7);
+    expect(stats.phasesPerPlan).toBe(CALLS_PER_PLAN - 1);
+    expect(stats.avgFrameCostUsd).toBeCloseTo(0.01, 12);
+    expect(stats.avgPhaseCostUsd).toBeCloseTo(0.001, 12);
+    expect(stats.avgCostPerPlanUsd).toBeCloseTo(0.01 + 0.001 * (CALLS_PER_PLAN - 1), 12);
+    expect(stats.avgCostPerPlanUsd).not.toBeCloseTo((0.025 / 7) * CALLS_PER_PLAN, 12);
+  });
+
+  it('excludes unmetered rows from every cost figure and counts them', () => {
+    seedCall({ feature: 'plan', model: 'Unpriced-LLM-9', estCostUsd: UNMETERED_COST_USD });
+    seedCall({ feature: 'plan-phase', model: 'Unpriced-LLM-9', estCostUsd: UNMETERED_COST_USD });
+    seedCall({ feature: 'plan', estCostUsd: 0.01 });
+    seedCall({ feature: 'plan-phase', estCostUsd: 0.001 });
+    const stats = planCostStats(30);
+    expect(stats.calls).toBe(4);
+    expect(stats.unmetered).toBe(2);
+    expect(stats.totalCostUsd).toBeCloseTo(0.011, 12);
+    expect(stats.avgCostPerPlanUsd).toBeCloseTo(0.01 + 0.001 * (CALLS_PER_PLAN - 1), 12);
   });
 
   it('returns null averages when no plan rows exist', () => {
     seedCall({ feature: 'curate' });
     const stats = planCostStats(30);
-    expect(stats).toMatchObject({ calls: 0, totalCostUsd: 0, avgCostPerCallUsd: null, avgCostPerPlanUsd: null });
+    expect(stats).toMatchObject({
+      calls: 0,
+      unmetered: 0,
+      totalCostUsd: 0,
+      avgCostPerCallUsd: null,
+      avgFrameCostUsd: null,
+      avgPhaseCostUsd: null,
+      avgCostPerPlanUsd: null,
+    });
   });
 });
 
@@ -183,14 +250,58 @@ describe('marginByTier', () => {
     expect(factory.marginPct).toBeCloseTo((48 / 49) * 100, 6);
   });
 
+  it('labels the 100%-quota-burn assumption and carries no expected variant without a utilization signal', () => {
+    // JUSTIFICATION (G5): the headline margin assumes every subscriber burns
+    // their full quota — worst case, not expected. The label must ride in the
+    // payload so the page can never present it unlabeled.
+    const margins = marginByTier(0.01);
+    for (const m of margins) {
+      expect(m.assumption).toBe(MARGIN_ASSUMPTION);
+      expect(m.assumption).toContain('100% quota burn');
+      expect(m.expected).toBeNull();
+    }
+  });
+
+  it('adds an expected-margin variant at the observed median utilization', () => {
+    const margins = marginByTier(0.01, 0.5);
+    const builder = margins.find((m) => m.tier === 'builder')!;
+    expect(builder.expected).not.toBeNull();
+    expect(builder.expected!.estMonthlyCostUsd).toBeCloseTo(0.15, 12); // 0.01 × 30 × 0.5
+    expect(builder.expected!.marginUsd).toBeCloseTo(18.85, 12);
+    expect(builder.expected!.marginPct).toBeCloseTo((18.85 / 19) * 100, 6);
+
+    const free = margins.find((m) => m.tier === 'free')!;
+    expect(free.expected!.estMonthlyCostUsd).toBeCloseTo(0.015, 12);
+    expect(free.expected!.marginPct).toBeNull(); // no price to divide by
+  });
+
   it('returns null cost/margins (but prices and quotas) when nothing is metered', () => {
     const margins = marginByTier(null);
     for (const m of margins) {
       expect(m.estMonthlyCostUsd).toBeNull();
       expect(m.marginUsd).toBeNull();
       expect(m.marginPct).toBeNull();
+      expect(m.expected).toBeNull();
     }
     expect(margins.map((m) => m.quotaPlans)).toEqual([3, 30, 100]);
+  });
+});
+
+describe('medianPlanUtilization', () => {
+  it('is the median per-user share of the monthly quota, pipeline rows excluded', () => {
+    const alice = seedUser('alice', 'member'); // no entitlement row → free quota 3
+    const bob = seedUser('bob', 'member');
+    for (let i = 0; i < 3; i++) seedCall({ feature: 'plan', userId: alice }); // 3/3 = 1.0
+    seedCall({ feature: 'plan', userId: bob }); // 1/3
+    seedCall({ feature: 'plan', userId: null }); // pipeline — not a subscriber
+    seedCall({ feature: 'plan-phase', userId: alice }); // phases are not generations
+
+    expect(medianPlanUtilization(30)).toBeCloseTo((1 + 1 / 3) / 2, 12);
+  });
+
+  it('is null when nobody generated a plan', () => {
+    seedCall({ feature: 'curate' });
+    expect(medianPlanUtilization(30)).toBeNull();
   });
 });
 
@@ -220,13 +331,27 @@ describe('usageReport', () => {
     const report = usageReport(30);
     expect(report.windowDays).toBe(30);
     expect(report.totalCalls).toBe(5);
+    expect(report.totalUnmetered).toBe(0);
     expect(report.totalCostUsd).toBeCloseTo(0.0069, 12);
     expect(report.daily).toHaveLength(30);
     expect(report.byFeature.map((f) => f.feature)).toEqual(['plan', 'curate', 'brief']);
     expect(report.byUser).toHaveLength(3);
-    expect(report.planCost.avgCostPerPlanUsd).toBeCloseTo(0.0015 * CALLS_PER_PLAN, 12);
+    // frames only in this fixture — the structural per-plan estimate stays null (G4)
+    expect(report.planCost.avgCostPerPlanUsd).toBeNull();
     expect(report.margins).toHaveLength(3);
+    // alice 2/3 + bob 1/3 of the free quota → median 0.5, so expected variants exist
+    expect(report.marginUtilization).toBeCloseTo(0.5, 12);
+    expect(report.margins.every((m) => m.assumption === MARGIN_ASSUMPTION)).toBe(true);
     expect(report.divergence).toEqual([]);
+  });
+
+  it('surfaces the unmetered total beside the cost totals', () => {
+    seedCall({ model: 'Unpriced-LLM-9', estCostUsd: UNMETERED_COST_USD });
+    seedCall({ estCostUsd: 0.001 });
+    const report = usageReport(30);
+    expect(report.totalCalls).toBe(2);
+    expect(report.totalUnmetered).toBe(1);
+    expect(report.totalCostUsd).toBeCloseTo(0.001, 12);
   });
 });
 
@@ -301,13 +426,15 @@ describe('get_usage tool', () => {
     expect(byUser.find((u) => u.name === 'alice')).toMatchObject({ user_id: alice, calls: 2 });
     expect(byUser.find((u) => u.user_id === null)).toMatchObject({ name: null, calls: 2 });
 
-    const planCost = sc.plan_cost as { plan_calls: number; avg_cost_per_plan_usd: number };
+    const planCost = sc.plan_cost as { plan_calls: number; avg_cost_per_plan_usd: number | null };
     expect(planCost.plan_calls).toBe(3);
-    expect(planCost.avg_cost_per_plan_usd).toBeCloseTo(0.0015 * CALLS_PER_PLAN, 6);
+    // frames only in this fixture — structural per-plan stays null (G4)
+    expect(planCost.avg_cost_per_plan_usd).toBeNull();
 
     const margins = sc.margins as { tier: string; margin_pct: number | null }[];
     expect(margins).toHaveLength(3);
-    expect(margins.find((m) => m.tier === 'builder')!.margin_pct).not.toBeNull();
+    // frames only in this fixture — per-plan cost is null (G4), so margins are too
+    expect(margins.find((m) => m.tier === 'builder')!.margin_pct).toBeNull();
 
     expect(typeof sc.summary).toBe('string');
     expect(res.content?.[0]?.text).toContain('Source:');

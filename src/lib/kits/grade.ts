@@ -17,6 +17,7 @@ import { MEDIA_PRICING_SOURCE } from '../ingest/media-pricing';
 import { PRICING_SOURCE } from '../ingest/pricing';
 import { gradeConfidence } from './confidence';
 import { matchPricedEntity } from './match-price';
+import { independence } from './provenance';
 
 /**
  * Only points inside this window count as "latest". metric_points is
@@ -38,13 +39,19 @@ const UNIT_RISK: Record<string, string> = {
 };
 
 /**
- * Latest value per entity across both pricing feeders.
+ * Latest value per (entity, metric) across both pricing feeders.
  *
  * media-pricing carries per-unit prices for image/video/audio tools;
  * provider-pricing carries per-token LLM list prices. Most board picks are
  * LLMs, so reading only the former left almost every pick unpriced.
+ *
+ * Keyed per metric, not per entity: an entity with both a monthly plan and a
+ * per-unit price keeps BOTH, so the seat-vs-usage decision below is a
+ * documented precedence instead of whichever row happened to be newest (the
+ * feeders run on independent schedules, so "newest overall" flipped a pick
+ * between seat and usage run-to-run).
  */
-function latestPrices(): Map<string, { metric: string; value: number }> {
+function latestPrices(): Map<string, Map<string, number>> {
   // metric_points keys on `date` (YYYY-MM-DD text), not a timestamp — see
   // schema.ts. ISO dates compare chronologically as text, so the window
   // bound is a plain string comparison.
@@ -55,11 +62,32 @@ function latestPrices(): Map<string, { metric: string; value: number }> {
     .where(and(gte(metricPoints.date, cutoff), inArray(metricPoints.source, [MEDIA_PRICING_SOURCE, PRICING_SOURCE])))
     .orderBy(desc(metricPoints.date), desc(metricPoints.id))
     .all();
-  const out = new Map<string, { metric: string; value: number }>();
+  const out = new Map<string, Map<string, number>>();
   for (const r of rows) {
-    if (!out.has(r.entity)) out.set(r.entity, { metric: r.metric, value: r.value });
+    let byMetric = out.get(r.entity);
+    if (!byMetric) {
+      byMetric = new Map();
+      out.set(r.entity, byMetric);
+    }
+    // rows arrive newest-first, so the first sighting of a metric is its latest value
+    if (!byMetric.has(r.metric)) byMetric.set(r.metric, r.value);
   }
   return out;
+}
+
+/**
+ * Seat-vs-usage precedence when an entity has several in-window metrics:
+ * price_per_month wins — a published monthly plan is the only total-able
+ * price model. Everything else is usage-priced; the newest metric (insertion
+ * order is newest-first) supplies the risk-flag wording, and no monthly
+ * amount is asserted, because turning a per-unit rate into a monthly figure
+ * would be exactly the bill-shock this product exists to warn about.
+ */
+function pickPriceModel(byMetric: Map<string, number>): { metric: string; value: number } | null {
+  const seat = byMetric.get('price_per_month');
+  if (seat !== undefined) return { metric: 'price_per_month', value: seat };
+  const first = byMetric.entries().next();
+  return first.done ? null : { metric: first.value[0], value: first.value[1] };
 }
 
 export function runKitPriceBackfill(now: Date = new Date()): { updated: number } {
@@ -71,7 +99,8 @@ export function runKitPriceBackfill(now: Date = new Date()): { updated: number }
     // Exact match after stripping effort/runtime qualifiers — a near-miss like
     // "GPT-5.6 Sol (max)" -> "GPT-5.5" would assert someone else's price.
     const entity = matchPricedEntity(pick.pickName, prices.keys());
-    const found = entity ? prices.get(entity) : undefined;
+    const byMetric = entity ? prices.get(entity) : undefined;
+    const found = byMetric ? pickPriceModel(byMetric) : null;
     if (!found) continue;
 
     const isSeat = found.metric === 'price_per_month';
@@ -92,14 +121,6 @@ export function runKitPriceBackfill(now: Date = new Date()): { updated: number }
   return { updated };
 }
 
-function evidenceSourceKey(sourceUrl: string): string {
-  try {
-    return new URL(sourceUrl).hostname;
-  } catch {
-    return sourceUrl;
-  }
-}
-
 /** Recomputes evidence_count, distinct_sources, verified_at and confidence for every pick. */
 export function runKitGrade(now: Date = new Date()): { graded: number } {
   const db = getDb();
@@ -110,9 +131,15 @@ export function runKitGrade(now: Date = new Date()): { graded: number } {
     if (ev.length === 0) continue;
 
     const evidenceCount = ev.length;
-    const distinctSources = new Set(ev.map((e) => evidenceSourceKey(e.sourceUrl))).size;
+    // Independence is by registrable domain (provenance.ts), not raw hostname:
+    // blog.vendor.com and vendor.com are ONE source, and evidence that is
+    // entirely first-party/community cannot lift a verdict past 'low'.
+    const { distinctDomains, independentDomains } = independence(
+      ev.map((e) => ({ sourceUrl: e.sourceUrl, role: e.role })),
+    );
+    const distinctSources = distinctDomains;
     const verifiedAt = ev.reduce<Date>((max, e) => (e.observedAt > max ? e.observedAt : max), ev[0].observedAt);
-    const confidence = gradeConfidence({ evidenceCount, distinctSources, verifiedAt, now });
+    const confidence = gradeConfidence({ evidenceCount, distinctSources, verifiedAt, independentDomains, now });
 
     if (
       pick.evidenceCount === evidenceCount &&

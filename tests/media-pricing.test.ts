@@ -26,6 +26,32 @@ describe('media pricing', () => {
     expect(out).toContainEqual({ tool: 'Seedream 5.0 Pro', unit: 'per_image', amountUsd: 0.054 });
   });
 
+  it('reads thousands-grouped prices in full — "$1,200/mo" is 1200, not 1', () => {
+    // JUSTIFICATION (G2): the old [0-9]+ regex stopped at the comma and read
+    // $1 — a seat price 1000× too low flowing into kit totals.
+    const html = '<table><tr><td>HeyGen</td><td>$1,200/mo</td></tr></table>';
+    expect(parseMediaTable(html, ['HeyGen'])).toEqual([{ tool: 'HeyGen', unit: 'per_month', amountUsd: 1200 }]);
+  });
+
+  it('expands a k/K suffix — "$20k" is 20000', () => {
+    const html = '<table><tr><td>HeyGen</td><td>$20k per month</td></tr></table>';
+    expect(parseMediaTable(html, ['HeyGen'])).toEqual([{ tool: 'HeyGen', unit: 'per_month', amountUsd: 20_000 }]);
+  });
+
+  it('pairs amount with the nearest unit after it — "$10/mo or $0.05/image" is (10, per_month)', () => {
+    // JUSTIFICATION (G2): the old code took the first $ and the first unit
+    // keyword anywhere in the joined row, mixing amounts and units.
+    const html = '<table><tr><td>Ideogram 4</td><td>$10/mo or $0.05/image</td></tr></table>';
+    expect(parseMediaTable(html, ['Ideogram 4'])).toEqual([
+      { tool: 'Ideogram 4', unit: 'per_month', amountUsd: 10 },
+    ]);
+  });
+
+  it('skips an amount with no unit inside the bounded window rather than guessing', () => {
+    const html = '<table><tr><td>HeyGen</td><td>$29</td></tr></table>';
+    expect(parseMediaTable(html, ['HeyGen'])).toEqual([]);
+  });
+
   it('ignores models not asked for', () => {
     expect(parseMediaTable(HTML, ['Kling 3.0'])).toHaveLength(1);
   });

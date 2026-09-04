@@ -111,4 +111,30 @@ describe('classifySourceHealth', () => {
   it('treats a never-fetched source as ok, not stale', () => {
     expect(classifySourceHealth(row({ lastFetchedAt: null })).health).toBe('ok');
   });
+
+  it('a 30-min source idle 2 days is stale even with reset counters (E8)', () => {
+    const v = classifySourceHealth(row({ lastFetchedAt: new Date(Date.now() - 2 * 864e5) }));
+    expect(v.health).toBe('stale');
+    expect(v.reason).toContain('no successful fetch');
+  });
+
+  it('a 6h-cadence source idle 2 days is stale; idle 12h is not (E8)', () => {
+    const config = '{"pollHours":6}';
+    const twoDays = classifySourceHealth({ ...row({}), config, lastFetchedAt: new Date(Date.now() - 2 * 864e5) });
+    expect(twoDays.health).toBe('stale');
+    // 4 missed polls at 6h cadence = 24h grace — 12h of silence is normal
+    const twelveHours = classifySourceHealth({ ...row({}), config, lastFetchedAt: new Date(Date.now() - 12 * 36e5) });
+    expect(twelveHours.health).toBe('ok');
+  });
+
+  it('the empty-poll streak scales with cadence: 4 empty polls of a 6h feed is a day of silence (E8)', () => {
+    const config = '{"pollHours":6}';
+    expect(classifySourceHealth({ ...row({ consecutiveEmpty: 4 }), config }).health).toBe('stale');
+    // at the default 30-min cadence the same streak means only 2h — not stale
+    expect(classifySourceHealth(row({ consecutiveEmpty: 4 })).health).toBe('ok');
+  });
+
+  it('an active source is ok regardless of cadence', () => {
+    expect(classifySourceHealth({ ...row({}), config: '{"pollHours":6}' }).health).toBe('ok');
+  });
 });

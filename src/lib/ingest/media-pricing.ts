@@ -39,21 +39,60 @@ function nameKey(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9]/g, '');
 }
 
-/** Unit implied by the words around the price. Order matters: check the specific before the generic. */
-function unitFrom(cell: string): MediaPriceUnit | null {
-  const t = cell.toLowerCase();
-  if (/\/\s*(sec|second)|per\s+second/.test(t)) return 'per_second';
-  if (/\/\s*(image|img)|per\s+image/.test(t)) return 'per_image';
-  if (/1k\s*char|per\s*1,?000\s*char/.test(t)) return 'per_1k_chars';
-  if (/\/\s*(mo|month)|per\s+month/.test(t)) return 'per_month';
-  return null;
+/**
+ * Unit implied by the words around the price. Patterns are checked
+ * specific-before-generic on ties; the caller picks the NEAREST match.
+ */
+const UNIT_PATTERNS: [MediaPriceUnit, RegExp][] = [
+  ['per_second', /\/\s*(?:sec|second)|per\s+second/],
+  ['per_image', /\/\s*(?:image|img)|per\s+image/],
+  ['per_1k_chars', /1k\s*char|per\s*1,?000\s*char/],
+  ['per_month', /\/\s*(?:mo|month)|per\s+month/],
+];
+
+/** The unit keyword closest to the start of `window`, or null. */
+function nearestUnit(window: string): MediaPriceUnit | null {
+  const t = window.toLowerCase();
+  let best: { unit: MediaPriceUnit; at: number; order: number } | null = null;
+  for (const [order, [unit, re]] of UNIT_PATTERNS.entries()) {
+    const at = t.search(re);
+    if (at < 0) continue;
+    if (!best || at < best.at || (at === best.at && order < best.order)) best = { unit, at, order };
+  }
+  return best?.unit ?? null;
 }
 
-function usd(cell: string): number | null {
-  const m = cell.match(/\$\s*([0-9]+(?:\.[0-9]+)?)/);
-  if (!m) return null;
-  const n = Number(m[1]);
+/**
+ * $ amount with optional thousands groups, cents and a k/K suffix:
+ * "$1,200/mo" → 1200 (the old [0-9]+ regex stopped at the comma and read $1),
+ * "$20k" → 20000. The k must not start a longer word ("$5 kg" stays 5).
+ */
+const AMOUNT_RE = /\$\s*([0-9]{1,3}(?:,[0-9]{3})+|[0-9]+)(?:\.([0-9]+))?\s*([kK](?![a-zA-Z]))?/g;
+
+/** How far after an amount a unit keyword may sit and still describe it. */
+const UNIT_WINDOW_CHARS = 32;
+
+function parseAmount(groups: RegExpMatchArray): number | null {
+  const n = Number(groups[1].replace(/,/g, '') + (groups[2] ? `.${groups[2]}` : '')) * (groups[3] ? 1000 : 1);
   return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * First $ amount that pairs with a unit keyword. Pairing is by proximity —
+ * the nearest unit keyword AFTER the amount, within UNIT_WINDOW_CHARS — so a
+ * joined row like "$10/mo or $0.05/image" yields (10, per_month) instead of
+ * mixing the first amount with whatever unit appears first. Rows with no
+ * amount/unit pair are skipped rather than guessed at.
+ */
+function priceWithUnit(cell: string): { amountUsd: number; unit: MediaPriceUnit } | null {
+  for (const m of cell.matchAll(AMOUNT_RE)) {
+    const amountUsd = parseAmount(m);
+    if (amountUsd === null) continue;
+    const after = cell.slice(m.index + m[0].length, m.index + m[0].length + UNIT_WINDOW_CHARS);
+    const unit = nearestUnit(after);
+    if (unit) return { amountUsd, unit };
+  }
+  return null;
 }
 
 function tableRows(html: string): string[][] {
@@ -81,10 +120,9 @@ export function parseMediaTable(html: string, tools: readonly string[]): MediaPr
     if (idx < 0) continue;
     const [cells] = pool.splice(idx, 1);
     const joined = cells.slice(1).join(' ');
-    const amountUsd = usd(joined);
-    const unit = unitFrom(joined);
-    if (amountUsd === null || unit === null) continue;
-    out.push({ tool, unit, amountUsd });
+    const price = priceWithUnit(joined);
+    if (!price) continue;
+    out.push({ tool, ...price });
   }
   return out;
 }

@@ -34,10 +34,13 @@ export function scoreChip(p: PatternRow): string {
 export default function AnomalyFeed({
   items,
   trends,
+  trendPartial,
 }: {
   items: PatternRow[];
   /** per-item daily series (mentions, stories, price…), index-aligned */
   trends?: (number[] | null)[];
+  /** index-aligned: true when the series' last bucket is today's partial UTC day */
+  trendPartial?: boolean[];
 }) {
   return (
     <ul className="flex flex-col">
@@ -71,6 +74,7 @@ export default function AnomalyFeed({
                 values={trends?.[i] ?? null}
                 color={k.color}
                 caption={p.kind === 'price-drop' ? '$ · 14d' : '14d'}
+                partialLast={trendPartial?.[i] ?? false}
               />
             </div>
             <span className="mono shrink-0 pt-[2px] text-[10.5px]" style={{ color: k.color }}>

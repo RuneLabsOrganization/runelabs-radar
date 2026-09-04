@@ -7,7 +7,7 @@ import { getIdentity } from '../identity';
 import { lastOkAt } from '../jobs';
 import { accuracyMisses } from '../science/accuracy';
 import { promptLine } from '../prompt-hygiene';
-import { clusterNewItems } from './cluster';
+import { clusterNewItems, CURATION_WINDOW_MS } from './cluster';
 import { passesGate } from './gate';
 import { semanticPreDedup } from './semantic-merge';
 
@@ -19,8 +19,8 @@ const RECURATE_LIMIT = 10;
  * Only stories still inside the display window get LLM budget — the feed (72h),
  * brief (24h) and board sync (7d) never read anything older, so scoring a story
  * past 72h is wasted spend (feed backfill can be years deep on first ingest).
+ * The constant itself lives in cluster.ts — one definition for every reader.
  */
-const CURATE_WINDOW_MS = 72 * 36e5;
 const MAX_MEMBER_ITEMS = 5;
 const MAX_CALIBRATION_VOTES = 10;
 const MAX_EXCERPT_CHARS = 300;
@@ -221,7 +221,7 @@ export async function runCurate(): Promise<CurateStats> {
     .select()
     .from(stories)
     .where(
-      and(eq(stories.status, 'raw'), gte(stories.createdAt, new Date(Date.now() - CURATE_WINDOW_MS))),
+      and(eq(stories.status, 'raw'), gte(stories.createdAt, new Date(Date.now() - CURATION_WINDOW_MS))),
     )
     .orderBy(desc(stories.createdAt), desc(stories.id))
     .limit(CURATE_BATCH_LIMIT)

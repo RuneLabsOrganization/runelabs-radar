@@ -49,4 +49,22 @@ describe('gradeConfidence', () => {
       gradeConfidence({ evidenceCount: 500, distinctSources: 40, verifiedAt: null, now: NOW }),
     ).toBe('low');
   });
+
+  it('requires a genuinely independent domain before passing low', () => {
+    // JUSTIFICATION (G3): runKitGrade now passes independentDomains (previously
+    // no caller did, so the gate was dead). Vendor-only corroboration cannot
+    // outrank 'low' however much of it there is.
+    expect(
+      gradeConfidence({ evidenceCount: 50, distinctSources: 9, verifiedAt: daysAgo(1), independentDomains: 0, now: NOW }),
+    ).toBe('low');
+    expect(
+      gradeConfidence({ evidenceCount: 50, distinctSources: 9, verifiedAt: daysAgo(1), independentDomains: 1, now: NOW }),
+    ).toBe('high');
+  });
+
+  it('skips the independence gate when the caller has not computed it', () => {
+    expect(
+      gradeConfidence({ evidenceCount: 50, distinctSources: 9, verifiedAt: daysAgo(1), now: NOW }),
+    ).toBe('high');
+  });
 });

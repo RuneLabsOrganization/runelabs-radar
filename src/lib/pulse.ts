@@ -8,6 +8,7 @@ import { getDb } from './db';
 import { metricPoints, patterns } from './db/schema';
 import { LAUNCH_CATEGORIES } from './launches';
 import { seriesForMany, utcDay, type SeriesRow } from './metrics';
+import { SERIES_SEMANTICS } from './velocity';
 
 export interface Mover {
   source: string;
@@ -62,25 +63,49 @@ export const FRONTIER_PRICE_MODELS = [
 ] as const;
 
 /**
- * One mover computation behind every "% change" tile: latest in-window value
- * vs the last baseline point before the window (fallback: first in-window
- * point — a younger series, disclosed by the shorter span). `floorPct` is the
- * noise gate: 10 for first-party series, 5 for AA prices (smoother data).
+ * One mover computation behind every "% change" tile. Two modes, picked by
+ * series kind (see SERIES_SEMANTICS in velocity.ts):
+ * - cumulative (default): latest in-window value vs the last baseline point
+ *   before the window (fallback: first in-window point — a younger series,
+ *   disclosed by the shorter span).
+ * - rolling-7d-rate: consecutive points overlap 6 of 7 days, so endpoint
+ *   deltas double-count; compare the mean of in-window points vs the mean of
+ *   points before the window instead.
+ * `floorPct` is the noise gate: 10 for first-party series, 5 for AA prices
+ * (smoother data).
  */
 function moverFromPts(
   pts: { date: string; value: number }[],
   sinceDay: string,
   floorPct: number,
+  kind: 'cumulative' | 'rolling-7d-rate' = 'cumulative',
 ): { from: number; to: number; pct: number } | null {
   const inWindow = pts.filter((p) => p.date >= sinceDay);
   if (inWindow.length === 0) return null;
   const before = pts.filter((p) => p.date < sinceDay);
+
+  if (kind === 'rolling-7d-rate') {
+    if (before.length === 0) return null;
+    const mean = (arr: { value: number }[]) => arr.reduce((a, p) => a + p.value, 0) / arr.length;
+    const base = mean(before);
+    const last = mean(inWindow);
+    if (base === 0) return null;
+    const pct = ((last - base) / Math.abs(base)) * 100;
+    if (Math.abs(pct) < floorPct) return null;
+    return { from: base, to: last, pct };
+  }
+
   const base = before.length > 0 ? before[before.length - 1]! : inWindow[0]!;
   const last = inWindow[inWindow.length - 1]!;
   if (base.value === 0 || base.date === last.date) return null;
   const pct = ((last.value - base.value) / Math.abs(base.value)) * 100;
   if (Math.abs(pct) < floorPct) return null;
   return { from: base.value, to: last.value, pct };
+}
+
+/** Look up a series' declared kind (falls back to cumulative-endpoint semantics). */
+function seriesKind(source: string, metric: string): 'cumulative' | 'rolling-7d-rate' {
+  return SERIES_SEMANTICS[`${source}:${metric}` as keyof typeof SERIES_SEMANTICS] ?? 'cumulative';
 }
 
 /** Lookback needed so every series has a pre-window baseline point. */
@@ -120,7 +145,7 @@ export function marketMovers(sinceDay: string, limit = 8): Mover[] {
 
   const movers: Mover[] = [];
   for (const s of series.values()) {
-    const m = moverFromPts(s.pts, sinceDay, 10); // noise floor — movers only
+    const m = moverFromPts(s.pts, sinceDay, 10, seriesKind(s.source, s.metric)); // noise floor — movers only
     if (m) movers.push({ source: s.source, entity: s.entity, metric: s.metric, ...m });
   }
   return movers.sort((a, b) => Math.abs(b.pct) - Math.abs(a.pct)).slice(0, limit);

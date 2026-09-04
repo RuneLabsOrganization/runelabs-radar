@@ -124,8 +124,25 @@ export function setSession(
 }
 
 /**
- * Fit score 0–30 added to flip for ordering only. Interests matching sector
- * boost; avoided sectors penalize hard; skills token overlap with thesis boosts lightly.
+ * Whole-token match: `needle` must appear in `haystack` (both already
+ * lowercased) bounded by non-word characters — not as a raw substring. This
+ * is what keeps 3-char skills honest: "go" no longer matches "governance",
+ * "gen" no longer matches "generator". Lookarounds instead of \b so needles
+ * with non-word edges ("c++", "node.js") still match.
+ */
+export function tokenMatch(haystack: string, needle: string): boolean {
+  const escaped = needle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`(?<![\\w])${escaped}(?![\\w])`).test(haystack);
+}
+
+/** Largest bonus the terms below can actually sum to (12+3+4+5+4). */
+export const FIT_BONUS_MAX = 28;
+
+/**
+ * Fit score added to flip for ordering only; range [−40, FIT_BONUS_MAX]
+ * (−40 avoided-sector veto … +28 everything aligned). Interests matching
+ * sector boost; avoided sectors penalize hard; skills/watch-tokens overlapping
+ * the thesis (whole tokens only) boost lightly.
  */
 export function fitBonus(
   profile: UserProfile | null,
@@ -146,7 +163,7 @@ export function fitBonus(
       bonus += 12;
     }
     for (const skill of profile.skills) {
-      if (skill.length >= 3 && hay.includes(skill.toLowerCase())) {
+      if (skill.length >= 3 && tokenMatch(hay, skill.toLowerCase())) {
         bonus += 3;
         break;
       }
@@ -156,7 +173,7 @@ export function fitBonus(
   if (session) {
     if (session.lastOpportunity && session.lastOpportunity === opp.slug) bonus += 4;
     for (const t of session.watchTopics) {
-      if (t.length >= 3 && (hay.includes(t.toLowerCase()) || sector.includes(t.toLowerCase()))) {
+      if (t.length >= 3 && (tokenMatch(hay, t.toLowerCase()) || sector.includes(t.toLowerCase()))) {
         bonus += 5;
         break;
       }
@@ -166,9 +183,9 @@ export function fitBonus(
         .toLowerCase()
         .split(/\W+/)
         .filter((t) => t.length > 3);
-      if (tokens.some((t) => hay.includes(t))) bonus += 4;
+      if (tokens.some((t) => tokenMatch(hay, t))) bonus += 4;
     }
   }
 
-  return Math.min(30, bonus);
+  return Math.min(FIT_BONUS_MAX, bonus);
 }

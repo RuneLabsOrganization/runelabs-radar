@@ -7,29 +7,22 @@
  * - returned ≈ UTF-8 chars of the payload the agent actually sees ÷ 4
  * - counterfactual_full ≈ size of today's verbose dump for the same tool
  * - counterfactual_diy ≈ published constants for "agent does the research itself"
- * - saved = max(0, counterfactual − returned)
+ * - saved = max(0, counterfactual − returned), but DIY savings only earn full
+ *   credit when the reply carries minimal substance (returned ≥ 10% of the DIY
+ *   budget; below that the credit scales proportionally — see mcp-diy.ts), so
+ *   an empty reply can never maximize "savings"
+ *
+ * DIY_TOKENS/DiyKind live in mcp-diy.ts (client-safe leaf shared with the
+ * landing-page demo) and are re-exported here for existing consumers.
  */
 import { and, eq, gte, sql } from 'drizzle-orm';
 import { getDb } from './db';
 import { mcpEconomy } from './db/schema';
 import { cycleStart, entitlementFor } from './billing';
+import { DIY_TOKENS, diySavings, type DiyKind } from './mcp-diy';
 
-/** Conservative DIY research budgets (user-agent tokens), not Radar COGS. */
-export const DIY_TOKENS = {
-  read: 2_000,
-  dossier: 8_000,
-  brief: 4_000,
-  weekly: 12_000,
-  debate: 18_000,
-  plan: 28_000,
-  ask: 22_000,
-  scout: 16_000,
-  decide: 10_000,
-  relevant: 12_000,
-  metrics_full: 6_000,
-} as const;
-
-export type DiyKind = keyof typeof DIY_TOKENS;
+export { DIY_TOKENS } from './mcp-diy';
+export type { DiyKind } from './mcp-diy';
 
 export interface EconomySnapshot {
   returned: number;
@@ -73,7 +66,7 @@ export function computeEconomy(
   return {
     returned,
     saved_vs_full: Math.max(0, full - returned),
-    saved_vs_diy: Math.max(0, diy - returned),
+    saved_vs_diy: diySavings(returned, diy),
   };
 }
 

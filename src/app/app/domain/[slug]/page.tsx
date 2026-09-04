@@ -14,7 +14,7 @@ import {
   isDomain,
 } from '@/lib/domains';
 import { dailyDomainCounts, domainMomentum } from '@/lib/analytics';
-import { domainAffinity, personalScore, splitFeed } from '@/lib/feed';
+import { domainAffinity, personalScore, splitCompleteDays, splitFeed } from '@/lib/feed';
 import { freshnessVsAnchor, itemAggByStory, voteAggByStory } from '@/lib/feed-agg';
 import { visitAnchor } from '@/lib/visits';
 import { allEntityNames, matchEntity } from '@/lib/stacks/match';
@@ -103,6 +103,9 @@ export default async function DomainPage({ params }: { params: Promise<{ slug: s
   });
 
   const momentum = new Map(domainMomentum().map((m) => [m.domain, m.deltaPct]));
+  const days = dailyDomainCounts(14);
+  const todayPartial = splitCompleteDays(days).partial !== null;
+  const sectorSeries = Object.fromEntries(DOMAINS.map((d) => [d, days.map((x) => x.byDomain[d])]));
   const stats: SectorStat[] = DOMAINS.map((domain) => {
     let n = 0;
     let fresh = 0;
@@ -112,7 +115,14 @@ export default async function DomainPage({ params }: { params: Promise<{ slug: s
         if (c.isNew) fresh += 1;
       }
     }
-    return { domain, count: n, fresh, deltaPct: momentum.get(domain) ?? null };
+    return {
+      domain,
+      count: n,
+      fresh,
+      deltaPct: momentum.get(domain) ?? null,
+      series: sectorSeries[domain] ?? null,
+      partialLast: todayPartial,
+    };
   });
 
   // membership is judged on the RAW sector score — personalization only re-ranks
@@ -161,7 +171,7 @@ export default async function DomainPage({ params }: { params: Promise<{ slug: s
       </div>
 
       <SectionHeader label="Sector activity — last 14 days" />
-      <ActivityPanel days={dailyDomainCounts(14)} focus={slug} />
+      <ActivityPanel days={days} focus={slug} />
 
       <div className="grid gap-10 lg:grid-cols-[minmax(0,1fr)_240px]">
         <div className="min-w-0">

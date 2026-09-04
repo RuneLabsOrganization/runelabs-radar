@@ -3,7 +3,7 @@ import PageHeader from '@/components/PageHeader';
 import { Card, CardContent } from '@/components/ui/card';
 import { SectionHeader } from '@/components/ui/section-header';
 import { requireAdmin } from '@/lib/auth/user';
-import { CALLS_PER_PLAN, usageReport, type DailyCost } from '@/lib/usage';
+import { CALLS_PER_PLAN, MARGIN_ASSUMPTION, usageReport, type DailyCost } from '@/lib/usage';
 import { paths } from '@/lib/urls';
 
 export const metadata = {
@@ -48,6 +48,7 @@ function DailyCostChart({ days }: { days: DailyCost[] }) {
 export default async function AdminUsagePage() {
   await requireAdmin();
   const report = usageReport(30);
+  const builderExpected = report.margins.find((m) => m.tier === 'builder')?.expected ?? null;
 
   return (
     <div className="mx-auto flex max-w-[860px] flex-col gap-8 px-6 py-7">
@@ -76,6 +77,7 @@ export default async function AdminUsagePage() {
             <DailyCostChart days={report.daily} />
             <p className="mono mt-1 text-[10px] text-ink-4">
               est. total {fmtUsd(report.totalCostUsd)} &middot; {report.totalCalls.toLocaleString('en-US')} calls
+              {report.totalUnmetered > 0 && ` · unmetered: ${report.totalUnmetered.toLocaleString('en-US')} calls (no price entry — excluded from cost)`}
               {report.totalCalls === 0 && ' — nothing metered yet; rows land on every chatJSON call'}
             </p>
           </div>
@@ -102,14 +104,25 @@ export default async function AdminUsagePage() {
                     <span className="mono tabular-nums text-ink">{fmtUsd(report.planCost.avgCostPerCallUsd)}</span>
                   </li>
                   <li className="flex items-baseline justify-between gap-3 text-[12px]">
+                    <span className="text-ink-3">avg frame call</span>
+                    <span className="mono tabular-nums text-ink">{fmtUsd(report.planCost.avgFrameCostUsd)}</span>
+                  </li>
+                  <li className="flex items-baseline justify-between gap-3 text-[12px]">
+                    <span className="text-ink-3">avg phase call</span>
+                    <span className="mono tabular-nums text-ink">{fmtUsd(report.planCost.avgPhaseCostUsd)}</span>
+                  </li>
+                  <li className="flex items-baseline justify-between gap-3 text-[12px]">
                     <span className="text-ink-3">avg per plan</span>
                     <span className="mono tabular-nums text-phosphor">{fmtUsd(report.planCost.avgCostPerPlanUsd)}</span>
                   </li>
                 </ul>
               )}
               <p className="mt-3 border-t border-grat-soft pt-2.5 text-[11.5px] leading-relaxed text-ink-4">
-                One plan generation = ~6&ndash;7 calls (frame + 5 phases, +1 when the brief bootstraps); rows have no
-                run id, so per-plan = avg per call &times; {CALLS_PER_PLAN}.
+                One plan generation = {CALLS_PER_PLAN} calls (1 frame + {report.planCost.phasesPerPlan} phases, +1 when
+                the brief bootstraps); rows have no run id, so per-plan = avg frame + avg phase &times;{' '}
+                {report.planCost.phasesPerPlan} — the frame carries the big context, so it is never averaged into the
+                phase mean.
+                {report.planCost.unmetered > 0 && ` unmetered: ${report.planCost.unmetered} calls excluded.`}
               </p>
               </CardContent>
             </Card>
@@ -156,8 +169,12 @@ export default async function AdminUsagePage() {
           </tbody>
         </table>
         <p className="mono mt-2 text-[10px]" style={{ color: 'var(--ink-4)' }}>
-          cost/mo = measured avg plan cost &times; tier quota at full usage &middot; quotas mirror the Phase 8a
-          entitlement defaults (billing.ts becomes the source of truth when it lands)
+          cost/mo = measured avg plan cost &times; tier quota &middot; {MARGIN_ASSUMPTION} — every subscriber burns
+          their full quota
+          {report.marginUtilization !== null &&
+            builderExpected !== null &&
+            ` · expected at median observed utilization (${(report.marginUtilization * 100).toFixed(0)}% quota burn): builder margin ${fmtUsd(builderExpected.marginUsd)}`}
+          &middot; quotas mirror the Phase 8a entitlement defaults
         </p>
       </section>
 

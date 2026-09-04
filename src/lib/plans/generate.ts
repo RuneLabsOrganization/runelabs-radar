@@ -18,6 +18,16 @@ import {
 
 export type PlanResult = { ok: true; plan: ExecutionPlan; cached: boolean } | { ok: false; error: string };
 
+/**
+ * Metered LLM calls per plan generation, derived from the pipeline itself:
+ * 1 overview frame (feature='plan') + one call per PLAN_PHASES entry
+ * (feature='plan-phase'). Exported so the usage aggregates
+ * (src/lib/usage.ts) scale per-plan cost from the real structure — a phase
+ * added to PLAN_PHASES flows through without anyone editing a copy.
+ */
+export const PLAN_PHASE_COUNT = PLAN_PHASES.length;
+export const CALLS_PER_PLAN = 1 + PLAN_PHASE_COUNT;
+
 // in-flight dedupe: concurrent requests for the same opportunity AND the same
 // market-visibility share one generation (mixing visibilities would hand a
 // market-grounded plan to a restricted caller). Progress listeners fan out to
@@ -67,7 +77,7 @@ function attachToInflight(
 
 /**
  * Full-lifecycle execution plan for an opportunity, cached on the row.
- * Six LLM calls (overview + one per phase), grounded in the opportunity's
+ * CALLS_PER_PLAN LLM calls (overview + one per phase), grounded in the opportunity's
  * dossier + brief, the stack playbooks, the board, the model market, sector
  * pains, and money comps. Pass force to regenerate over the cache.
  */

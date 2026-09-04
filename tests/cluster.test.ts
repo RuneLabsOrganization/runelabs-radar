@@ -41,6 +41,26 @@ describe('titleSimilarity', () => {
     expect(titleSimilarity('Claude Fable 5 released', 'Claude Fable 5 released')).toBe(1);
   });
 
+  it('same product, same version, reworded: merges (E9)', () => {
+    expect(titleSimilarity('Claude 4.5 pricing', 'Claude 4.5 launch')).toBeGreaterThanOrEqual(0.55);
+  });
+
+  it('short-title rule: two shared non-version tokens of ≤3 total merge (E9)', () => {
+    // plain Jaccard here is 2/4 = 0.5 — the coarse 2-3-token grid could never
+    // reach 0.55, so reworded same-news systematically missed the bar
+    expect(titleSimilarity('Claude Code pricing', 'Claude Code launch')).toBeGreaterThanOrEqual(0.55);
+  });
+
+  it('different versions are DIFFERENT releases: shared version tokens do not bridge them (E9)', () => {
+    expect(titleSimilarity('GPT-5', 'GPT-4')).toBeLessThan(0.55);
+    // 3/5 plain Jaccard would have merged these; the version guard drops the shared '4'
+    expect(titleSimilarity('Claude 4.5 pricing', 'Claude 4.6 pricing')).toBeLessThan(0.55);
+  });
+
+  it('unrelated products sharing only version tokens do not merge (E9)', () => {
+    expect(titleSimilarity('Claude 4.5 pricing', 'Gemini 4.5 launch')).toBeLessThan(0.55);
+  });
+
   it('scores empty/stopword-only titles as 0', () => {
     expect(titleSimilarity('', 'Claude Fable 5 released')).toBe(0);
     expect(titleSimilarity('the and', 'the and')).toBe(0);

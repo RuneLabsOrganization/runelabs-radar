@@ -4,6 +4,7 @@ import * as React from 'react';
 import { useEffect, useId, useState } from 'react';
 import type { SubScores } from '@/lib/opportunities/engine';
 import { gradeColor } from '@/lib/opportunities/axes';
+import { clamp } from '@/lib/stats';
 
 export { gradeColor };
 
@@ -23,10 +24,20 @@ const SIZE = 216;
 const C = SIZE / 2;
 const R = SIZE / 2 - 34; // room for labels
 
+/** Raw SVG point — rings and labels deliberately sit past 20, so no clamp. */
 function pos(axisIdx: number, value: number): { x: number; y: number } {
   const angle = -Math.PI / 2 + (axisIdx / RADAR_AXES.length) * Math.PI * 2;
   const r = (value / 20) * R;
   return { x: C + Math.cos(angle) * r, y: C + Math.sin(angle) * r };
+}
+
+/**
+ * SVG point for a DATA value. Sub-scores are 0–20 by contract, but clamp
+ * defensively — an out-of-contract value used to overflow the chart radius.
+ * Pure — exported for tests.
+ */
+export function radarPoint(axisIdx: number, value: number): { x: number; y: number } {
+  return pos(axisIdx, clamp(value, 0, 20));
 }
 
 /**
@@ -55,7 +66,7 @@ export default function SpiderChart({ sub, grade }: { sub: SubScores; grade?: nu
     }).join(' ');
 
   const valuePoints = RADAR_AXES.map((a, i) => {
-    const p = pos(i, sub[a.key] ?? 0);
+    const p = radarPoint(i, sub[a.key] ?? 0);
     return `${p.x},${p.y}`;
   }).join(' ');
 
@@ -126,7 +137,7 @@ export default function SpiderChart({ sub, grade }: { sub: SubScores; grade?: nu
           <polygon points={valuePoints} fill="none" stroke={color} strokeWidth={5} strokeOpacity={0.1} strokeLinejoin="round" />
           <polygon points={valuePoints} fill={`url(#${gradId})`} stroke={color} strokeWidth={1.4} strokeOpacity={0.9} strokeLinejoin="round" />
           {RADAR_AXES.map((a, i) => {
-            const p = pos(i, sub[a.key] ?? 0);
+            const p = radarPoint(i, sub[a.key] ?? 0);
             return <circle key={a.key} cx={p.x} cy={p.y} r={hover === i ? 3 : 1.8} fill={color} />;
           })}
         </g>

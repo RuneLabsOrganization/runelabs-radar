@@ -19,7 +19,7 @@ import {
   stories,
 } from '@/lib/db/schema';
 import { useTestDb } from './helpers/db';
-import { estimateTokens } from '@/lib/mcp-economy';
+import { estimateTokens, DIY_TOKENS } from '@/lib/mcp-economy';
 import { PUBLISHED_SAVINGS } from '@/lib/mcp-savings-copy';
 import { renderPlanMarkdown } from '@/lib/plans/markdown';
 import type { ExecutionPlan } from '@/lib/plans/schema';
@@ -418,5 +418,11 @@ describe('mcp savings bench', () => {
     expect(avgSavedFull).toBeGreaterThanOrEqual(PUBLISHED_SAVINGS.compactAvgSavedVsFull);
     expect(weeklyFull.returned / weekly.returned).toBeGreaterThanOrEqual(PUBLISHED_SAVINGS.weeklyFullVsCompact);
     expect(planMd.saved_vs_diy).toBeGreaterThanOrEqual(PUBLISHED_SAVINGS.planDiySaved);
+    // JUSTIFICATION (G6c): the session figure was a hand-sum (22k+8k+25k) with
+    // no bench floor while every other constant had one. Session = ask_radar
+    // (constant, not LLM-benched) + compact dossier + generate_plan.
+    expect(DIY_TOKENS.ask + dossier.saved_vs_diy + planMd.saved_vs_diy).toBeGreaterThanOrEqual(
+      PUBLISHED_SAVINGS.sessionDiySaved,
+    );
   });
 });

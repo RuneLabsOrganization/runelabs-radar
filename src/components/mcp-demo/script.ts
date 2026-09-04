@@ -6,6 +6,8 @@
  * every structured payload carries. Payloads are trimmed for readability, not
  * invented.
  */
+import { DIY_TOKENS, diySavings, type DiyKind } from '@/lib/mcp-diy';
+import { PUBLISHED_SAVINGS, fmtTokens } from '@/lib/mcp-savings-copy';
 
 export type DemoStep =
   | { kind: 'user'; text: string }
@@ -22,6 +24,20 @@ export interface DemoTab {
   headline: string;
   blurb: string;
   steps: DemoStep[];
+}
+
+/**
+ * Economy receipts are computed, never hand-written: saved_vs_diy derives
+ * from DIY_TOKENS + the displayed `returned` via the same substance-scaled
+ * rule the live meter applies (mcp-diy.ts), so a receipt can never drift from
+ * the constants it claims — the plan step once read 25700 where
+ * DIY − returned = 25720, and nothing kept the two in sync.
+ */
+export function demoEconomyReceipt(diyKind: DiyKind, returned: number, savedVsFull?: number): string {
+  const parts = [`"returned": ${returned}`];
+  if (savedVsFull !== undefined) parts.push(`"saved_vs_full": ${savedVsFull}`);
+  parts.push(`"saved_vs_diy": ${diySavings(returned, DIY_TOKENS[diyKind])}`);
+  return `"economy": { ${parts.join(', ')} }`;
 }
 
 export const DEMO_TABS: DemoTab[] = [
@@ -64,7 +80,7 @@ export const DEMO_TABS: DemoTab[] = [
           '    { "label": "bulk-bg-removal-api", "url": "…" },',
           '    { "label": "pain: product-photo retouching" }',
           '  ],',
-          '  "economy": { "returned": 380, "saved_vs_diy": 21620 },',
+          `  ${demoEconomyReceipt('ask', 380)},`,
           '  "next": [ { "tool": "get_opportunity", "arguments":',
           '    { "detail": "compact" } } ]',
           '}',
@@ -153,7 +169,7 @@ export const DEMO_TABS: DemoTab[] = [
     client: 'Claude Code',
     headline: 'A plan your agent can actually execute',
     blurb:
-      'generate_plan returns one format (markdown by default) — not JSON and markdown together. Your agent writes PLAN.md and starts working. ~25k DIY tokens kept out of a local research loop.',
+      `generate_plan returns one format (markdown by default) — not JSON and markdown together. Your agent writes PLAN.md and starts working. ~${fmtTokens(PUBLISHED_SAVINGS.planDiySaved)} DIY tokens kept out of a local research loop.`,
     steps: [
       {
         kind: 'user',
@@ -177,8 +193,7 @@ export const DEMO_TABS: DemoTab[] = [
           '  "cached": false,',
           '  "format": "markdown",',
           '  "markdown": "# Bulk BG Removal API\\n…",',
-          '  "economy": { "returned": 2280, "saved_vs_full": 3540,',
-          '    "saved_vs_diy": 25700 },',
+          `  ${demoEconomyReceipt('plan', 2280, 3540)},`,
           '  "next": [ { "tool": "get_plan", "arguments":',
           '    { "format": "json" } } ]',
           '}',
@@ -249,7 +264,7 @@ export const DEMO_TABS: DemoTab[] = [
           '      "score": 78 }',
           '  ],',
           '  "next": [ { "tool": "get_story", … } ],',
-          '  "economy": { "returned": 229, "saved_vs_diy": 1771 }',
+          `  ${demoEconomyReceipt('read', 229)}`,
           '}',
         ],
       },
@@ -291,7 +306,7 @@ export const DEMO_TABS: DemoTab[] = [
           '    "cost_note": "Sonnet wins on multi-file coherence"',
           '  }],',
           '  "recommendation": "Sonnet for refactors >20 files;",',
-          '  "economy": { "returned": 241, "saved_vs_diy": 9759 },',
+          `  ${demoEconomyReceipt('decide', 241)},`,
           '  "next": []',
           '}',
         ],

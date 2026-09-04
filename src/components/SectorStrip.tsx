@@ -12,13 +12,15 @@ export interface SectorStat {
   deltaPct?: number | null;
   /** 14-day daily story counts — rendered as an inline sparkline when present. */
   series?: number[] | null;
+  /** the series' last bucket is today's partial UTC day — hatch it, don't accent it */
+  partialLast?: boolean;
 }
 
 /** Sweep readout across the six sectors — doubles as domain navigation. */
 export default function SectorStrip({ stats, active }: { stats: SectorStat[]; active?: Domain }) {
   return (
     <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
-      {stats.map(({ domain, count, fresh, deltaPct, series }) => (
+      {stats.map(({ domain, count, fresh, deltaPct, series, partialLast }) => (
         <Link
           key={domain}
           href={`/domain/${domain}`}
@@ -55,7 +57,7 @@ export default function SectorStrip({ stats, active }: { stats: SectorStat[]; ac
           </span>
           {series && series.length > 0 && (
             <span className="mt-1.5 block" aria-hidden>
-              <MiniTrend values={series} color={DOMAIN_COLORS[domain]} height={20} fluid />
+              <MiniTrend values={series} color={DOMAIN_COLORS[domain]} height={20} fluid partialLast={partialLast} />
             </span>
           )}
         </Link>

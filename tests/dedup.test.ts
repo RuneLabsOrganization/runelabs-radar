@@ -90,8 +90,66 @@ describe('semantic dedup', () => {
     expect(db.select().from(items).where(eq(items.id, itemId)).get()!.storyId).toBe(older);
     expect(db.select().from(votes).get()!.storyId).toBe(older);
 
-    // better curated payload (higher topScore) won
-    expect(db.select().from(stories).where(eq(stories.id, older)).get()!.topScore).toBe(85);
+    // better curated payload (higher topScore) won — WITH its title (E2):
+    // the scores were computed against the dup's title, so the title moves too
+    const winner = db.select().from(stories).where(eq(stories.id, older)).get()!;
+    expect(winner.topScore).toBe(85);
+    expect(winner.title).toBe('GPT-5.6 is here');
+  });
+
+  it('a merge bumps the canonical updatedAt (freshness, "new since last visit", re-curation all read it)', async () => {
+    const now = Date.now();
+    const older = insertStory({
+      title: 'OpenAI launches GPT-5.6',
+      topScore: 90,
+      createdAt: new Date(now - 5 * 36e5),
+      vec: makeVec([1, 0.5, 0.25]),
+    });
+    insertStory({
+      title: 'GPT-5.6 is here',
+      topScore: 70,
+      createdAt: new Date(now - 1 * 36e5),
+      vec: makeVec([1, 0.5, 0.25]),
+    });
+
+    await mergeSimilarStories(now);
+
+    const canonical = getDb().select().from(stories).where(eq(stories.id, older)).get()!;
+    expect(canonical.updatedAt).toBeInstanceOf(Date);
+    expect(canonical.updatedAt!.getTime()).toBeGreaterThanOrEqual(canonical.createdAt.getTime());
+    // canonical had the better payload: title AND scores both stay its own —
+    // never title A with the scores of B
+    expect(canonical.title).toBe('OpenAI launches GPT-5.6');
+    expect(canonical.topScore).toBe(90);
+  });
+
+  it('a denormalized embedding is repaired before thresholding — same merge decision as its normalized twin (E1)', async () => {
+    const now = Date.now();
+    // unit vectors with true cosine 0.80 (below the 0.87 bar); scaled ×1.3
+    // their raw dot product would be 1.35 — a false merge without renorm
+    const u = new Float32Array(384).fill(0);
+    u[0] = 1;
+    const w = new Float32Array(384).fill(0);
+    w[0] = 0.8;
+    w[1] = 0.6;
+    const scale = (v: Float32Array, k: number): Float32Array => v.map((x) => x * k);
+    insertStory({ title: 'Story A', topScore: 50, createdAt: new Date(now - 5 * 36e5), vec: scale(u, 1.3) });
+    insertStory({ title: 'Story B', topScore: 50, createdAt: new Date(now - 1 * 36e5), vec: scale(w, 1.3) });
+
+    const result = await mergeSimilarStories(now);
+    expect(result.merged).toBe(0); // like the normalized twins: 0.80 < 0.87, no merge
+    expect(getDb().select().from(stories).all()).toHaveLength(2);
+  });
+
+  it('a denormalized true duplicate still merges (repair does not lower real similarity)', async () => {
+    const now = Date.now();
+    const base = makeVec([1, 0.5, 0.25]);
+    const scaled = base.map((x) => x * 1.4);
+    insertStory({ title: 'Same news', topScore: 50, createdAt: new Date(now - 5 * 36e5), vec: base });
+    insertStory({ title: 'Same news reworded', topScore: 50, createdAt: new Date(now - 1 * 36e5), vec: scaled });
+
+    const result = await mergeSimilarStories(now);
+    expect(result.merged).toBe(1);
   });
 
   it('keeps related-but-distinct stories separate', async () => {

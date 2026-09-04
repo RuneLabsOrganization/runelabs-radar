@@ -65,7 +65,10 @@ describe('kit grade', () => {
     db = useTestDb();
   });
 
-  function seedPickWithEvidence(urls: string[]) {
+  function seedPickWithEvidence(
+    urls: string[],
+    role: 'first_party' | 'independent' | 'community' = 'independent',
+  ) {
     const pickId = db
       .insert(kitPicks)
       .values({
@@ -83,6 +86,7 @@ describe('kit grade', () => {
           pickId,
           kind: 'report' as const,
           sourceUrl,
+          role,
           excerpt: 'holds motion',
           sentiment: 1,
           observedAt,
@@ -92,7 +96,7 @@ describe('kit grade', () => {
     return pickId;
   }
 
-  it('grades a pick that has evidence', () => {
+  it('grades a pick that has independent evidence', () => {
     seedPickWithEvidence([
       'https://a.example/1',
       'https://a.example/2',
@@ -111,6 +115,40 @@ describe('kit grade', () => {
     expect(row.confidence).toBe('med');
   });
 
+  it('counts sibling subdomains as ONE source — blog.vendor.com + vendor.com = vendor.com', () => {
+    // JUSTIFICATION (G3): distinct_sources used to key on raw hostname, so a
+    // vendor's blog subdomain counted as an independent second source.
+    // provenance.ts collapses to the registrable domain.
+    seedPickWithEvidence([
+      'https://blog.vendor.com/launch',
+      'https://vendor.com/pricing',
+      'https://docs.vendor.com/quickstart',
+      'https://a.example/review',
+      'https://b.example/benchmarks',
+    ]);
+
+    runKitGrade(now);
+    const row = db.select().from(kitPicks).all()[0];
+    expect(row.evidenceCount).toBe(5);
+    expect(row.distinctSources).toBe(3); // vendor.com, a.example, b.example
+  });
+
+  it('caps confidence at low when no evidence is independent-role, however much there is', () => {
+    // JUSTIFICATION (G3): the independentDomains gate existed in confidence.ts
+    // but no caller passed it. Volume of vendor/community material is not
+    // corroboration — it cannot lift a verdict past 'low'.
+    seedPickWithEvidence(
+      ['https://a.example/1', 'https://b.example/2', 'https://c.example/3', 'https://d.example/4', 'https://e.example/5'],
+      'community',
+    );
+
+    runKitGrade(now);
+    const row = db.select().from(kitPicks).all()[0];
+    expect(row.evidenceCount).toBe(5);
+    expect(row.distinctSources).toBe(5);
+    expect(row.confidence).toBe('low'); // would have been 'med' before the gate was wired
+  });
+
   it('is a no-op on a second run', () => {
     seedPickWithEvidence(['https://a.example/1']);
     expect(runKitGrade(now).graded).toBe(1);
@@ -126,7 +164,10 @@ describe('kit grade', () => {
     expect(() => runKitGrade(now)).not.toThrow();
     const row = db.select().from(kitPicks).all()[0];
     expect(row.evidenceCount).toBe(2);
-    expect(row.distinctSources).toBe(2);
+    // JUSTIFICATION (G3): a malformed URL has no registrable domain, so it can
+    // no longer inflate distinct_sources (it used to count as its own
+    // "hostname"). Over-merging is the conservative direction.
+    expect(row.distinctSources).toBe(1);
   });
 });
 

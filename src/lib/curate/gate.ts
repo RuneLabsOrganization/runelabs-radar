@@ -6,8 +6,10 @@
  *
  * Conservative by design: a story is filtered ONLY when no AI/domain vocabulary
  * appears anywhere in its title or member items. One unambiguous term passes
- * it; ambiguous everyday words ("model", "agent", "token") need two distinct
- * hits. Borderline always reaches the LLM — a false filter is worse than a
+ * it; ambiguous everyday words ("model", "agent", "token") need hits in TWO
+ * DISTINCT text locations (title vs a member item, or two different items) —
+ * "AI model" in a single title trips two regexes but is one piece of evidence.
+ * Borderline always reaches the LLM — a false filter is worse than a
  * wasted call.
  */
 
@@ -95,16 +97,33 @@ const WEAK: RegExp[] = [
 /**
  * True when the story carries enough AI/domain vocabulary to deserve an LLM
  * curation call. `memberTexts` = member item titles + excerpts (empty ok).
+ * Weak-term evidence must be distributed: a location (title, or one member
+ * text) counts at most once no matter how many weak regexes it trips.
  */
 export function passesGate(title: string, memberTexts: string[] = []): boolean {
-  const text = [title, ...memberTexts].join('\n').toLowerCase();
+  // distinct text locations — the story title and its first member item are
+  // usually the same string, which must count as ONE piece of evidence
+  const seen = new Set<string>();
+  const parts: string[] = [];
+  for (const t of [title, ...memberTexts]) {
+    const norm = t.toLowerCase().trim();
+    if (norm.length === 0 || seen.has(norm)) continue;
+    seen.add(norm);
+    parts.push(norm);
+  }
+  const text = parts.join('\n');
   for (const re of STRONG) {
     if (re.test(text)) return true;
   }
-  let weak = 0;
-  for (const re of WEAK) {
-    if (re.test(text)) weak++;
-    if (weak >= 2) return true;
+  let weakLocations = 0;
+  for (const part of parts) {
+    for (const re of WEAK) {
+      if (re.test(part)) {
+        weakLocations++;
+        break; // one location = one piece of evidence
+      }
+    }
+    if (weakLocations >= 2) return true;
   }
   return false;
 }

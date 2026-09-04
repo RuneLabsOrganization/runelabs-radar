@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm';
 import { config } from './config';
 import { getDb } from './db';
 import { launches } from './db/schema';
+import { normalizeTitle } from './curate/cluster';
 import { fetchJson } from './ingest/adapters/shared';
 import { chatJSON, drainLlmUsageStats } from './llm/minimax';
 import { upsertMetric, utcDay } from './metrics';
@@ -176,16 +177,36 @@ export async function tagCategories(): Promise<number> {
  * Writes per-category launch counts keyed by the LAUNCH date (not run time),
  * covering the tagging retry window. Untagged rows are skipped, and every
  * category is written (zeros included) for each covered day, so a later
- * successful tagging run heals earlier bad values. Exported for tests.
+ * successful tagging run heals earlier bad values.
+ *
+ * Cross-source dedup: the same product launching on Show HN AND Product Hunt
+ * has two different urls → two rows → would be counted twice. Conservative:
+ * only an EXACT normalized-title match (curate's title tokens) from a
+ * different source within ±1 day collapses — the earliest sighting keeps the
+ * count and its day bucket. Exported for tests.
  */
 export function recordDailyCounts(): void {
   const db = getDb();
   const twoDaysAgo = new Date(Date.now() - 2 * 864e5);
-  const recent = db.select().from(launches).where(gte(launches.launchedAt, twoDaysAgo)).all();
+  const recent = db
+    .select()
+    .from(launches)
+    .where(gte(launches.launchedAt, twoDaysAgo))
+    .all()
+    .sort((a, b) => a.launchedAt.getTime() - b.launchedAt.getTime()); // earliest sighting wins the count
 
+  const seen: { key: string; source: string; launchedAt: number }[] = [];
   const byDay = new Map<string, Map<string, number>>();
   for (const l of recent) {
     if (!l.category) continue; // untagged → wait for the retry, don't pollute the series
+    const key = normalizeTitle(l.title).join(' ');
+    if (key.length > 0) {
+      const dupe = seen.some(
+        (s) => s.key === key && s.source !== l.source && Math.abs(s.launchedAt - l.launchedAt.getTime()) <= 864e5,
+      );
+      if (dupe) continue; // same product, other source — already counted
+      seen.push({ key, source: l.source, launchedAt: l.launchedAt.getTime() });
+    }
     const day = utcDay(l.launchedAt);
     const counts = byDay.get(day) ?? new Map<string, number>();
     counts.set(l.category, (counts.get(l.category) ?? 0) + 1);

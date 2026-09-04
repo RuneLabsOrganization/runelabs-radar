@@ -87,14 +87,22 @@ const EVIDENCE_GLYPH: Record<string, string> = {
 export function LaunchChecks({ sub }: { sub: SubScores }) {
   const results = SUB_KEYS.map((k) => ({ k, v: sub[k] ?? 0, pass: (sub[k] ?? 0) >= CHECK_PASS }));
   const passed = results.filter((r) => r.pass).length;
+  // the N/10 count is deliberately UNWEIGHTED — axes carry different weights
+  // (axes.ts FLIP/HOLD_WEIGHTS) and a bare count that hides them read as a
+  // weighted score; the weighted view is the flip/hold ScoreBars beside it
+  const disclosure = `equal-weight pass count (≥${CHECK_PASS}/20 per axis) — flip/hold bars carry the weighted view`;
   return (
     <div
       className="mt-2 flex items-center gap-2"
       role="img"
-      aria-label={`${passed} of ${SUB_KEYS.length} launch checks clear`}
+      aria-label={`${passed} of ${SUB_KEYS.length} launch checks clear — ${disclosure}`}
     >
       <span className="readout text-[10px]">checks</span>
-      <span className="mono text-[11px]" style={{ color: gradeColor((passed / SUB_KEYS.length) * 100) }}>
+      <span
+        className="mono text-[11px]"
+        style={{ color: gradeColor((passed / SUB_KEYS.length) * 100) }}
+        title={disclosure}
+      >
         {passed}/{SUB_KEYS.length}
       </span>
       <span className="mono flex gap-[3px] text-[10px]" aria-hidden>
@@ -142,18 +150,39 @@ function KpiTile({ label, value }: { label: string; value: string | null }) {
   );
 }
 
-/** Inverted risk meter: high sub-score = low risk. */
-function RiskMeter({ label, sub, note }: { label: string; sub: number; note?: string | null }) {
-  const risk = 20 - sub;
-  const color = risk <= 6 ? 'var(--phosphor)' : risk <= 12 ? 'var(--amber)' : 'var(--alert)';
+/**
+ * Inverted meter for a "higher sub-score = better" axis: the bar shows the
+ * gap to 20. What that gap MEANS depends on the axis — regulatory exposure and
+ * platform dependency are risks, but the qualityBar gap is EFFORT (how hard
+ * sellable quality is to hit), so callers pass the axis's own words via
+ * `labels`/`unit` instead of borrowing "risk".
+ */
+function RiskMeter({
+  label,
+  sub,
+  note,
+  unit = 'risk',
+  labels = ['low', 'med', 'high'],
+}: {
+  label: string;
+  sub: number;
+  note?: string | null;
+  /** what the gap measures ("risk", "effort") — used in the tooltip */
+  unit?: string;
+  /** words for the low/mid/high gap bands */
+  labels?: [string, string, string];
+}) {
+  const gap = 20 - sub;
+  const color = gap <= 6 ? 'var(--phosphor)' : gap <= 12 ? 'var(--amber)' : 'var(--alert)';
+  const word = gap <= 6 ? labels[0] : gap <= 12 ? labels[1] : labels[2];
   return (
-    <div className="flex items-center gap-2" title={note ?? `${label}: risk ${risk}/20`}>
+    <div className="flex items-center gap-2" title={note ?? `${label}: ${unit} ${word} (${gap}/20 gap)`}>
       <span className="readout w-[86px] shrink-0 text-[10px]">{label}</span>
       <span className="h-[4px] w-20 rounded-[1px]" style={{ background: 'var(--grat-soft)' }}>
-        <span className="anim-bar block h-full rounded-[1px]" style={{ width: `${(risk / 20) * 100}%`, background: color, opacity: 0.8 }} />
+        <span className="anim-bar block h-full rounded-[1px]" style={{ width: `${(gap / 20) * 100}%`, background: color, opacity: 0.8 }} />
       </span>
       <span className="mono text-[10px]" style={{ color }}>
-        {risk <= 6 ? 'low' : risk <= 12 ? 'med' : 'high'}
+        {word}
       </span>
     </div>
   );
@@ -260,7 +289,12 @@ export default function OppDossier({ opp, sortKey }: { opp: OppView; sortKey: 'f
           <div className="mt-3 flex flex-wrap gap-x-8 gap-y-1.5">
             <RiskMeter label="regulation" sub={opp.sub.regClear} note={k?.regulatoryNote} />
             <RiskMeter label="platform dep" sub={opp.sub.platformSafe} />
-            <RiskMeter label="quality effort" sub={opp.sub.qualityBar} />
+            <RiskMeter
+              label="quality effort"
+              sub={opp.sub.qualityBar}
+              unit="effort"
+              labels={['easy', 'fair', 'hard']}
+            />
           </div>
         )}
         {k?.regulatoryNote && (

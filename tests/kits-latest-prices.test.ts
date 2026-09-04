@@ -62,3 +62,45 @@ describe('runKitPriceBackfill price window', () => {
     expect(db.select().from(kitPicks).all()[0].priceUsdMonth).toBe(20);
   });
 });
+
+describe('runKitPriceBackfill per-(entity, metric) pricing', () => {
+  it('keeps both metrics of an entity and lets the seat price win — no seat/usage flip', () => {
+    // JUSTIFICATION (G3): latestPrices used to keep one row per ENTITY, so an
+    // entity with a monthly plan AND a per-unit price kept only the newest —
+    // the pick flipped between seat and usage depending on which feeder ran
+    // last. Both metrics are now kept, and price_per_month wins by documented
+    // precedence.
+    seedPick('Acme Coder');
+    db.insert(metricPoints)
+      .values([
+        { source: PRICING_SOURCE, entity: 'Acme Coder', metric: 'price_per_second', value: 0.4, date: daysAgo(1), createdAt: new Date() },
+        point('Acme Coder', 20, daysAgo(30)),
+      ])
+      .run();
+
+    expect(runKitPriceBackfill()).toEqual({ updated: 1 });
+    const pick = db.select().from(kitPicks).all()[0];
+    expect(pick.priceModel).toBe('seat');
+    expect(pick.priceUsdMonth).toBe(20);
+    expect(pick.riskFlag).toBeNull();
+
+    // stable across runs — a second run changes nothing
+    expect(runKitPriceBackfill()).toEqual({ updated: 0 });
+  });
+
+  it('uses the newest usage metric for the risk flag when no seat price exists', () => {
+    seedPick('Acme Coder');
+    db.insert(metricPoints)
+      .values([
+        { source: PRICING_SOURCE, entity: 'Acme Coder', metric: 'price_per_second', value: 0.4, date: daysAgo(1), createdAt: new Date() },
+        { source: PRICING_SOURCE, entity: 'Acme Coder', metric: 'price_per_image', value: 0.05, date: daysAgo(30), createdAt: new Date() },
+      ])
+      .run();
+
+    expect(runKitPriceBackfill()).toEqual({ updated: 1 });
+    const pick = db.select().from(kitPicks).all()[0];
+    expect(pick.priceModel).toBe('usage');
+    expect(pick.priceUsdMonth).toBeNull();
+    expect(pick.riskFlag).toContain('per second'); // newest usage metric's wording
+  });
+});
