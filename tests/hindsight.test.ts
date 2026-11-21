@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { useTestDb } from './helpers/db';
 import { getDb } from '@/lib/db';
 import { launches, stories, users, votes } from '@/lib/db/schema';
-import { hindsightScore, runRescore } from '@/lib/science/hindsight';
+import { hindsightScore, runRescore, RESCORE_BACKLOG_CAP, RESCORE_DAILY_CAP } from '@/lib/science/hindsight';
 
 function addStory(opts: {
   title: string;
@@ -173,34 +173,67 @@ describe('hindsightScore', () => {
 describe('runRescore', () => {
   beforeEach(() => useTestDb());
 
-  it('scores only stories inside the 36-60h window, once', async () => {
+  it('grades in-window stories on time, catches up past-window ones, never touches fresh ones — once', async () => {
     const now = Date.now();
     addStory({ title: 'in window', createdAt: new Date(now - 48 * 36e5) });
     addStory({ title: 'too fresh', createdAt: new Date(now - 12 * 36e5) });
-    addStory({ title: 'too old', createdAt: new Date(now - 72 * 36e5) });
+    addStory({ title: 'missed', createdAt: new Date(now - 72 * 36e5) });
 
     const first = await runRescore();
     expect(first.scored).toBe(1);
+    expect(first.caughtUp).toBe(1);
     expect(first.backlog).toBe(0);
     const second = await runRescore();
-    expect(second.scored).toBe(0); // idempotent
+    expect(second.scored + second.caughtUp).toBe(0); // idempotent
 
     const rows = getDb().select().from(stories).all();
     expect(rows.find((r) => r.title === 'in window')!.hindsight).not.toBeNull();
     expect(rows.find((r) => r.title === 'too fresh')!.hindsight).toBeNull();
-    expect(rows.find((r) => r.title === 'too old')!.hindsight).toBeNull();
+    expect(rows.find((r) => r.title === 'missed')!.hindsight).not.toBeNull();
+  });
+
+  it('a caught-up story is graded as of 48h — echoes after that moment do not count', async () => {
+    const now = Date.now();
+    const base = new Date(now - 10 * 864e5); // ten days old, never graded
+    addStory({ title: 'Kappatool goes GA', createdAt: base, entities: [{ name: 'kappatool', kind: 'tool' }] });
+    // every echo lands on day 4 — inside the 5-day window, but after the 48h grading moment
+    for (let i = 0; i < 5; i++) {
+      addStory({
+        title: `Kappatool echo ${i}`,
+        createdAt: new Date(base.getTime() + 4 * 864e5 + i * 36e5),
+        entities: [{ name: 'kappatool', kind: 'tool' }],
+      });
+    }
+    await runRescore();
+    const row = getDb().select().from(stories).all().find((r) => r.title === 'Kappatool goes GA')!;
+    // as of 48h it saw nothing; graded "now" the day-4 echoes would leak in
+    expect(row.hindsight).toBe(0);
+    expect(hindsightScore(row)).toBeGreaterThan(0);
+  });
+
+  it('backlog catch-up is bounded per run and reports what is left', async () => {
+    const now = Date.now();
+    for (let i = 0; i < RESCORE_BACKLOG_CAP + 3; i++) {
+      addStory({ title: `missed ${i}`, createdAt: new Date(now - (72 + i * 0.01) * 36e5) });
+    }
+    const first = await runRescore();
+    expect(first.caughtUp).toBe(RESCORE_BACKLOG_CAP);
+    expect(first.backlog).toBe(3);
+    const second = await runRescore();
+    expect(second.caughtUp).toBe(3);
+    expect(second.backlog).toBe(0);
   });
 
   it('overflow beyond the daily cap becomes backlog and is processed oldest-first next run', async () => {
     const now = Date.now();
-    // 1 story near the window's far edge + 120 fresh-in-window stories = 121 due
+    // 1 story near the window's far edge + CAP fresh-in-window stories = CAP+1 due
     addStory({ title: 'oldest in window', createdAt: new Date(now - 59.5 * 36e5) });
-    for (let i = 0; i < 120; i++) {
+    for (let i = 0; i < RESCORE_DAILY_CAP; i++) {
       addStory({ title: `bulk story ${i}`, createdAt: new Date(now - 40 * 36e5) });
     }
 
     const first = await runRescore();
-    expect(first.scored).toBe(120);
+    expect(first.scored).toBe(RESCORE_DAILY_CAP);
     expect(first.backlog).toBe(1);
 
     // OLDEST first: the story about to age out is the one that got scored;

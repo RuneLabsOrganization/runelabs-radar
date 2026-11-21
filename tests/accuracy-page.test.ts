@@ -8,6 +8,7 @@ import {
   forecastGrades,
   gradingSince,
   pendingGrades,
+  recordForecast,
   rescoreBacklog,
   spearman,
   type CalibrationBucket,
@@ -243,6 +244,38 @@ describe('forecastGrades', () => {
     expect(g!.realized).toBeNull();
     expect(g!.realizedDate).toBeNull();
     expect(g!.errorPct).toBeNull();
+  });
+});
+
+describe('recordForecast', () => {
+  beforeEach(() => {
+    useTestDb();
+  });
+  const DAY = 864e5;
+  const NOW = new Date('2026-11-21T12:00:00Z');
+  const dayStr = (agoDays: number) => new Date(NOW.getTime() - agoDays * DAY).toISOString().slice(0, 10);
+  function seedDays(fromAgo: number, toAgo: number) {
+    for (let d = fromAgo; d >= toAgo; d--) {
+      getDb()
+        .insert(metricPoints)
+        .values([
+          { source: 'aa', entity: 'm', metric: 'intelligence', value: 50, date: dayStr(d), createdAt: NOW },
+          { source: 'aa', entity: 'm', metric: 'price_blended', value: 4 + d * 0.01, date: dayStr(d), createdAt: NOW },
+        ])
+        .run();
+    }
+  }
+
+  it('records when the AA data is fresh', () => {
+    seedDays(10, 0);
+    expect(recordForecast(NOW)).toEqual({ recorded: true });
+    expect(getDb().select().from(forecasts).all()).toHaveLength(1);
+  });
+
+  it('refuses a stale fit — it would be graded 30 days from the wrong date', () => {
+    seedDays(25, 18); // AA stopped landing 18 days ago
+    expect(recordForecast(NOW)).toEqual({ recorded: false, reason: 'stale-data' });
+    expect(getDb().select().from(forecasts).all()).toHaveLength(0);
   });
 });
 

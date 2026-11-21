@@ -60,7 +60,9 @@ const tasks = [
   cron.schedule('40 6 * * *', () => fireAndForget(withJobRun('pain', runPain), 'pain')),
   cron.schedule('50 6 * * *', () => fireAndForget(withJobRun('science', runScience), 'science')),
   cron.schedule('0 7 * * *', () => fireAndForget(withJobRun('brief', runBrief), 'brief')),
-  cron.schedule('0 8 * * *', () => fireAndForget(withJobRun('rescore', runRescore), 'rescore')),
+  // hourly: the grading window is only 24h wide (36–60h) — a once-a-day capped
+  // run let most stories age out ungraded. Each run also catches up the backlog.
+  cron.schedule('25 * * * *', () => fireAndForget(withJobRun('rescore', runRescore), 'rescore')),
   cron.schedule('10 7 * * *', () => fireAndForget(withJobRun('opportunities', runOpportunities), 'opportunities')),
   cron.schedule('20 7 * * *', () => fireAndForget(withJobRun('second-look', runSecondLook), 'second-look')),
   // weekly: audit the relevance gate's false-kill rate on a filtered sample

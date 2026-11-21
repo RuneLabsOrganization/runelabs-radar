@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { boardHistory, stories } from '@/lib/db/schema';
-import { freshnessStats } from '@/lib/freshness';
+import { freshnessStats, MAX_REFLECTION_LAG_DAYS, pickDiffs } from '@/lib/freshness';
 import { useTestDb } from './helpers/db';
 
 const NOW = new Date('2026-08-20T00:00:00Z');
@@ -177,6 +177,44 @@ describe('freshnessStats — board reflection', () => {
     const { boardReflection } = freshnessStats(NOW);
     expect(boardReflection.considered).toBe(0);
     expect(boardReflection.matched).toBe(0);
+  });
+});
+
+describe('freshnessStats — only changes that newly put the entity on the board count', () => {
+  beforeEach(() => {
+    useTestDb();
+  });
+
+  it('a change that keeps the entity on both sides is not a reflection', () => {
+    const db = useTestDb();
+    const createdAt = new Date(NOW.getTime() - 10 * H);
+    addStory(db, { title: 'Claude Code tip', entities: [{ name: 'Claude Code', kind: 'tool' }], createdAt });
+    addBoardChange(db, 'bestOverall: Claude Code -> Gemini on Mac; bestValue: barebrowse + Claude Code -> barebrowse + Claude Code (max)', new Date(createdAt.getTime() + H));
+    expect(freshnessStats(NOW).boardReflection.matched).toBe(0);
+  });
+
+  it('costNote diffs are prices, not picks', () => {
+    const db = useTestDb();
+    const createdAt = new Date(NOW.getTime() - 10 * H);
+    addStory(db, { title: 'Zetamodel pricing', entities: [{ name: 'Zetamodel', kind: 'model' }], createdAt });
+    addBoardChange(db, 'costNote: $20/mo -> Zetamodel now $25/mo', new Date(createdAt.getTime() + H));
+    expect(freshnessStats(NOW).boardReflection.matched).toBe(0);
+  });
+
+  it(`a change more than ${MAX_REFLECTION_LAG_DAYS} days after the story does not reflect it`, () => {
+    const db = useTestDb();
+    const createdAt = new Date(NOW.getTime() - 80 * 24 * H);
+    addStory(db, { title: 'Etamodel ships', entities: [{ name: 'Etamodel', kind: 'model' }], createdAt });
+    addBoardChange(db, 'bestOverall: x -> Etamodel', new Date(createdAt.getTime() + (MAX_REFLECTION_LAG_DAYS + 1) * 24 * H));
+    expect(freshnessStats(NOW).boardReflection.matched).toBe(0);
+  });
+
+  it('pickDiffs parses multi-field change text and skips non-diff rows', () => {
+    expect(pickDiffs('initial values set')).toEqual([]);
+    expect(pickDiffs('bestOverall: A -> B; costNote: x -> y; cheapestViable: (none) -> C')).toEqual([
+      { from: 'a', to: 'b' },
+      { from: '(none)', to: 'c' },
+    ]);
   });
 });
 
