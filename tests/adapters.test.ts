@@ -284,6 +284,7 @@ describe('github adapter', () => {
 
 describe('brave adapter', () => {
   beforeEach(() => {
+    useTestDb(); // fresh paid-search budget ledger per test
     vi.stubEnv('BRAVE_API_KEY', 'test-brave-key');
   });
   afterEach(() => {
@@ -331,6 +332,7 @@ describe('brave adapter', () => {
 
 describe('exa adapter', () => {
   beforeEach(() => {
+    useTestDb(); // fresh paid-search budget ledger per test
     vi.stubEnv('EXA_API_KEY', 'test-exa-key');
     vi.stubEnv('BRAVE_API_KEY', 'test-brave-key');
   });

@@ -1,7 +1,8 @@
 import { exaSearch } from '../../search/exa';
+import { SearchBudgetError } from '../../search/budget';
 import { braveSearch } from '../../search/brave';
 import type { FetchedItem, Source, SourceAdapter } from '../types';
-import { parseConfig } from './shared';
+import { HttpFetchError, parseConfig } from './shared';
 
 interface ExaConfig {
   query?: string;
@@ -34,6 +35,10 @@ export const exaAdapter: SourceAdapter = {
         publishedAt: h.publishedAt,
       }));
     } catch (exaError) {
+      // Exa out of budget/credit (our cap, or its 402): falling back would just
+      // drain Brave's separate paid plan for every Exa source on every tick.
+      if (exaError instanceof SearchBudgetError) throw exaError;
+      if (exaError instanceof HttpFetchError && exaError.status === 402) throw exaError;
       try {
         const hits = await braveSearch({ query: cfg.query, kind: 'news', count: cfg.count, freshness: 'pd' });
         return hits.map((h) => ({

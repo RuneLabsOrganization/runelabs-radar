@@ -1,5 +1,6 @@
 import { config } from '../config';
 import { fetchJson, HttpFetchError, parseDate, toExcerpt } from '../ingest/adapters/shared';
+import { reserveSearchCall } from './budget';
 
 export type BraveKind = 'news' | 'web';
 export type BraveFreshness = 'pd' | 'pw' | 'pm';
@@ -139,6 +140,7 @@ export async function braveSearch(opts: {
     Accept: 'application/json',
     'X-Subscription-Token': token(),
   };
+  reserveSearchCall('brave'); // paid request — refuses once the monthly/daily cap is spent
   try {
     if (kind === 'web') {
       const res = await fetchJson<BraveWebResponse>(`${WEB_ENDPOINT}?${params}`, { headers });

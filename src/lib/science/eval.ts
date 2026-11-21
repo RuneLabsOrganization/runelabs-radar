@@ -43,15 +43,15 @@ export interface EvalTarget {
 
 export const EVAL_TARGETS: EvalTarget[] = [
   {
-    entity: 'MiniMax-M2',
-    modelId: 'MiniMax-M2',
+    entity: 'MiniMax-M3.1-Flash',
+    modelId: 'MiniMax-M3.1-Flash',
     baseUrlEnv: 'MINIMAX_BASE_URL',
     apiKeyEnv: 'MINIMAX_API_KEY',
     defaultBaseUrl: 'https://api.minimax.io/v1',
   },
   // OpenRouter — one key (OPENROUTER_API_KEY) unlocks most frontier models.
   // Uncomment any of these (or add your own) and the next weekly run scores
-  // them alongside MiniMax-M2:
+  // them alongside MiniMax-M3.1-Flash:
   // {
   //   entity: 'Claude Sonnet 4.5',
   //   modelId: 'anthropic/claude-sonnet-4.5',

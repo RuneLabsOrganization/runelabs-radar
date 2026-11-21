@@ -5,6 +5,7 @@ import { config } from '../config';
 import { DOMAINS, DOMAIN_LABELS, type Domain } from '../domains';
 import { SEED_BOARD_TASKS } from '../db/seed-data';
 import { chatJSON, drainLlmUsageStats } from '../llm/minimax';
+import { applyProposal } from './apply';
 import { promptLine } from '../prompt-hygiene';
 import { latestRadarScores, marketModels, normalizeModelKey, type MarketModel } from '../analytics';
 
@@ -253,6 +254,12 @@ function asOptString(v: unknown): string | null {
   return typeof v === 'string' && v.trim() !== '' ? v.trim() : null;
 }
 
+/** Board proposals apply themselves unless BOARD_AUTO_APPLY is 0/false/off. */
+function autoApplyEnabled(): boolean {
+  const v = (process.env.BOARD_AUTO_APPLY ?? '1').trim().toLowerCase();
+  return !['0', 'false', 'off', 'no'].includes(v);
+}
+
 /**
  * Asks MiniMax for board proposals for one domain and inserts the accepted
  * ones as pending board_proposals. Returns how many were inserted.
@@ -327,7 +334,8 @@ async function proposeForDomain(
       continue; // nothing actually proposed
     }
     const rationale = asOptString(rec.rationale) ?? 'No rationale provided.';
-    db.insert(boardProposals)
+    const row = db
+      .insert(boardProposals)
       .values({
         domain,
         task,
@@ -336,8 +344,19 @@ async function proposeForDomain(
         status: 'pending',
         createdAt: new Date(),
       })
-      .run();
+      .returning({ id: boardProposals.id })
+      .get();
     inserted++;
+    // No manual approval step: apply immediately (BOARD_AUTO_APPLY=0 restores
+    // the pending queue). The proposal row stays as the audit trail and
+    // applyProposal still writes board_history / kit_pick_history / the claim.
+    if (autoApplyEnabled()) {
+      try {
+        await applyProposal(row.id);
+      } catch (e) {
+        console.error(`[board] auto-apply of proposal ${row.id} (${domain}/${task}) failed — left pending:`, e);
+      }
+    }
   }
   return inserted;
 }

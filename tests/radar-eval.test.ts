@@ -150,7 +150,7 @@ describe('EVAL_SUITE sanity', () => {
 });
 
 describe('runRadarEval', () => {
-  it('scores MiniMax-M2 and writes score + per-kind sub-scores', async () => {
+  it('scores MiniMax-M3.1-Flash and writes score + per-kind sub-scores', async () => {
     installFetch((taskId) => {
       // think block + fence around otherwise-perfect answers must strip cleanly
       if (taskId === 'extract-invoice') {
@@ -174,7 +174,7 @@ describe('runRadarEval', () => {
     for (const metric of ['score', 'score_coding', 'score_extraction', 'score_copy']) {
       const p = byMetric.get(metric);
       expect(p, `missing metric ${metric}`).toBeDefined();
-      expect(p!.entity).toBe('MiniMax-M2');
+      expect(p!.entity).toBe('MiniMax-M3.1-Flash');
       expect(p!.value).toBe(100);
     }
 
@@ -184,11 +184,11 @@ describe('runRadarEval', () => {
       expect(c.feature).toBe('eval');
       expect(c.job).toBe('radar-eval');
       expect(c.userId).toBeNull();
-      expect(c.model).toBe('MiniMax-M2');
+      expect(c.model).toBe('MiniMax-M3.1-Flash');
       expect(c.promptTokens).toBe(120);
       expect(c.completionTokens).toBe(24);
       expect(c.durationMs).toBeGreaterThanOrEqual(0);
-      expect(c.estCostUsd).toBe(estimateCostUsd('MiniMax-M2', 120, 24));
+      expect(c.estCostUsd).toBe(estimateCostUsd('MiniMax-M3.1-Flash', 120, 24));
     }
   });
 
@@ -205,7 +205,7 @@ describe('runRadarEval', () => {
       expect(stats.scored).toBe(1); // MiniMax only
       expect(stats.failed).toEqual([]);
       const entities = new Set(evalPoints().map((p) => p.entity));
-      expect(entities.has('MiniMax-M2')).toBe(true);
+      expect(entities.has('MiniMax-M3.1-Flash')).toBe(true);
       expect(entities.has('Ghost-7B')).toBe(false);
     } finally {
       EVAL_TARGETS.pop();
@@ -230,7 +230,7 @@ describe('runRadarEval', () => {
     const stats = await runRadarEval();
     expect(stats.scored).toBe(0);
     expect(stats.failed).toHaveLength(1);
-    expect(stats.failed[0]).toMatch(/^MiniMax-M2:/);
+    expect(stats.failed[0]).toMatch(/^MiniMax-M3\.1-Flash:/);
     expect(evalPoints()).toHaveLength(0);
     expect(getDb().select().from(llmCalls).all()).toHaveLength(0);
     expect(fetchMock).toHaveBeenCalledTimes(24); // 12 tasks × 2 attempts

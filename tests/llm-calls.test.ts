@@ -65,11 +65,11 @@ describe('chatJSON metering', () => {
     expect(r.feature).toBe('x');
     expect(r.userId).toBe(42);
     expect(r.job).toBeNull();
-    expect(r.model).toBe('MiniMax-M3');
+    expect(r.model).toBe('MiniMax-M3.1-Flash');
     expect(r.promptTokens).toBe(2100);
     expect(r.completionTokens).toBe(1500);
     expect(r.durationMs).toBeGreaterThanOrEqual(0);
-    expect(r.estCostUsd).toBeCloseTo(0.00243, 12);
+    expect(r.estCostUsd).toBeCloseTo(0.001215, 12); // M3.1-Flash: $0.15 in / $0.60 out
     expect(r.ts).toBeInstanceOf(Date);
     expect(Math.abs(Date.now() - r.ts.getTime())).toBeLessThan(60_000);
   });
@@ -204,9 +204,9 @@ describe('generatePlan userId threading', () => {
     expect(rows).toHaveLength(7);
     for (const r of rows) {
       expect(r.userId).toBe(42);
-      expect(r.model).toBe('MiniMax-M3');
-      // 100/1e6*0.30 + 50/1e6*1.20 = 0.00009 per call
-      expect(r.estCostUsd).toBeCloseTo(0.00009, 12);
+      expect(r.model).toBe('MiniMax-M3.1-Flash');
+      // 100/1e6*0.15 + 50/1e6*0.60 = 0.000045 per call (M3.1-Flash)
+      expect(r.estCostUsd).toBeCloseTo(0.000045, 12);
     }
     expect(rows[0]!.feature).toBe('opportunity-brief');
     // frame is the single 'plan' row per generation (billing counts these);

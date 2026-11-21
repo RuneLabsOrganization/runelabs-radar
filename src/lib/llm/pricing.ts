@@ -6,6 +6,8 @@
  */
 const PRICE_PER_1M_USD: Record<string, { in: number; out: number }> = {
   'MiniMax-M2': { in: 0.3, out: 1.2 },
+  // M3.1 Flash: $0.15 in / $0.60 out (cache read $0.015) — platform.minimax.io/docs/pricing/overview
+  'MiniMax-M3.1-Flash': { in: 0.15, out: 0.6 },
   // M3 standard ≤512k, 50% off list: $0.30 in / $1.20 out
   'MiniMax-M3': { in: 0.3, out: 1.2 },
 };

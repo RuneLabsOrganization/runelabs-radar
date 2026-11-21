@@ -1,5 +1,6 @@
 import { config } from '../config';
 import { fetchJson } from '../ingest/adapters/shared';
+import { reserveSearchCall } from './budget';
 
 export interface ExaHit {
   title: string;
@@ -77,11 +78,13 @@ export async function exaSearch(opts: { query: string; count?: number }): Promis
     MAX_COUNT,
     Math.max(1, Math.floor(Number.isFinite(opts.count) ? (opts.count as number) : DEFAULT_COUNT)),
   );
+  const key = token();
+  reserveSearchCall('exa'); // paid request — refuses once the monthly/daily cap is spent
   const res = await fetchJson<ExaSearchResponse>(SEARCH_ENDPOINT, {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
-      'x-api-key': token(),
+      'x-api-key': key,
     },
     body: JSON.stringify({
       query: opts.query,

@@ -143,7 +143,7 @@ export function parseMoonshotPricing(html: string): ParsedPrice[] {
   return pickModels(html, MOONSHOT_MODELS, (c) => ({ priceIn: usd(c[1]), priceOut: usd(c[2]) }));
 }
 
-export const MINIMAX_MODELS = ['MiniMax-M2'] as const;
+export const MINIMAX_MODELS = ['MiniMax-M3.1-Flash', 'MiniMax-M3', 'MiniMax-M2'] as const;
 
 /** platform.minimax.io token-plan table: [model, input cache hit, input cache miss, output]. */
 export function parseMiniMaxPricing(html: string): ParsedPrice[] {
@@ -241,7 +241,13 @@ export const MANUAL_FALLBACK: Record<string, ParsedPrice[]> = {
     { model: 'Kimi K3 Turbo', priceIn: 1.0, priceOut: 4.0 },
   ],
   // https://platform.minimax.io/docs/guides/pricing-token-plan (publishes cache-hit prices)
-  minimax: [{ model: 'MiniMax-M2', priceCacheHit: 0.03, priceIn: 0.3, priceOut: 1.2 }],
+  minimax: [
+    // M3 standard ≤512k at 50% off list ($0.30/$1.20, matches llm/pricing.ts); cache-hit rate not published here.
+    { model: 'MiniMax-M3.1-Flash', priceCacheHit: 0.015, priceIn: 0.15, priceOut: 0.6 }, // verified 2026-11-21
+    { model: 'MiniMax-M3', priceIn: 0.3, priceOut: 1.2 }, // unverified
+    // retired by MiniMax (API 404s "no longer available") — kept only so historical rows stay comparable
+    { model: 'MiniMax-M2', priceCacheHit: 0.03, priceIn: 0.3, priceOut: 1.2 },
+  ],
   // https://www.alibabacloud.com/help/en/model-studio/billing-for-model-studio
   qwen: [
     { model: 'Qwen4-Max', priceIn: 1.6, priceOut: 6.4 }, // unverified

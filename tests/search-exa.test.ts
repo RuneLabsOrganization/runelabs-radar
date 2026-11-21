@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { exaSearch, ExaSearchError } from '@/lib/search/exa';
 import { HttpFetchError } from '@/lib/ingest/adapters/shared';
+import { useTestDb } from './helpers/db';
 
 function fixture(name: string): string {
   return readFileSync(fileURLToPath(new URL(`./fixtures/${name}`, import.meta.url)), 'utf8');
@@ -15,6 +16,10 @@ function stubFetch(body: string, status = 200) {
   vi.stubGlobal('fetch', fn);
   return fn;
 }
+
+beforeEach(() => {
+  useTestDb(); // paid-search budget ledger lives in usage_counters
+});
 
 afterEach(() => {
   vi.unstubAllGlobals();

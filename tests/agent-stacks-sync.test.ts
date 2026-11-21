@@ -97,7 +97,7 @@ describe('syncAgentStacks LLM metering', () => {
     expect(rows[0]!.job).toBe('agent-stacks');
     expect(rows[0]!.promptTokens).toBe(2100);
     expect(rows[0]!.completionTokens).toBe(1500);
-    expect(rows[0]!.estCostUsd).toBeCloseTo(0.00243, 12);
+    expect(rows[0]!.estCostUsd).toBeCloseTo(0.001215, 12);
 
     const state = db.select().from(agentStackState).where(eq(agentStackState.id, 1)).get();
     expect(state?.rationale).toBe('Brave was quiet; keep the seed.');

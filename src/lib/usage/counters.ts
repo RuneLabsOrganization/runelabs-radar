@@ -8,7 +8,7 @@
  *
  * Windows are UTC-aligned so a quota never wobbles with the server timezone.
  */
-import { and, eq, lt, sql } from 'drizzle-orm';
+import { and, eq, like, lt, not, sql } from 'drizzle-orm';
 import { getDb } from '../db';
 import { usageCounters } from '../db/schema';
 
@@ -70,6 +70,17 @@ export function peek(
 /** Drop expired rows so a flood of unique buckets cannot grow the table forever. */
 export function gcCounters(now: Date = new Date()): number {
   const cutoff = new Date(now.getTime() - RETENTION_MS);
-  const res = getDb().delete(usageCounters).where(lt(usageCounters.windowStart, cutoff)).run();
-  return res.changes;
+  const db = getDb();
+  // search:* buckets are the paid-search budget ledger — it sums a whole month
+  // of day rows, so the 2-day sweep must not eat it (see search/budget.ts).
+  const res = db
+    .delete(usageCounters)
+    .where(and(lt(usageCounters.windowStart, cutoff), not(like(usageCounters.bucket, 'search:%'))))
+    .run();
+  const searchCutoff = new Date(now.getTime() - 40 * 864e5);
+  const old = db
+    .delete(usageCounters)
+    .where(and(lt(usageCounters.windowStart, searchCutoff), like(usageCounters.bucket, 'search:%')))
+    .run();
+  return res.changes + old.changes;
 }

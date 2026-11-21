@@ -31,16 +31,16 @@ export const SEED_SOURCES: SeedSource[] = [
   { type: 'github', name: 'GitHub Trending', config: { pollMinutes: 60 }, domainHints: ['coding'] },
   // Search (Exa primary, Brave fallback on any Exa error) — targeted queries
   // per domain, 3h poll cadence via pollMinutes. See src/lib/ingest/adapters/exa.ts.
-  { type: 'exa', name: 'Search — Coding AI', config: { query: 'AI coding assistant OR code model OR agentic coding', pollMinutes: 180 }, domainHints: ['coding'] },
-  { type: 'exa', name: 'Search — Copy AI', config: { query: 'AI copywriting OR AI writing tool', pollMinutes: 180 }, domainHints: ['copy'] },
-  { type: 'exa', name: 'Search — Image AI', config: { query: 'AI image generation OR text-to-image model', pollMinutes: 180 }, domainHints: ['image'] },
-  { type: 'exa', name: 'Search — Video AI', config: { query: 'AI video generation OR text-to-video model', pollMinutes: 180 }, domainHints: ['video'] },
-  { type: 'exa', name: 'Search — Ads AI', config: { query: 'AI ad creative OR advertising automation AI', pollMinutes: 180 }, domainHints: ['ads'] },
-  { type: 'exa', name: 'Search — Agentic AI', config: { query: 'AI agents OR browser agent OR computer use', pollMinutes: 180 }, domainHints: ['agentic'] },
-  { type: 'exa', name: 'Search — Frontier Watch', config: { query: 'frontier AI model release OR LLM launch', pollMinutes: 180 }, domainHints: [] },
-  { type: 'exa', name: 'Search — Audio AI', config: { query: 'AI voice generation OR text-to-speech OR AI music model', pollMinutes: 180 }, domainHints: [] },
-  { type: 'exa', name: 'Search — Dev Infra', config: { query: 'Vercel OR Supabase OR Cloudflare Workers pricing OR outage OR migration', pollMinutes: 180 }, domainHints: ['coding'] },
-  { type: 'exa', name: 'Search — MCP Servers', config: { query: 'MCP server Model Context Protocol tool integration', pollMinutes: 180 }, domainHints: ['agentic'] },
+  { type: 'exa', name: 'Search — Coding AI', config: { query: 'AI coding assistant OR code model OR agentic coding', pollMinutes: 720 }, domainHints: ['coding'] },
+  { type: 'exa', name: 'Search — Copy AI', config: { query: 'AI copywriting OR AI writing tool', pollMinutes: 720 }, domainHints: ['copy'] },
+  { type: 'exa', name: 'Search — Image AI', config: { query: 'AI image generation OR text-to-image model', pollMinutes: 720 }, domainHints: ['image'] },
+  { type: 'exa', name: 'Search — Video AI', config: { query: 'AI video generation OR text-to-video model', pollMinutes: 720 }, domainHints: ['video'] },
+  { type: 'exa', name: 'Search — Ads AI', config: { query: 'AI ad creative OR advertising automation AI', pollMinutes: 720 }, domainHints: ['ads'] },
+  { type: 'exa', name: 'Search — Agentic AI', config: { query: 'AI agents OR browser agent OR computer use', pollMinutes: 720 }, domainHints: ['agentic'] },
+  { type: 'exa', name: 'Search — Frontier Watch', config: { query: 'frontier AI model release OR LLM launch', pollMinutes: 720 }, domainHints: [] },
+  { type: 'exa', name: 'Search — Audio AI', config: { query: 'AI voice generation OR text-to-speech OR AI music model', pollMinutes: 720 }, domainHints: [] },
+  { type: 'exa', name: 'Search — Dev Infra', config: { query: 'Vercel OR Supabase OR Cloudflare Workers pricing OR outage OR migration', pollMinutes: 720 }, domainHints: ['coding'] },
+  { type: 'exa', name: 'Search — MCP Servers', config: { query: 'MCP server Model Context Protocol tool integration', pollMinutes: 720 }, domainHints: ['agentic'] },
   { type: 'reddit', name: 'r/webdev', config: { subreddit: 'webdev' }, domainHints: ['coding'] },
   // Copy/ads were structurally underserved — copy had exactly one source
   // (the Brave query above) and ads had one dedicated source plus two
