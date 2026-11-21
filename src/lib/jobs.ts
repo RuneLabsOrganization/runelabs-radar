@@ -1,7 +1,7 @@
 import { and, desc, eq, gte, lt } from 'drizzle-orm';
 import { getDb, type Db } from './db';
 import { jobRuns } from './db/schema';
-import { drainLlmUsageStats } from './llm/minimax';
+import { drainLlmUsageStats, lastLlmError } from './llm/minimax';
 
 export type JobName =
   | 'ingest'
@@ -110,6 +110,21 @@ export async function withJobRun<T extends Record<string, unknown>>(
   }
 }
 
+/**
+ * A job that made LLM calls and got not one token back did not do its work,
+ * whatever it returned. Jobs catch per-call LLM errors and carry on (right for
+ * one bad batch), so from 2026-10-21 to 11-21 — a retired model id failing
+ * every call — every LLM job logged "ok" with 0 tokens for a month. Returns
+ * the failure message, or null when the run is fine. Exported for tests.
+ */
+export function llmTotalFailure(stats: Record<string, unknown>): string | null {
+  const calls = stats.calls;
+  if (typeof calls !== 'number' || calls <= 0) return null;
+  if (Number(stats.promptTokens) > 0 || Number(stats.completionTokens) > 0) return null;
+  const why = lastLlmError();
+  return `every LLM call failed (${calls} call${calls === 1 ? '' : 's'}, 0 tokens)${why ? ` — last error: ${why}` : ''}`;
+}
+
 async function runRecorded<T extends Record<string, unknown>>(
   job: JobName,
   runId: number,
@@ -118,6 +133,15 @@ async function runRecorded<T extends Record<string, unknown>>(
   const db = getDb();
   try {
     const stats = await fn();
+    const llmFailure = llmTotalFailure(stats);
+    if (llmFailure) {
+      db.update(jobRuns)
+        .set({ status: 'error', finishedAt: new Date(), stats: JSON.stringify(stats), error: llmFailure })
+        .where(eq(jobRuns.id, runId))
+        .run();
+      console.error(`[job:${job}] failed: ${llmFailure}`);
+      return null;
+    }
     db.update(jobRuns)
       .set({ status: 'ok', finishedAt: new Date(), stats: JSON.stringify(stats) })
       .where(eq(jobRuns.id, runId))

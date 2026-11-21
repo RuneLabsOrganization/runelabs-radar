@@ -41,7 +41,8 @@ describe('worker entry containment', () => {
 
   it('worker/index.ts routes every cron callback through fireAndForget', () => {
     const src = readFileSync(new URL('../worker/index.ts', import.meta.url), 'utf8');
-    const schedules = src.match(/cron\.schedule\(/g) ?? [];
+    // crons go through the recovering schedule() helper (src/lib/cron.ts)
+    const schedules = src.match(/^\s*schedule\(/gm) ?? [];
     const wrapped = src.match(/\(\) =>\s*fireAndForget\(/g) ?? [];
     expect(schedules.length).toBeGreaterThan(0);
     expect(wrapped).toHaveLength(schedules.length);

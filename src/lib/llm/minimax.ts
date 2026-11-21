@@ -24,6 +24,13 @@ export function _setFetch(f: typeof fetch): void {
 let _calls = 0;
 let _promptTokens = 0;
 let _completionTokens = 0;
+// last failure message, so a job whose every call failed can say WHY
+let _lastError: string | null = null;
+
+/** The most recent chatJSON failure message (process-wide), or null. */
+export function lastLlmError(): string | null {
+  return _lastError;
+}
 
 /** Returns accumulated usage since the last drain and resets the counters. */
 export function drainLlmUsageStats(): { calls: number; promptTokens: number; completionTokens: number } {
@@ -194,6 +201,7 @@ export async function chatJSON<T>(
     } catch (e) {
       const err =
         e instanceof LlmError ? e : new LlmError(e instanceof Error ? e.message : String(e), true);
+      _lastError = err.message;
       if (!err.retryable || attempt >= 2) throw err;
       // no time left for another full attempt inside the deadline — fail now
       if (remaining() < backoffs[attempt] + 15_000) throw err;

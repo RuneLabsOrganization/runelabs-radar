@@ -1,4 +1,4 @@
-import cron from 'node-cron';
+import { schedule } from '../src/lib/cron';
 import { loadDotEnv } from '../src/lib/env';
 import { fireAndForget, withJobRun } from '../src/lib/jobs';
 import { runIngest } from '../src/lib/ingest/ingest';
@@ -48,53 +48,53 @@ process.on('uncaughtException', (err) => {
 const tasks = [
   // ingest → curate chained: fresh items get scored minutes after landing,
   // and curate can never race a slow ingest (the standalone :05 tick is gone)
-  cron.schedule('*/15 * * * *', () =>
+  schedule('*/15 * * * *', () =>
     fireAndForget(withJobRun('ingest', runIngest).then(() => withJobRun('curate', runCurate)), 'ingest→curate'),
   ),
-  cron.schedule('20 * * * *', () => fireAndForget(withJobRun('embed', runEmbed), 'embed')),
-  cron.schedule('30 5 * * *', () => fireAndForget(withJobRun('snapshot', runSnapshot), 'snapshot')),
-  cron.schedule('45 5 * * *', () => fireAndForget(withJobRun('velocity', runVelocity), 'velocity')),
-  cron.schedule('0 6 * * 1', () => fireAndForget(withJobRun('board', runBoardSync), 'board')),
-  cron.schedule('15 6 * * *', () => fireAndForget(withJobRun('launches', runLaunches), 'launches')),
-  cron.schedule('30 6 * * 1', () => fireAndForget(withJobRun('stacks', runStacks), 'stacks')),
-  cron.schedule('40 6 * * *', () => fireAndForget(withJobRun('pain', runPain), 'pain')),
-  cron.schedule('50 6 * * *', () => fireAndForget(withJobRun('science', runScience), 'science')),
-  cron.schedule('0 7 * * *', () => fireAndForget(withJobRun('brief', runBrief), 'brief')),
+  schedule('20 * * * *', () => fireAndForget(withJobRun('embed', runEmbed), 'embed')),
+  schedule('30 5 * * *', () => fireAndForget(withJobRun('snapshot', runSnapshot), 'snapshot')),
+  schedule('45 5 * * *', () => fireAndForget(withJobRun('velocity', runVelocity), 'velocity')),
+  schedule('0 6 * * 1', () => fireAndForget(withJobRun('board', runBoardSync), 'board')),
+  schedule('15 6 * * *', () => fireAndForget(withJobRun('launches', runLaunches), 'launches')),
+  schedule('30 6 * * 1', () => fireAndForget(withJobRun('stacks', runStacks), 'stacks')),
+  schedule('40 6 * * *', () => fireAndForget(withJobRun('pain', runPain), 'pain')),
+  schedule('50 6 * * *', () => fireAndForget(withJobRun('science', runScience), 'science')),
+  schedule('0 7 * * *', () => fireAndForget(withJobRun('brief', runBrief), 'brief')),
   // hourly: the grading window is only 24h wide (36–60h) — a once-a-day capped
   // run let most stories age out ungraded. Each run also catches up the backlog.
-  cron.schedule('25 * * * *', () => fireAndForget(withJobRun('rescore', runRescore), 'rescore')),
-  cron.schedule('10 7 * * *', () => fireAndForget(withJobRun('opportunities', runOpportunities), 'opportunities')),
-  cron.schedule('20 7 * * *', () => fireAndForget(withJobRun('second-look', runSecondLook), 'second-look')),
+  schedule('25 * * * *', () => fireAndForget(withJobRun('rescore', runRescore), 'rescore')),
+  schedule('10 7 * * *', () => fireAndForget(withJobRun('opportunities', runOpportunities), 'opportunities')),
+  schedule('20 7 * * *', () => fireAndForget(withJobRun('second-look', runSecondLook), 'second-look')),
   // weekly: audit the relevance gate's false-kill rate on a filtered sample
-  cron.schedule('15 9 * * 0', () => fireAndForget(withJobRun('gate-audit', runGateAudit), 'gate-audit')),
+  schedule('15 9 * * 0', () => fireAndForget(withJobRun('gate-audit', runGateAudit), 'gate-audit')),
   // weekly: first-party provider prices + open benchmarks (Phase 6 data foundations)
-  cron.schedule('10 5 * * 2', () => fireAndForget(withJobRun('pricing', runPricingSync), 'pricing')),
-  cron.schedule('20 4 * * 3', () => fireAndForget(withJobRun('openbench', runOpenBenchSync), 'openbench')),
+  schedule('10 5 * * 2', () => fireAndForget(withJobRun('pricing', runPricingSync), 'pricing')),
+  schedule('20 4 * * 3', () => fireAndForget(withJobRun('openbench', runOpenBenchSync), 'openbench')),
   // daily: the public first-party dataset dump (Phase 10 free databook)
-  cron.schedule('20 5 * * *', () => fireAndForget(withJobRun('dataset-dump', runDatasetDump), 'dataset-dump')),
+  schedule('20 5 * * *', () => fireAndForget(withJobRun('dataset-dump', runDatasetDump), 'dataset-dump')),
   // weekly: coding-agent plan prices (manual seed, idempotent re-sync)
-  cron.schedule('40 4 * * 4', () => fireAndForget(withJobRun('agent-plans', syncAgentPlans), 'agent-plans')),
+  schedule('40 4 * * 4', () => fireAndForget(withJobRun('agent-plans', syncAgentPlans), 'agent-plans')),
   // daily: coding-agent IDE/harness/model landscape (Brave + LLM overlay)
-  cron.schedule('45 4 * * *', () => fireAndForget(withJobRun('agent-stacks', syncAgentStacks), 'agent-stacks')),
+  schedule('45 4 * * *', () => fireAndForget(withJobRun('agent-stacks', syncAgentStacks), 'agent-stacks')),
   // weekly: micro-eval vs keyed models (Thu 04:30 — the series exists before
   // Friday's nightly science job blends it into the Radar Score)
-  cron.schedule('30 4 * * 4', () => fireAndForget(withJobRun('radar-eval', runRadarEval), 'radar-eval')),
+  schedule('30 4 * * 4', () => fireAndForget(withJobRun('radar-eval', runRadarEval), 'radar-eval')),
   // weekly: State of the Builder Market report (Sunday 08:00, after the brief)
-  cron.schedule('0 8 * * 0', () => fireAndForget(withJobRun('weekly-report', runWeeklyReport), 'weekly-report')),
+  schedule('0 8 * * 0', () => fireAndForget(withJobRun('weekly-report', runWeeklyReport), 'weekly-report')),
   // weekly Radar Batch drop (Monday 07:30 — after opportunities)
-  cron.schedule('30 7 * * 1', () => fireAndForget(withJobRun('radar-batch', createWeeklyRadarDrop), 'radar-batch')),
+  schedule('30 7 * * 1', () => fireAndForget(withJobRun('radar-batch', createWeeklyRadarDrop), 'radar-batch')),
   // daily: drop expired anonymous leads and stale usage-counter rows
-  cron.schedule('20 3 * * *', () => fireAndForget(withJobRun('sweep', runSweep), 'sweep')),
+  schedule('20 3 * * *', () => fireAndForget(withJobRun('sweep', runSweep), 'sweep')),
   // media pricing: Tuesday 05:30, 20 min after the LLM pricing sync
-  cron.schedule('30 5 * * 2', () => fireAndForget(withJobRun('media-pricing', runMediaPricingSync), 'media-pricing')),
+  schedule('30 5 * * 2', () => fireAndForget(withJobRun('media-pricing', runMediaPricingSync), 'media-pricing')),
   // evidence mining: daily 06:55, after pain mining (06:40) and science (06:50)
-  cron.schedule('55 6 * * *', () => fireAndForget(withJobRun('kit-evidence', runKitEvidence), 'kit-evidence')),
+  schedule('55 6 * * *', () => fireAndForget(withJobRun('kit-evidence', runKitEvidence), 'kit-evidence')),
   // price backfill + confidence grading: daily 07:05, after both feeders.
   // Two job names, one chain: a pricing-feeder failure is recorded as a
   // kit-prices error and never takes grading down with it (withJobRun swallows
   // the failure into the run row, so the .then still grades) — before, the
   // merged {...prices, ...grades} run died opaque on the first throw.
-  cron.schedule('5 7 * * *', () =>
+  schedule('5 7 * * *', () =>
     fireAndForget(
       withJobRun('kit-prices', () => Promise.resolve(runKitPriceBackfill())).then(() =>
         withJobRun('kit-grade', () => Promise.resolve(runKitGrade())),
@@ -103,9 +103,9 @@ const tasks = [
     ),
   ),
   // daily: grade kit pick verdicts while flip history is fresh (after kit-grade)
-  cron.schedule('15 7 * * *', () => fireAndForget(withJobRun('verdict-grade', runVerdictGrade), 'verdict-grade')),
+  schedule('15 7 * * *', () => fireAndForget(withJobRun('verdict-grade', runVerdictGrade), 'verdict-grade')),
   // weekly: source quality review over a 30-day window (Sunday 09:00)
-  cron.schedule('0 9 * * 0', () => fireAndForget(withJobRun('source-review', runSourceReview), 'source-review')),
+  schedule('0 9 * * 0', () => fireAndForget(withJobRun('source-review', runSourceReview), 'source-review')),
 ];
 
 // Populate immediately on boot instead of waiting for the first tick
