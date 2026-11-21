@@ -156,7 +156,11 @@ const MAX_REDIRECTS = 5;
  * redirect:'follow' so each hop is re-validated — a compromised feed domain
  * must not bounce the server into loopback/private/link-local endpoints.
  */
-export async function fetchWithTimeout(url: string, init: RequestInit = {}): Promise<Response> {
+export async function fetchWithTimeout(
+  url: string,
+  init: RequestInit = {},
+  opts: { timeoutMs?: number } = {},
+): Promise<Response> {
   const headers: Record<string, string> = {
     'user-agent': DEFAULT_UA,
     ...(init.headers as Record<string, string> | undefined),
@@ -167,7 +171,7 @@ export async function fetchWithTimeout(url: string, init: RequestInit = {}): Pro
   let body = init.body ?? null;
 
   for (let redirects = 0; ; redirects++) {
-    const res = await fetchOnce(current, method, body, headers, init);
+    const res = await fetchOnce(current, method, body, headers, init, opts.timeoutMs);
     const location = REDIRECT_STATUSES.has(res.status) ? res.headers.get('location') : null;
     if (!location) return res;
     if (redirects >= MAX_REDIRECTS) throw new Error(`too many redirects fetching ${url}`);
@@ -198,12 +202,13 @@ async function fetchOnce(
   body: RequestInit['body'] | null,
   headers: Record<string, string>,
   init: RequestInit,
+  attemptTimeoutMs?: number,
 ): Promise<Response> {
   let lastError: unknown;
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     if (attempt > 1) await sleepImpl(backoffMs(attempt));
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    const timer = setTimeout(() => controller.abort(), attemptTimeoutMs ?? timeoutMs);
     try {
       const res = await fetch(url, { ...init, method, body, headers, redirect: 'manual', signal: controller.signal });
       // redirects are handed back unread; fetchWithTimeout validates and follows them
@@ -252,8 +257,8 @@ export async function fetchText(url: string, init?: RequestInit): Promise<string
   return res.text();
 }
 
-export async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
-  const res = await fetchWithTimeout(url, init);
+export async function fetchJson<T>(url: string, init?: RequestInit, opts?: { timeoutMs?: number }): Promise<T> {
+  const res = await fetchWithTimeout(url, init, opts);
   return (await res.json()) as T;
 }
 

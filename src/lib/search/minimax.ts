@@ -34,6 +34,8 @@ export class MiniMaxSearchError extends Error {
 
 const DEFAULT_COUNT = 10;
 const MAX_SEARCHES_PER_CALL = 2;
+// A server-side search round takes 4-15s (several searches + a model pass) — the shared 15s fetch cap aborts it.
+const SEARCH_TIMEOUT_MS = 60_000;
 
 /**
  * Web search through MiniMax's hosted `web_search` server tool (Anthropic
@@ -61,7 +63,7 @@ export async function minimaxSearch(opts: { query: string; count?: number }): Pr
       messages: [{ role: 'user', content: opts.query }],
       tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: MAX_SEARCHES_PER_CALL }],
     }),
-  });
+  }, { timeoutMs: SEARCH_TIMEOUT_MS });
   const seen = new Set<string>();
   const hits: MiniMaxSearchHit[] = [];
   for (const block of res.content ?? []) {
