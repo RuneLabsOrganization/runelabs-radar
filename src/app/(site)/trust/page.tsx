@@ -13,7 +13,9 @@ import {
 } from '@/lib/science/accuracy';
 import { HINDSIGHT_WEIGHTS } from '@/lib/science/hindsight';
 import { verdictSummary } from '@/lib/science/verdict-accuracy';
-import { freshnessStats } from '@/lib/freshness';
+import { freshnessStats, MAX_REFLECTION_LAG_DAYS } from '@/lib/freshness';
+import { frontierDataAsOf } from '@/lib/science/forecast';
+import { FORECAST_MAX_DATA_AGE_DAYS } from '@/lib/science/accuracy';
 import { paths } from '@/lib/urls';
 
 export const metadata = {
@@ -226,10 +228,16 @@ export default async function AccuracyPage() {
   const medians = buckets
     .filter((b) => b.medianHindsight !== null && b.count > 0)
     .map((b) => ({ meanScore: b.meanScore, median: b.medianHindsight!, label: b.label }));
-  const oldestForecast = grades[grades.length - 1];
-  const firstGradeLands = oldestForecast
-    ? new Date(new Date(`${oldestForecast.date}T00:00:00Z`).getTime() + 30 * 864e5).toISOString().slice(0, 10)
+  // graded rows first — the newest forecasts are always pending by
+  // construction, so a newest-20 table showed nothing but "pending"
+  const pendingForecasts = grades.filter((g) => g.realized === null);
+  const oldestPending = pendingForecasts[pendingForecasts.length - 1];
+  const nextGradeLands = oldestPending
+    ? new Date(new Date(`${oldestPending.date}T00:00:00Z`).getTime() + 30 * 864e5).toISOString().slice(0, 10)
     : null;
+  const aaAsOf = frontierDataAsOf();
+  const aaAgeDays = aaAsOf ? Math.floor((Date.now() - Date.parse(`${aaAsOf}T00:00:00Z`)) / 864e5) : null;
+  const aaStale = aaAgeDays !== null && aaAgeDays > FORECAST_MAX_DATA_AGE_DAYS;
 
   return (
     <div className="mx-auto max-w-[760px] px-4 py-12 sm:px-6">
@@ -330,8 +338,9 @@ export default async function AccuracyPage() {
             <p className="mt-3 border-t border-[var(--grat-soft)] pt-2.5 text-[11.5px] leading-relaxed" style={{ color: 'var(--ink-4)' }}>
               No LLM at grading — observed signals only. Each story is graded once; the grade never changes. Echo
               and follow-through caps scale with the elapsed share of the 5-day observation window, so a story
-              graded 36h in is judged against what 36 hours could produce. The daily rescore grades oldest-first;
-              anything it can&rsquo;t reach stays in the window and is reported as backlog above, never dropped.
+              graded 36h in is judged against what 36 hours could produce. The grader runs hourly, oldest-first;
+              a story it misses (downtime) is caught up later and graded as of 48h after publish &mdash; what an
+              on-time grade would have seen &mdash; and until then it is counted as backlog above, never dropped.
             </p>
           </div>
         </div>
@@ -424,9 +433,20 @@ export default async function AccuracyPage() {
           so aiming 2× too high and 2× too low score the same magnitude. Positive means the price came in above
           the forecast — we aimed low.
         </p>
+        {aaAsOf && (
+          <p className="mono mb-2 text-[10.5px]" style={{ color: aaStale ? 'var(--amber)' : 'var(--ink-4)' }}>
+            price data as of {aaAsOf}
+            {aaStale &&
+              ` — ${aaAgeDays} days old: no new forecasts are recorded until fresh data lands (a stale fit would be graded against the wrong date)`}
+          </p>
+        )}
         {grades.length === 0 ? (
           <p className="text-[13px]" style={{ color: 'var(--ink-3)' }}>
             No forecasts stored yet — the nightly job records one per day; grades appear 30 days later.
+          </p>
+        ) : graded.length === 0 ? (
+          <p className="text-[13px]" style={{ color: 'var(--ink-3)' }}>
+            No forecast has reached its 30-day target yet.
           </p>
         ) : (
           <table className="table">
@@ -439,7 +459,7 @@ export default async function AccuracyPage() {
               </tr>
             </thead>
             <tbody>
-              {grades.slice(0, 20).map((g) => (
+              {graded.slice(0, 20).map((g) => (
                 <tr key={g.date}>
                   <td className="mono text-[11px]" style={{ color: 'var(--ink-3)' }}>{g.date}</td>
                   <td className="mono text-right text-[11px]">${g.predicted.toFixed(2)}</td>
@@ -475,15 +495,16 @@ export default async function AccuracyPage() {
             </tbody>
           </table>
         )}
-        {graded.length === 0 && firstGradeLands && grades.length > 0 && (
-          <p className="mono mt-2 text-[10.5px]" style={{ color: 'var(--ink-4)' }}>
-            first grade lands {firstGradeLands} — a forecast is graded when its 30d target passes
-          </p>
-        )}
         {graded.length > 0 && (
           <p className="mono mt-2 text-[10.5px]" style={{ color: 'var(--ink-3)' }}>
             mean |log error|: {Math.round(graded.reduce((a, g) => a + Math.abs(g.errorPct ?? 0), 0) / graded.length)}%
             across {graded.length} graded forecasts
+          </p>
+        )}
+        {pendingForecasts.length > 0 && (
+          <p className="mono mt-1 text-[10.5px]" style={{ color: 'var(--ink-4)' }}>
+            {pendingForecasts.length} pending — a forecast is graded when its 30d target passes
+            {nextGradeLands && ` · next grade lands ${nextGradeLands}`}
           </p>
         )}
       </section>
@@ -492,7 +513,7 @@ export default async function AccuracyPage() {
         <div className="readout mb-1.5">freshness — how fast the radar reflects what happens</div>
         <p className="mb-3 text-[12px] leading-relaxed" style={{ color: 'var(--ink-3)' }}>
           Ingest and curation run every 15 minutes, so the feed trails a release by minutes, not days. The slower
-          hop is the board: a story counts as reflected when a board change names one of its entities. Medians over
+          hop is the board: a story counts as reflected when a board change newly picks one of its entities. Medians over
           the last {freshness.windowDays} days.
         </p>
         <div className="grid gap-4 md:grid-cols-2">
@@ -538,8 +559,10 @@ export default async function AccuracyPage() {
           </div>
         </div>
         <p className="mono mt-2 text-[10px]" style={{ color: 'var(--ink-4)' }}>
-          methodology: story→board matches a story&rsquo;s entity names against board-change text (case-insensitive;
-          first match at/after the story appeared) — a heuristic, so the matched pairs are kept for spot checks.
+          methodology: story→board counts a board change only when it newly puts one of the story&rsquo;s
+          entities into a pick (named in the new pick, absent from the one it replaced), at/after the story
+          appeared and within {MAX_REFLECTION_LAG_DAYS} days — a heuristic, so the matched pairs are kept for spot
+          checks.
           story→merge uses the latest merge timestamp, so it overstates time-to-first-merge.
         </p>
         {freshness.boardReflection.pairs.length > 0 && (
@@ -566,7 +589,7 @@ export default async function AccuracyPage() {
         <div className="readout mb-1.5">how we score ourselves</div>
         <div className="card flex flex-col gap-2.5 text-[12.5px] leading-relaxed" style={{ color: 'var(--ink-3)' }}>
           <p>
-            Every night the machine grades its own output: each curated story gets a hindsight score from observed
+            Every hour the machine grades its own output: each curated story gets a hindsight score from observed
             signals only — echoes, launches, follow-ups, team votes — with no LLM at grading, and the grade never
             changes once written. The scatter and bands above are that reckoning, in full.
           </p>

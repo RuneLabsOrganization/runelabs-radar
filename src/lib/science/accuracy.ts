@@ -239,18 +239,34 @@ export function gradingSince(): string | null {
   return row?.at ? row.at.toISOString().slice(0, 10) : null;
 }
 
-/** Nightly: persist today's frontier-price forecast so future-us can grade it. */
-export function recordForecast(): { recorded: boolean } {
+/**
+ * Max age of the latest AA data point for a forecast to be recorded. The
+ * projection runs 30 days from the last DATA date, but a forecast row is
+ * graded 30 days from the date it was RECORDED — so recording a stale fit
+ * stamps an old prediction with today's date and grades it against the wrong
+ * target. (This is how /trust showed the identical $3.58 for weeks while AA
+ * ingestion was not landing new points.)
+ */
+export const FORECAST_MAX_DATA_AGE_DAYS = 2;
+
+/**
+ * Daily, right after the AA snapshot lands: persist today's frontier-price
+ * forecast so future-us can grade it. Skips (and says why) when there is too
+ * little history or the data is stale.
+ */
+export function recordForecast(now = new Date()): { recorded: boolean; reason?: 'no-projection' | 'stale-data' } {
   const db = getDb();
   const f = forecastFrontierPrice(30);
   const last = f.projection[f.projection.length - 1];
-  if (!last) return { recorded: false }; // not enough history to project yet
+  if (!last) return { recorded: false, reason: 'no-projection' }; // not enough history to project yet
+  const ageDays = f.asOf ? (now.getTime() - Date.parse(`${f.asOf}T00:00:00Z`)) / 864e5 : Infinity;
+  if (ageDays > FORECAST_MAX_DATA_AGE_DAYS) return { recorded: false, reason: 'stale-data' };
   db.insert(forecasts)
     .values({
-      date: utcDay(),
+      date: utcDay(now),
       metric: 'frontier_price_30d',
       predicted: last.mid,
-      createdAt: new Date(),
+      createdAt: now,
     })
     .onConflictDoNothing()
     .run();

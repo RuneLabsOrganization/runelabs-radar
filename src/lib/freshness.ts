@@ -78,6 +78,39 @@ function entityNames(entitiesJson: string | null): string[] {
   }
 }
 
+/** Board fields that carry a PICK (costNote is a price, not a pick). */
+const PICK_FIELDS = new Set(['bestoverall', 'bestvalue', 'cheapestviable']);
+
+/** A board change more than this long after a story is not a reflection of it. */
+export const MAX_REFLECTION_LAG_DAYS = 30;
+
+/**
+ * What a board change put ON the board: for each pick field in
+ * `field: A -> B; ...`, the B side (`to`) and the A side it replaced (`from`),
+ * lowercased. costNote diffs and non-diff rows ('initial values set') yield
+ * nothing. Exported for tests.
+ */
+export function pickDiffs(change: string): { from: string; to: string }[] {
+  const out: { from: string; to: string }[] = [];
+  for (const seg of change.split(';')) {
+    const m = /^\s*([A-Za-z]+)\s*:\s*([\s\S]*?)\s*->\s*([\s\S]*)$/.exec(seg);
+    if (!m || !PICK_FIELDS.has(m[1]!.toLowerCase())) continue;
+    out.push({ from: m[2]!.toLowerCase(), to: m[3]!.toLowerCase() });
+  }
+  return out;
+}
+
+/**
+ * A change reflects an entity when it NEWLY puts it on the board: the name is
+ * on some field's B side and was not already on that field's A side. Merely
+ * keeping "claude code" inside a reshuffled combo is not a reflection of a
+ * Claude Code story — that loose match is what produced 2,000h "lags" between
+ * unrelated stories and routine board churn.
+ */
+export function introduces(diffs: { from: string; to: string }[], name: string): boolean {
+  return diffs.some((d) => d.to.includes(name) && !d.from.includes(name));
+}
+
 export function freshnessStats(now = new Date(), windowDays = 90): FreshnessStats {
   const db = getDb();
   const since = new Date(now.getTime() - windowDays * 864e5);
@@ -109,7 +142,9 @@ export function freshnessStats(now = new Date(), windowDays = 90): FreshnessStat
     .where(gte(boardHistory.appliedAt, since))
     .orderBy(asc(boardHistory.appliedAt))
     .all()
-    .map((c) => ({ ...c, lower: c.change.toLowerCase() }));
+    .map((c) => ({ ...c, diffs: pickDiffs(c.change) }))
+    .filter((c) => c.diffs.length > 0);
+  const maxLagMs = MAX_REFLECTION_LAG_DAYS * 864e5;
 
   const pairs: BoardReflection[] = [];
   let considered = 0;
@@ -122,14 +157,18 @@ export function freshnessStats(now = new Date(), windowDays = 90): FreshnessStat
     if (names.length === 0) continue;
     considered++;
     const hit = changes.find(
-      (c) => !claimed.has(c) && c.appliedAt >= s.createdAt && names.some((n) => c.lower.includes(n)),
+      (c) =>
+        !claimed.has(c) &&
+        c.appliedAt >= s.createdAt &&
+        c.appliedAt.getTime() - s.createdAt.getTime() <= maxLagMs &&
+        names.some((n) => introduces(c.diffs, n)),
     );
     if (!hit) continue;
     claimed.add(hit);
     pairs.push({
       storyId: s.id,
       storyTitle: s.title,
-      entity: names.find((n) => hit.lower.includes(n))!,
+      entity: names.find((n) => introduces(hit.diffs, n))!,
       change: hit.change,
       appliedAt: hit.appliedAt,
       lagHours: Math.round(((hit.appliedAt.getTime() - s.createdAt.getTime()) / 3_600_000) * 10) / 10,

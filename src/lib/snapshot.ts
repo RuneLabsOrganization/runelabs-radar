@@ -10,6 +10,7 @@ import {
 } from './board/sync';
 import { fetchText } from './ingest/adapters/shared';
 import { recordMetrics, type MetricInput } from './metrics';
+import { recordForecast } from './science/accuracy';
 
 /** Flattens a compact AA LLM snapshot into daily metric points. Exported for tests. */
 export function metricsFromAaCompact(compactRaw: string): MetricInput[] {
@@ -58,7 +59,7 @@ export function metricsFromMediaCompact(source: string, compactRaw: string): Met
  * snapshots (same store the board and charts read) and accumulates the
  * per-model time series that forecasting rides on.
  */
-export async function runSnapshot(): Promise<{ snapshots: number; points: number }> {
+export async function runSnapshot(): Promise<{ snapshots: number; points: number; forecastRecorded?: boolean }> {
   if (!config.aaApiKey) {
     console.warn('[snapshot] AA_API_KEY not set — nothing to snapshot');
     return { snapshots: 0, points: 0 };
@@ -98,5 +99,17 @@ export async function runSnapshot(): Promise<{ snapshots: number; points: number
     }
   }
 
-  return { snapshots, points };
+  // Forecast AFTER today's AA points land (it used to ride the 08:00 rescore
+  // tick, decoupled from whether any new data had arrived). recordForecast
+  // refuses a stale fit, and a failed AA fetch above leaves the data stale.
+  let forecast: Awaited<ReturnType<typeof recordForecast>>;
+  try {
+    forecast = recordForecast();
+    if (!forecast.recorded) console.warn(`[snapshot] forecast not recorded: ${forecast.reason}`);
+  } catch (e) {
+    console.error('[snapshot] forecast record failed:', e);
+    forecast = { recorded: false };
+  }
+
+  return { snapshots, points, forecastRecorded: forecast.recorded };
 }

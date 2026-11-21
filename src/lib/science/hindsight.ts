@@ -1,8 +1,7 @@
-import { and, asc, eq, gte, isNull, lte, ne } from 'drizzle-orm';
+import { and, asc, count, desc, eq, gte, isNull, lt, lte, ne } from 'drizzle-orm';
 import { getDb } from '../db';
 import { launches, stories, votes } from '../db/schema';
 import { titleSimilarity } from '../curate/cluster';
-import { recordForecast } from './accuracy';
 import { clamp } from '../stats';
 
 /** Stories enter the hindsight window at 36h and leave at 60h. */
@@ -10,8 +9,22 @@ export const RESCORE_MIN_AGE_MS = 36 * 36e5;
 export const RESCORE_MAX_AGE_MS = 60 * 36e5;
 /** Echoes/launches stop counting 5 days after the story — the full observation window. */
 export const OBSERVATION_WINDOW_MS = 5 * 864e5;
-/** Most stories one rescore run will grade; the overflow is next run's backlog. */
-export const RESCORE_DAILY_CAP = 120;
+/**
+ * Most in-window stories one rescore run will grade. The job runs HOURLY, so
+ * the 24h window gets ~24 passes at this cap — far above curated volume. (It
+ * used to run once a day capped at 120 while ~200 stories/day were curated:
+ * everything past the first 120 aged out of the window ungraded, which is how
+ * the trust page ended up at ~35% coverage with a five-figure backlog.)
+ */
+export const RESCORE_DAILY_CAP = 400;
+/**
+ * Most past-window (backlog) stories one run will catch up on. Backlog grades
+ * are reconstructed AS OF createdAt + BACKLOG_GRADE_AGE_MS (see runRescore),
+ * so a late grade sees what an on-time grade would have seen.
+ */
+export const RESCORE_BACKLOG_CAP = 400;
+/** The as-of age a backlog story is graded at — the middle of the 36–60h window. */
+export const BACKLOG_GRADE_AGE_MS = 48 * 36e5;
 
 /**
  * The hindsight weights — the single source of truth. The trust page imports
@@ -51,13 +64,24 @@ export const HINDSIGHT_WEIGHTS = {
  * what 36 hours could have produced, not against five days of follow-through
  * it never had the chance to earn.
  */
-export function hindsightScore(story: {
-  id: number;
-  title: string;
-  entities: string | null;
-  createdAt: Date;
-}): number {
+export function hindsightScore(
+  story: {
+    id: number;
+    title: string;
+    entities: string | null;
+    createdAt: Date;
+  },
+  /**
+   * The moment the grade is taken. Defaults to now (on-time grading). Backlog
+   * catch-up passes createdAt + 48h so nothing observed after that moment —
+   * later stories, later launches — leaks into a grade that is published as a
+   * 36–60h grade. Votes carry no timestamp and always count (the human override).
+   */
+  asOf: Date = new Date(),
+): number {
   const db = getDb();
+  // the observable horizon: the full window, but never past the grading moment
+  const horizon = new Date(Math.min(story.createdAt.getTime() + OBSERVATION_WINDOW_MS, asOf.getTime()));
 
   let names: string[] = [];
   try {
@@ -74,7 +98,7 @@ export function hindsightScore(story: {
     .where(
       and(
         gte(stories.createdAt, story.createdAt),
-        lte(stories.createdAt, new Date(story.createdAt.getTime() + OBSERVATION_WINDOW_MS)),
+        lte(stories.createdAt, horizon),
         ne(stories.id, story.id),
       ),
     )
@@ -102,7 +126,7 @@ export function hindsightScore(story: {
     .where(
       and(
         gte(stories.createdAt, new Date(story.createdAt.getTime() - OBSERVATION_WINDOW_MS)),
-        lte(stories.createdAt, new Date(story.createdAt.getTime() + OBSERVATION_WINDOW_MS)),
+        lte(stories.createdAt, horizon),
         ne(stories.id, story.id),
       ),
     )
@@ -141,7 +165,9 @@ export function hindsightScore(story: {
       .where(
         and(
           gte(launches.launchedAt, story.createdAt),
-          lte(launches.launchedAt, new Date(story.createdAt.getTime() + OBSERVATION_WINDOW_MS)),
+          lte(launches.launchedAt, horizon),
+          // a launch we had not ingested yet was not observable at grading time
+          lte(launches.createdAt, asOf),
         ),
       )
       .limit(1000)
@@ -158,7 +184,7 @@ export function hindsightScore(story: {
       .reduce((acc, v) => acc + v.value, 0) ?? 0;
 
   // caps scale with the elapsed share of the observation window (floor 1)
-  const elapsedRatio = clamp((Date.now() - story.createdAt.getTime()) / OBSERVATION_WINDOW_MS, 0, 1);
+  const elapsedRatio = clamp((asOf.getTime() - story.createdAt.getTime()) / OBSERVATION_WINDOW_MS, 0, 1);
   const echoCap = Math.max(1, HINDSIGHT_WEIGHTS.entityEcho.fullMarksAt * elapsedRatio);
   const followCap = Math.max(1, HINDSIGHT_WEIGHTS.followThrough.fullMarksAt * elapsedRatio);
 
@@ -175,15 +201,20 @@ export function hindsightScore(story: {
 }
 
 /**
- * Daily job: score curated stories that entered the 36-60h window and don't
- * have a hindsight value yet. Idempotent (skips scored rows). OLDEST first:
- * when more than RESCORE_DAILY_CAP stories are due, the tail is the youngest —
- * still inside the window tomorrow, so the overflow is next run's backlog
- * instead of silently aging past 60h ungraded (the old newest-first order
- * permanently excluded exactly the oldest stories from calibration).
- * Returns the backlog: due stories this run did not reach.
+ * Hourly job. Two passes, in-window first:
+ *
+ * 1. ON TIME — curated stories inside the 36–60h window without a grade,
+ *    OLDEST first (the ones about to age out go first), up to
+ *    RESCORE_DAILY_CAP. Graded as of now.
+ * 2. CATCH-UP — curated stories already past 60h without a grade (missed by
+ *    downtime or an overflowing run), NEWEST first, up to RESCORE_BACKLOG_CAP.
+ *    Graded as of createdAt + 48h, so a late grade is the grade the story
+ *    would have got on time, not a 5-day grade mislabelled as a 2-day one.
+ *
+ * Idempotent (skips graded rows). Returns what it graded and what is still
+ * waiting: `backlog` = in-window overflow + past-window stories not reached.
  */
-export async function runRescore(): Promise<{ scored: number; backlog: number }> {
+export async function runRescore(): Promise<{ scored: number; caughtUp: number; backlog: number }> {
   const db = getDb();
   const now = Date.now();
   const due = db
@@ -207,7 +238,32 @@ export async function runRescore(): Promise<{ scored: number; backlog: number }>
       .where(eq(stories.id, s.id))
       .run();
   }
-  // same daily tick: persist today's forecast for later grading
-  recordForecast();
-  return { scored: batch.length, backlog: due.length - batch.length };
+
+  const pastWindow = and(
+    eq(stories.status, 'curated'),
+    isNull(stories.hindsight),
+    lt(stories.createdAt, new Date(now - RESCORE_MAX_AGE_MS)),
+  );
+  // bounded read — the backlog can be five figures; only this run's slice is loaded
+  const missedTotal = db.select({ n: count() }).from(stories).where(pastWindow).get()?.n ?? 0;
+  const catchUp = db
+    .select()
+    .from(stories)
+    .where(pastWindow)
+    .orderBy(desc(stories.createdAt))
+    .limit(RESCORE_BACKLOG_CAP)
+    .all();
+  for (const s of catchUp) {
+    const asOf = new Date(s.createdAt.getTime() + BACKLOG_GRADE_AGE_MS);
+    db.update(stories)
+      .set({ hindsight: hindsightScore(s, asOf), hindsightAt: new Date() })
+      .where(eq(stories.id, s.id))
+      .run();
+  }
+
+  return {
+    scored: batch.length,
+    caughtUp: catchUp.length,
+    backlog: due.length - batch.length + (missedTotal - catchUp.length),
+  };
 }
