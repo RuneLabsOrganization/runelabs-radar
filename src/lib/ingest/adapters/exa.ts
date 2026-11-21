@@ -1,5 +1,6 @@
 import { exaSearch } from '../../search/exa';
 import { SearchBudgetError } from '../../search/budget';
+import { minimaxSearch } from '../../search/minimax';
 import { braveSearch } from '../../search/brave';
 import type { FetchedItem, Source, SourceAdapter } from '../types';
 import { HttpFetchError, parseConfig } from './shared';
@@ -20,6 +21,13 @@ interface ExaConfig {
  * Poll cadence is owned by runIngest (pollMinutes in the source config), same
  * as the brave adapter.
  */
+const toItem = (h: { url: string; title: string; description: string; publishedAt: Date | null }): FetchedItem => ({
+  url: h.url,
+  title: h.title,
+  excerpt: h.description || null,
+  publishedAt: h.publishedAt,
+});
+
 export const exaAdapter: SourceAdapter = {
   type: 'exa',
   async fetchItems(source: Source): Promise<FetchedItem[]> {
@@ -28,27 +36,26 @@ export const exaAdapter: SourceAdapter = {
 
     try {
       const hits = await exaSearch({ query: cfg.query, count: cfg.count });
-      return hits.map((h) => ({
-        url: h.url,
-        title: h.title,
-        excerpt: h.description || null,
-        publishedAt: h.publishedAt,
-      }));
+      return hits.map(toItem);
     } catch (exaError) {
-      // Exa out of budget/credit (our cap, or its 402): falling back would just
-      // drain Brave's separate paid plan for every Exa source on every tick.
-      if (exaError instanceof SearchBudgetError) throw exaError;
-      if (exaError instanceof HttpFetchError && exaError.status === 402) throw exaError;
+      // Fallback chain: Exa -> MiniMax web_search (cheap, already paid for) -> Brave.
+      // Even when Exa is out of budget/credit we fall through to MiniMax; only Brave
+      // (a separate paid plan) is skipped in that case so it isn't drained by every
+      // Exa source on every tick.
+      const exaOut =
+        exaError instanceof SearchBudgetError || (exaError instanceof HttpFetchError && exaError.status === 402);
+      try {
+        const hits = await minimaxSearch({ query: cfg.query, count: cfg.count });
+        if (hits.length > 0) return hits.map(toItem);
+      } catch {
+        /* fall through to Brave / rethrow */
+      }
+      if (exaOut) throw exaError;
       try {
         const hits = await braveSearch({ query: cfg.query, kind: 'news', count: cfg.count, freshness: 'pd' });
-        return hits.map((h) => ({
-          url: h.url,
-          title: h.title,
-          excerpt: h.description || null,
-          publishedAt: h.publishedAt,
-        }));
+        return hits.map(toItem);
       } catch {
-        // Both failed — surface the primary's error, it's the one that matters.
+        // Every provider failed — surface the primary's error, it's the one that matters.
         throw exaError;
       }
     }

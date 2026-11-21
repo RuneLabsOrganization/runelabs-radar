@@ -16,15 +16,16 @@ import { getDb } from '../db';
 import { usageCounters } from '../db/schema';
 import { bump } from '../usage/counters';
 
-export type SearchProvider = 'exa' | 'brave';
+export type SearchProvider = 'exa' | 'brave' | 'minimax';
 
 export const SEARCH_BUCKET_PREFIX = 'search:';
 const FEATURE = 'calls';
 
-const DEFAULT_MONTHLY_CAP: Record<SearchProvider, number> = { exa: 600, brave: 900 };
+const DEFAULT_MONTHLY_CAP: Record<SearchProvider, number> = { exa: 600, brave: 900, minimax: 600 };
 const ENV_NAME: Record<SearchProvider, string> = {
   exa: 'EXA_MONTHLY_CALL_CAP',
   brave: 'BRAVE_MONTHLY_CALL_CAP',
+  minimax: 'MINIMAX_SEARCH_MONTHLY_CALL_CAP',
 };
 
 export class SearchBudgetError extends Error {
