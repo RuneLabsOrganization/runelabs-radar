@@ -14,7 +14,7 @@ export const SEED_SOURCES: SeedSource[] = [
   { type: 'rss', name: 'Google DeepMind Blog', config: { url: 'https://deepmind.google/blog/rss.xml' }, domainHints: [] },
   { type: 'rss', name: 'Hugging Face Blog', config: { url: 'https://huggingface.co/blog/feed.xml' }, domainHints: [] },
   { type: 'rss', name: 'Simon Willison', config: { url: 'https://simonwillison.net/atom/everything/' }, domainHints: ['coding', 'agentic'] },
-  { type: 'rss', name: 'Mistral News', config: { url: 'https://mistral.ai/rss.xml' }, domainHints: [] },
+  { type: 'rss', name: 'Mistral News', config: { url: 'https://mistral.ai/news/rss' }, domainHints: [] },
   { type: 'rss', name: 'Stability AI News', config: { url: 'https://stability.ai/news?format=rss' }, domainHints: ['image'] },
   { type: 'rss', name: 'Replicate Blog', config: { url: 'https://replicate.com/blog/rss' }, domainHints: ['image', 'video'] },
   { type: 'rss', name: 'Ars Technica — AI', config: { url: 'https://arstechnica.com/ai/feed/', pollMinutes: 15 }, domainHints: [] },

@@ -165,7 +165,10 @@ describe('hn adapter', () => {
     const out = await adapters.hn.fetchItems(makeSource('hn', { query: 'AI OR LLM', minPoints: 50 }));
     const calledUrl = String(fn.mock.calls[0][0]);
     expect(calledUrl).toContain('hn.algolia.com/api/v1/search_by_date');
-    expect(calledUrl).toContain(encodeURIComponent('AI OR LLM'));
+    // Algolia has no OR operator — terms go through optionalWords so any one matches
+    expect(calledUrl).toContain(`query=${encodeURIComponent('AI LLM')}`);
+    expect(calledUrl).toContain(`optionalWords=${encodeURIComponent('AI LLM')}`);
+    expect(calledUrl).not.toContain('OR');
     expect(calledUrl).toContain('tags=story');
     expect(calledUrl).toContain(encodeURIComponent('points>=50'));
     expect(out).toHaveLength(3);

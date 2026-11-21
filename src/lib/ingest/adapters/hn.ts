@@ -20,8 +20,16 @@ export const hnAdapter: SourceAdapter = {
     const cfg = parseConfig<HnConfig>(source.config);
     const query = cfg.query ?? '';
     const minPoints = cfg.minPoints ?? 0;
+    // Algolia has no OR operator: "AI OR LLM OR GPT" is parsed as five required words
+    // (including the literal "OR"), which matched 13 stories ever and went silent in
+    // July. Split on OR and pass the terms as optionalWords so ANY term matches.
+    const terms = query
+      .split(/\s+OR\s+/i)
+      .map((t) => t.trim())
+      .filter(Boolean);
     const url =
-      `https://hn.algolia.com/api/v1/search_by_date?query=${encodeURIComponent(query)}` +
+      `https://hn.algolia.com/api/v1/search_by_date?query=${encodeURIComponent(terms.join(' '))}` +
+      `&optionalWords=${encodeURIComponent(terms.join(' '))}` +
       `&tags=story&numericFilters=${encodeURIComponent(`points>=${minPoints}`)}&hitsPerPage=30`;
     const data = await fetchJson<{ hits?: HnHit[] }>(url);
 
