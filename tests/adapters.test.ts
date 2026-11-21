@@ -561,3 +561,44 @@ describe('fetchWithTimeout body handling', () => {
     expect(res).toBe('hello body');
   });
 });
+
+describe('reddit adapter (OAuth)', () => {
+  beforeEach(() => {
+    vi.stubEnv('REDDIT_CLIENT_ID', 'cid');
+    vi.stubEnv('REDDIT_CLIENT_SECRET', 'csecret');
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+  });
+
+  it('gets an app-only token once, then reads the listing from oauth.reddit.com', async () => {
+    const { _resetRedditTokenForTests } = await import('@/lib/ingest/adapters/reddit');
+    _resetRedditTokenForTests();
+    const listing = {
+      data: {
+        children: [
+          { data: { title: 'Pinned', permalink: '/r/x/comments/1/pinned/', stickied: true } },
+          { data: { title: 'Real post', permalink: '/r/x/comments/2/real_post/', selftext: 'hello <b>world</b>', created_utc: 1795230000 } },
+        ],
+      },
+    };
+    const fn = vi.fn(async (input: RequestInfo | URL) => {
+      const u = String(input);
+      if (u.includes('/api/v1/access_token')) return new Response(JSON.stringify({ access_token: 'tok', expires_in: 86400 }), { status: 200 });
+      if (u.startsWith('https://oauth.reddit.com/r/LocalLLaMA/top')) return new Response(JSON.stringify(listing), { status: 200 });
+      throw new Error(`unexpected ${u}`);
+    });
+    vi.stubGlobal('fetch', fn);
+    const src = makeSource('reddit', { subreddit: 'LocalLLaMA' });
+    const out = await adapters.reddit.fetchItems(src);
+    expect(out).toHaveLength(1);
+    expect(out[0]!.url).toBe('https://www.reddit.com/r/x/comments/2/real_post/');
+    expect(out[0]!.excerpt).toBe('hello world');
+    await adapters.reddit.fetchItems(src);
+    const tokenCalls = fn.mock.calls.filter((c) => String(c[0]).includes('access_token')).length;
+    expect(tokenCalls).toBe(1); // cached
+    const [, init] = fn.mock.calls.find((c) => String(c[0]).includes('access_token')) as unknown as [string, RequestInit];
+    expect((init.headers as Record<string, string>).Authorization).toBe(`Basic ${Buffer.from('cid:csecret').toString('base64')}`);
+  });
+});
