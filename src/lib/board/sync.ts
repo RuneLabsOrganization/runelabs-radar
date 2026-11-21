@@ -10,12 +10,23 @@ import { dampingPolicyFromEnv } from './damping';
 import { promptLine } from '../prompt-hygiene';
 import { latestRadarScores, marketModels, normalizeModelKey, type MarketModel } from '../analytics';
 
-export const AA_URL = 'https://artificialanalysis.ai/api/v2/data/llms/models';
+/*
+ * Artificial Analysis retired the legacy /api/v2/data/* endpoints on
+ * 2026-11-04 (they answer 410 Gone). These are the supported free-tier
+ * replacements — our key is free-tier, the non-/free Pro paths answer 403.
+ * Free rows omit price_1m_blended_3_to_1 and the coding index, nest speed
+ * under `performance`, and media rows carry no rank or release date; the
+ * compactors below fill those in so the stored snapshot shape is unchanged.
+ */
+const AA_BASE = 'https://artificialanalysis.ai/api/v2';
+export const AA_URL = `${AA_BASE}/language/models/free`;
 export const AA_MEDIA_ENDPOINTS = [
-  { source: 'aa-media-image', url: 'https://artificialanalysis.ai/api/v2/data/media/text-to-image' },
-  { source: 'aa-media-video', url: 'https://artificialanalysis.ai/api/v2/data/media/text-to-video' },
-  { source: 'aa-media-image-edit', url: 'https://artificialanalysis.ai/api/v2/data/media/image-editing' },
+  { source: 'aa-media-image', url: `${AA_BASE}/media/text-to-image/models/free` },
+  { source: 'aa-media-video', url: `${AA_BASE}/media/text-to-video/models/free` },
+  { source: 'aa-media-image-edit', url: `${AA_BASE}/media/image-editing/models/free` },
 ];
+/** The LLM list is 4 pages of 200 today; this bounds a runaway has_more. */
+const AA_MAX_PAGES = 10;
 const SNAPSHOT_MAX_CHARS = 100_000;
 const PROMPT_SNAPSHOT_BUDGET = 8_000;
 const FETCH_TIMEOUT_MS = 20_000;
@@ -41,8 +52,31 @@ async function fetchText(url: string, headers?: Record<string, string>): Promise
 function storeSnapshot(source: string, raw: string): void {
   getDb()
     .insert(benchmarkSnapshots)
-    .values({ source, raw: raw.slice(0, SNAPSHOT_MAX_CHARS), fetchedAt: new Date() })
+    // a compact snapshot is already bounded and must stay valid JSON — the AA
+    // one runs past SNAPSHOT_MAX_CHARS, and slicing it stored an unparseable row
+    .values({ source, raw: isCompactSnapshot(raw) ? raw : raw.slice(0, SNAPSHOT_MAX_CHARS), fetchedAt: new Date() })
     .run();
+}
+
+/**
+ * GETs an AA V2 list endpoint and follows `pagination.has_more`, returning
+ * one `{ data: [...] }` body with every page merged — the shape the
+ * compactors read. A failed page fails the whole fetch: a silently partial
+ * model list would drop models out of the metric series. Exported for tests.
+ */
+export async function fetchAaAll(url: string, get: (url: string) => Promise<string>): Promise<string> {
+  const data: unknown[] = [];
+  for (let page = 1; page <= AA_MAX_PAGES; page++) {
+    const pageUrl = new URL(url);
+    if (page > 1) pageUrl.searchParams.set('page', String(page));
+    const raw = await get(pageUrl.toString());
+    const parsed = JSON.parse(raw) as { data?: unknown; pagination?: { has_more?: unknown } };
+    if (!Array.isArray(parsed.data)) throw new Error(`AA response for ${url} has no data array`);
+    data.push(...parsed.data);
+    if (parsed.pagination?.has_more !== true) break;
+    if (page === AA_MAX_PAGES) console.warn(`[aa] ${url} still has_more after ${AA_MAX_PAGES} pages — truncated`);
+  }
+  return JSON.stringify({ data });
 }
 
 /** Snapshots older than this are ignored by the weekly sync and dropped by pruneBenchmarkSnapshots. */
@@ -99,11 +133,18 @@ interface AaApiModel {
     price_1m_input_tokens?: unknown;
     price_1m_output_tokens?: unknown;
   };
+  /** legacy top-level speed; V2 nests it under `performance` */
   median_output_tokens_per_second?: unknown;
+  performance?: { median_output_tokens_per_second?: unknown };
 }
 
 function num(v: unknown): number | null {
   return typeof v === 'number' && Number.isFinite(v) ? v : null;
+}
+
+/** AA's blended price: 3 parts input to 1 part output, per 1M tokens. */
+function blended3to1(input: number | null, output: number | null): number | null {
+  return input === null || output === null ? null : (3 * input + output) / 4;
 }
 
 /**
@@ -122,10 +163,12 @@ export function compactAaSnapshot(raw: string): string {
         released: typeof m.release_date === 'string' ? m.release_date : null,
         intelligence: num(m.evaluations?.artificial_analysis_intelligence_index),
         coding: num(m.evaluations?.artificial_analysis_coding_index),
-        price: num(m.pricing?.price_1m_blended_3_to_1),
+        price:
+          num(m.pricing?.price_1m_blended_3_to_1) ??
+          blended3to1(num(m.pricing?.price_1m_input_tokens), num(m.pricing?.price_1m_output_tokens)),
         priceIn: num(m.pricing?.price_1m_input_tokens),
         priceOut: num(m.pricing?.price_1m_output_tokens),
-        speed: num(m.median_output_tokens_per_second),
+        speed: num(m.median_output_tokens_per_second) ?? num(m.performance?.median_output_tokens_per_second),
       }))
       .filter((m) => m.name !== null);
     return JSON.stringify({ compact: true, models });
@@ -147,7 +190,10 @@ export function compactAaMediaSnapshot(raw: string): string {
   try {
     const parsed = JSON.parse(raw) as { data?: unknown };
     if (!Array.isArray(parsed.data)) return raw.slice(0, SNAPSHOT_MAX_CHARS);
-    const models = (parsed.data as AaMediaApiModel[])
+    const rows = parsed.data as AaMediaApiModel[];
+    // V2 free rows carry no rank — rank them by ELO, as the arena does
+    const ranked = rows.some((m) => num(m.rank) !== null);
+    const models = rows
       .map((m) => ({
         name: typeof m.name === 'string' ? m.name : null,
         org: typeof m.model_creator?.name === 'string' ? m.model_creator.name : null,
@@ -155,8 +201,9 @@ export function compactAaMediaSnapshot(raw: string): string {
         rank: num(m.rank),
         released: typeof m.release_date === 'string' ? m.release_date : null,
       }))
-      .filter((m) => m.name !== null && m.elo !== null && m.rank !== null)
-      .sort((a, b) => (a.rank as number) - (b.rank as number))
+      .filter((m) => m.name !== null && m.elo !== null && (!ranked || m.rank !== null))
+      .sort((a, b) => (ranked ? (a.rank as number) - (b.rank as number) : (b.elo as number) - (a.elo as number)))
+      .map((m, i) => (ranked ? m : { ...m, rank: i + 1 }))
       .slice(0, 25);
     return JSON.stringify({ compact: true, models });
   } catch {
@@ -395,7 +442,9 @@ export async function runBoardSync(): Promise<{ snapshots: number; proposals: nu
 
   if (config.aaApiKey) {
     try {
-      const compact = compactAaSnapshot(await fetchText(AA_URL, { 'x-api-key': config.aaApiKey }));
+      const compact = compactAaSnapshot(
+        await fetchAaAll(AA_URL, (u) => fetchText(u, { 'x-api-key': config.aaApiKey })),
+      );
       // never store a raw fallback slice — a junk "latest" snapshot would blank the board charts
       if (!isCompactSnapshot(compact)) throw new Error('AA response was not parseable model data');
       storeSnapshot('artificial-analysis', compact);
@@ -405,7 +454,9 @@ export async function runBoardSync(): Promise<{ snapshots: number; proposals: nu
     }
     for (const ep of AA_MEDIA_ENDPOINTS) {
       try {
-        const compact = compactAaMediaSnapshot(await fetchText(ep.url, { 'x-api-key': config.aaApiKey }));
+        const compact = compactAaMediaSnapshot(
+          await fetchAaAll(ep.url, (u) => fetchText(u, { 'x-api-key': config.aaApiKey })),
+        );
         if (!isCompactSnapshot(compact)) throw new Error('media response was not parseable leaderboard data');
         storeSnapshot(ep.source, compact);
         snapshots++;
