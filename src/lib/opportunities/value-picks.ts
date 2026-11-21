@@ -22,10 +22,10 @@ export const VALUE_PICK_MIN_INTELLIGENCE = 25;
  * and intelligence must clear the floor, so the comparator only ever sees
  * finite positive ratios.
  */
-export function valuePicks(
-  models: readonly AaModel[],
+export function valuePicks<T extends AaModel>(
+  models: readonly T[],
   opts: { limit: number; requireBothSides?: boolean },
-): AaModel[] {
+): T[] {
   return models
     .filter(
       (m) =>

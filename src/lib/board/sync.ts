@@ -8,6 +8,7 @@ import { chatJSON, drainLlmUsageStats } from '../llm/minimax';
 import { applyProposal, pickFalsifiers } from './apply';
 import { dampingPolicyFromEnv } from './damping';
 import { promptLine } from '../prompt-hygiene';
+import { valuePicks } from '../opportunities/value-picks';
 import { latestRadarScores, marketModels, normalizeModelKey, type MarketModel } from '../analytics';
 
 /*
@@ -270,10 +271,13 @@ export function aaPromptLines(compactRaw: string, limit = 40): string | null {
  * the line keeps the intelligence number (AA comparison value for the
  * proposal rationale) and appends the composite.
  */
-function marketPromptLines(limit = 40): string | null {
-  const res = marketModels(60);
+function marketPromptLines(limit = 30, valueLimit = 12): string | null {
+  // wide read: AA lists every effort variant ("X (Max)", "X (High)"...), and the
+  // cheap-but-capable models the value tiers need sit far below the frontier
+  const res = marketModels(400);
   if (!res || res.models.length === 0) return null;
-  let models: MarketModel[] = res.models;
+  const bestPerModel = collapseVariants(res.models);
+  let models: MarketModel[] = bestPerModel;
   let radar: Map<string, { composite: number }> | null = null;
   if (config.radarScoreConsumers) {
     const scores = latestRadarScores();
@@ -284,18 +288,42 @@ function marketPromptLines(limit = 40): string | null {
         (scores.get(normalizeModelKey(a.name))?.composite ?? -1),
     );
   }
-  return models
-    .slice(0, limit)
-    .map((m) => {
-      const r = radar?.get(normalizeModelKey(m.name));
-      return (
-        `- ${m.name} (${m.org ?? '?'}): intelligence ${m.intelligence}, ` +
-        `coding ${m.coding ?? 'n/a'}, $${m.price}/1M blended, ${m.speed ?? '?'} tok/s` +
-        (r ? `, radar ${r.composite}` : '') +
-        (m.released ? `, released ${m.released}` : '')
-      );
-    })
-    .join('\n');
+  const line = (m: MarketModel): string => {
+    const r = radar?.get(normalizeModelKey(m.name));
+    return (
+      `- ${m.name} (${m.org ?? '?'}): intelligence ${m.intelligence}, ` +
+      `coding ${m.coding ?? 'n/a'}, $${m.price}/1M blended, ${m.speed ?? '?'} tok/s` +
+      (r ? `, radar ${r.composite}` : '') +
+      (m.released ? `, released ${m.released}` : '')
+    );
+  };
+  const frontier = models.slice(0, limit);
+  const listed = new Set(frontier.map((m) => m.name));
+  const value = valuePicks(bestPerModel, { limit: valueLimit + frontier.length })
+    .filter((m) => !listed.has(m.name))
+    .slice(0, valueLimit);
+  return (
+    `Frontier (top ${frontier.length} models, best effort setting of each):\n${frontier.map(line).join('\n')}` +
+    (value.length > 0
+      ? `\n\nBest intelligence per dollar (cheaper models for the value tiers):\n${value.map(line).join('\n')}`
+      : '')
+  );
+}
+
+/**
+ * AA lists one row per reasoning-effort setting of the same model. Left in, 40
+ * prompt lines were ~13 models, so the frontier list crowded out everything
+ * else. Keeps the highest-intelligence row per base name (trailing
+ * parenthetical stripped), ordered by intelligence.
+ */
+export function collapseVariants(models: readonly MarketModel[]): MarketModel[] {
+  const best = new Map<string, MarketModel>();
+  for (const m of models) {
+    const base = m.name.replace(/\s*\([^)]*\)\s*$/, '').trim().toLowerCase();
+    const cur = best.get(base);
+    if (!cur || m.intelligence > cur.intelligence) best.set(base, m);
+  }
+  return [...best.values()].sort((a, b) => b.intelligence - a.intelligence);
 }
 
 function asOptString(v: unknown): string | null {
@@ -342,7 +370,9 @@ async function proposeForDomain(
     'You maintain the per-domain "Best Right Now" cost-benefit board: for each task you recommend ' +
     'the best overall model/tool, the best value pick, and the cheapest still-viable option, with a ' +
     'one-line cost note. Favor practical cost-effectiveness over hype, and only change a ' +
-    'recommendation when the evidence supports it.\n' +
+    'recommendation when the evidence supports it — but a pick that a newer current-generation model in ' +
+    'the benchmarks beats at equal or lower price IS contradicted by the evidence: change it, and never ' +
+    'keep a superseded generation as best overall just because it is the current entry.\n' +
     `Today is ${new Date().toISOString().slice(0, 10)}. RECENCY IS CRITICAL: benchmark snapshots ` +
     'can lag badly — the news stories are the freshness signal. Recommendations must be ' +
     'current-generation models available today; when a snapshot conflicts with newer news, trust ' +

@@ -504,23 +504,41 @@ function firstPartyModels(): { latestDate: string | null; models: MarketModel[] 
 }
 
 /**
- * Merged model-market reader (§6d): first-party series first, the AA snapshot
- * as backstop for models with no first-party coverage.
+ * A stored AA snapshot younger than this is the live source of truth; the
+ * hand-transcribed first-party seed (open-bench, last reviewed ELO_SEED_REVIEW)
+ * only stands in once the snapshot has aged out.
+ */
+const AA_FRESH_DAYS = 14;
+
+/**
+ * Merged model-market reader (§6d): the AA snapshot when it is fresh, the
+ * first-party series (§6a/§6b) as the fallback when it is not.
+ *
+ * Why AA wins, not first-party: the 'intelligence' series is a hand-reviewed
+ * seed table (SEED_MODELS, 2026-08) that the daily ingest re-stamps with
+ * today's date, so its "latest value" never ages. It also sits on an older
+ * index scale (GPT-5.5 = 68 vs the live AA frontier at ~65), so merging it
+ * "first-party first" ranked August's models above every current-generation
+ * model and shadowed their AA rows — the /decide/tools board kept
+ * recommending GPT-5.5 / Opus 4.7 / Sonnet 5 while Fable 5.2, GPT-6.2 and
+ * Gemini 4 were live in the snapshot. Seed rows are therefore dropped
+ * entirely (not just de-duplicated) while the snapshot is fresh: a seed-only
+ * model on the old scale would still outrank the real frontier.
  *
  * AA fallback gate: a stored snapshot means AA was configured when it was
- * fetched, so uncovered models keep their AA rows even when AA_API_KEY is
- * later unset — matching runBoardSync's stale-snapshot backstop policy during
- * the transition. (The spec's strict key-only gate was softened because
- * existing consumers rely on snapshot-only operation with no key set.)
+ * fetched, so it keeps serving even when AA_API_KEY is later unset.
  *
  * SUNSET RULE: when first-party covers ≥90% of board-referenced models for 2
  * consecutive weekly syncs, AA defaults to disabled — ops unsets AA_API_KEY
- * and the remaining snapshot ages out of the backstop role.
+ * and the snapshot ages out; first-party then takes over by itself. That
+ * requires the seed to be refreshed on the new scale first.
  */
 function _marketModels(limit = 60): { fetchedAt: string; models: MarketModel[] } | null {
-  const fp = firstPartyModels();
-  const covered = new Set(fp.models.map((m) => normalizeModelKey(m.name)));
   const aa = latestAaSnapshotModels(limit);
+  const aaAgeDays = aa ? (Date.now() - Date.parse(aa.fetchedAt)) / 864e5 : Infinity;
+  const aaFresh = aa !== null && aaAgeDays <= AA_FRESH_DAYS;
+  const fp = aaFresh ? { latestDate: null, models: [] as MarketModel[] } : firstPartyModels();
+  const covered = new Set(fp.models.map((m) => normalizeModelKey(m.name)));
   const models: MarketModel[] = [...fp.models];
   if (aa) {
     for (const m of aa.models) {

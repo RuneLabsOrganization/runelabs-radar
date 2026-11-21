@@ -140,7 +140,7 @@ describe('merged first-party market reader (§6d)', () => {
     });
   });
 
-  it('first-party coverage beats the AA row for the same model; uncovered models fall back to AA', () => {
+  it('a fresh AA snapshot beats the hand-seeded first-party rows — seed rows are dropped, not merged', () => {
     process.env.AA_API_KEY = 'test-key';
     recordMetrics([
       { source: 'open-bench', entity: 'GPT-5.5', metric: 'intelligence', value: 68 },
@@ -153,13 +153,43 @@ describe('merged first-party market reader (§6d)', () => {
     ]);
     const res = marketModels();
     const byName = new Map(res!.models.map((m) => [m.name, m]));
-    // covered by first-party → NOT the AA values, even though AA lists it
-    expect(byName.get('GPT-5.5')).toMatchObject({ source: 'first_party', intelligence: 68, speed: null });
-    // no first-party coverage → AA backstop with the key set
+    // the seed's old-scale 68 must not outrank (or shadow) the live AA row
+    expect(byName.get('GPT-5.5')).toMatchObject({ source: 'artificial_analysis', intelligence: 35.4, speed: 80 });
     expect(byName.get('MiniMax M2')).toMatchObject({ source: 'artificial_analysis', intelligence: 30, speed: 92.1 });
+    expect(res!.models).toHaveLength(2);
   });
 
-  it('keeps serving the stored AA snapshot for uncovered models when the key is unset (backstop policy)', () => {
+  it('seed-only models (absent from the fresh AA snapshot) cannot outrank the live frontier', () => {
+    recordMetrics([
+      { source: 'open-bench', entity: 'Seed Only', metric: 'intelligence', value: 68 },
+      { source: 'provider-pricing', entity: 'Seed Only', metric: 'price_in', value: 10 },
+    ]);
+    seedAaSnapshot([
+      { name: 'Frontier X', org: 'Acme', intelligence: 64.6, coding: null, price: 16, priceIn: 10, priceOut: 30, speed: null, released: '2026-11-09' },
+    ]);
+    const res = marketModels();
+    expect(res!.models.map((m) => m.name)).toEqual(['Frontier X']);
+  });
+
+  it('first-party rows take over once the AA snapshot is stale', () => {
+    recordMetrics([
+      { source: 'open-bench', entity: 'GPT-5.5', metric: 'intelligence', value: 68 },
+      { source: 'provider-pricing', entity: 'GPT-5.5', metric: 'price_in', value: 10 },
+    ]);
+    getDb()
+      .insert(benchmarkSnapshots)
+      .values({
+        source: 'artificial-analysis',
+        raw: JSON.stringify({ compact: true, models: [{ name: 'Old AA', org: null, intelligence: 30, coding: null, price: 2, priceIn: 1, priceOut: 3, speed: null, released: null }] }),
+        fetchedAt: new Date(Date.now() - 30 * 864e5),
+      })
+      .run();
+    const res = marketModels();
+    expect(res!.models.map((m) => m.name).sort()).toEqual(['GPT-5.5', 'Old AA']);
+    expect(res!.models.find((m) => m.name === 'GPT-5.5')!.source).toBe('first_party');
+  });
+
+  it('keeps serving the stored (fresh) AA snapshot when the key is unset', () => {
     delete process.env.AA_API_KEY;
     recordMetrics([
       { source: 'open-bench', entity: 'GPT-5.5', metric: 'intelligence', value: 68 },
@@ -170,9 +200,9 @@ describe('merged first-party market reader (§6d)', () => {
     ]);
     const res = marketModels();
     const byName = new Map(res!.models.map((m) => [m.name, m]));
-    expect(byName.get('GPT-5.5')!.source).toBe('first_party');
-    // a stored snapshot means AA was configured at fetch time — it backstops
-    // uncovered models during the transition (matches runBoardSync's policy)
+    // a stored snapshot means AA was configured at fetch time — it keeps
+    // serving (matches runBoardSync's policy); the stale seed does not mix in
+    expect(byName.has('GPT-5.5')).toBe(false);
     expect(byName.get('MiniMax M2')).toMatchObject({ source: 'artificial_analysis', intelligenceSource: 'aa' });
   });
 
@@ -198,10 +228,8 @@ describe('merged first-party market reader (§6d)', () => {
     ]);
     const res = aaModels();
     expect(res).not.toBeNull();
-    expect(res!.models).toHaveLength(2);
-    // sorted by intelligence desc across the merge
+    expect(res!.models).toHaveLength(1);
     expect(res!.models[0]!.name).toBe('MiniMax M2');
-    expect(res!.models[1]!.name).toBe('GPT-5.5');
     expect(typeof res!.fetchedAt).toBe('string');
   });
 
