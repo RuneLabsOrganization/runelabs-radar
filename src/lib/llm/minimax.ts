@@ -123,9 +123,18 @@ export async function chatJSON<T>(
   if (!config.minimaxApiKey) {
     throw new LlmError('MINIMAX_API_KEY not set', false);
   }
-  if (opts?.job) checkJobBudget(opts.job);
-  checkAndCountCall();
+  // count the attempt BEFORE the cap checks: a call the cap refuses is still a
+  // call this job needed and did not get. Counted after, a run refused
+  // outright reported calls 0 / "ok" — invisible to the job recorder's
+  // every-call-failed check (jobs.ts llmTotalFailure).
   _calls++;
+  try {
+    if (opts?.job) checkJobBudget(opts.job);
+    checkAndCountCall();
+  } catch (e) {
+    _lastError = e instanceof Error ? e.message : String(e);
+    throw e;
+  }
   const backoffs = [1000, 4000];
   // opts.deadlineMs bounds the WHOLE call (all retries) for request/response paths:
   // Cloudflare cuts the origin at 100s, so a user-facing call must fail fast enough

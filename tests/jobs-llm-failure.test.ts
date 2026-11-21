@@ -42,6 +42,39 @@ describe('withJobRun — a job whose every LLM call failed is not "ok"', () => {
     expect(JSON.parse(run.stats!)).toMatchObject({ calls: 1, promptTokens: 0 });
   });
 
+  it('a run refused entirely by the daily LLM cap is an error too, not a silent no-op', async () => {
+    const savedCap = process.env.MINIMAX_DAILY_CALL_CAP;
+    process.env.MINIMAX_DAILY_CALL_CAP = '1';
+    try {
+      _setFetch(
+        async () =>
+          new Response(
+            JSON.stringify({
+              choices: [{ message: { content: '{"ok":true}' } }],
+              usage: { prompt_tokens: 10, completion_tokens: 5 },
+            }),
+          ),
+      );
+      await withJobRun('brief', async () => {
+        await chatJSON('s', 'u'); // spends the day's only call
+        return { ...drainLlmUsageStats() };
+      });
+      expect(lastRun().status).toBe('ok');
+
+      const res = await withJobRun('kit-evidence', async () => {
+        await chatJSON('s', 'u').catch(() => null); // refused before any request
+        return { attached: 0, ...drainLlmUsageStats() };
+      });
+      expect(res).toBeNull();
+      const run = lastRun();
+      expect(run.status).toBe('error');
+      expect(run.error).toContain('Daily LLM call cap reached');
+    } finally {
+      if (savedCap === undefined) delete process.env.MINIMAX_DAILY_CALL_CAP;
+      else process.env.MINIMAX_DAILY_CALL_CAP = savedCap;
+    }
+  });
+
   it('a job that made no LLM calls stays ok', async () => {
     const res = await withJobRun('brief', async () => ({ wrote: true, ...drainLlmUsageStats() }));
     expect(res).not.toBeNull();
