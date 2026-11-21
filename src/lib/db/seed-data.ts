@@ -41,6 +41,13 @@ export const SEED_SOURCES: SeedSource[] = [
   { type: 'exa', name: 'Search — Audio AI', config: { query: 'AI voice generation OR text-to-speech OR AI music model', pollMinutes: 720 }, domainHints: [] },
   { type: 'exa', name: 'Search — Dev Infra', config: { query: 'Vercel OR Supabase OR Cloudflare Workers pricing OR outage OR migration', pollMinutes: 720 }, domainHints: ['coding'] },
   { type: 'exa', name: 'Search — MCP Servers', config: { query: 'MCP server Model Context Protocol tool integration', pollMinutes: 720 }, domainHints: ['agentic'] },
+  // Reddit stand-ins: unauthenticated subreddit RSS is gone (every .rss URL 404s) and
+  // new Reddit API apps need approval, so the type 'reddit' sources are disabled in prod.
+  // These surface reddit.com threads through the search fallback chain instead. One poll
+  // a day each — they share the daily Exa/MiniMax search budget (search/budget.ts).
+  { type: 'exa', name: 'Search — Reddit AI Builders', config: { query: 'site:reddit.com (r/LocalLLaMA OR r/ChatGPTCoding OR r/ClaudeAI) AI coding agents new model', pollMinutes: 1440 }, domainHints: ['coding', 'agentic'] },
+  { type: 'exa', name: 'Search — Reddit Image & Video', config: { query: 'site:reddit.com (r/StableDiffusion OR r/aivideo) new model release', pollMinutes: 1440 }, domainHints: ['image', 'video'] },
+  { type: 'exa', name: 'Search — Reddit Marketing', config: { query: 'site:reddit.com (r/PPC OR r/copywriting OR r/DigitalMarketing OR r/advertising) AI tools', pollMinutes: 1440 }, domainHints: ['copy', 'ads'] },
   { type: 'reddit', name: 'r/webdev', config: { subreddit: 'webdev' }, domainHints: ['coding'] },
   // Copy/ads were structurally underserved — copy had exactly one source
   // (the Brave query above) and ads had one dedicated source plus two
