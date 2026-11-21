@@ -111,7 +111,7 @@ function checkJobBudget(job: string): void {
 export async function chatJSON<T>(
   system: string,
   user: string,
-  opts?: { job?: string; maxTokens?: number; feature?: string; userId?: number | null },
+  opts?: { job?: string; maxTokens?: number; feature?: string; userId?: number | null; deadlineMs?: number },
 ): Promise<T> {
   if (!config.minimaxApiKey) {
     throw new LlmError('MINIMAX_API_KEY not set', false);
@@ -120,11 +120,16 @@ export async function chatJSON<T>(
   checkAndCountCall();
   _calls++;
   const backoffs = [1000, 4000];
+  // opts.deadlineMs bounds the WHOLE call (all retries) for request/response paths:
+  // Cloudflare cuts the origin at 100s, so a user-facing call must fail fast enough
+  // to return its own error instead of a bare 504.
+  const callStartedAt = Date.now();
+  const remaining = () => (opts?.deadlineMs === undefined ? Infinity : opts.deadlineMs - (Date.now() - callStartedAt));
   for (let attempt = 0; ; attempt++) {
     const startedAt = Date.now();
     try {
       const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 120_000);
+      const timer = setTimeout(() => controller.abort(), Math.max(1_000, Math.min(120_000, remaining())));
       let res: Response;
       try {
         res = await _fetch(`${config.minimaxBaseUrl}/chat/completions`, {
@@ -139,6 +144,9 @@ export async function chatJSON<T>(
             // bound runaway output WITHOUT clipping the long jobs: MiniMax-M2
             // spends thinking tokens (<think>) from this same budget — 800
             // truncated the brief mid-think; 6000 fits thinking + a full brief
+            // M3.x defaults to reasoning_effort=max; these are structured-output jobs, so
+            // think lightly (faster, far fewer thinking tokens). Env-tunable.
+            reasoning_effort: config.minimaxReasoningEffort,
             max_tokens: opts?.maxTokens ?? 6000,
             messages: [
               { role: 'system', content: system },
@@ -187,6 +195,8 @@ export async function chatJSON<T>(
       const err =
         e instanceof LlmError ? e : new LlmError(e instanceof Error ? e.message : String(e), true);
       if (!err.retryable || attempt >= 2) throw err;
+      // no time left for another full attempt inside the deadline — fail now
+      if (remaining() < backoffs[attempt] + 15_000) throw err;
       await sleep(backoffs[attempt]);
     }
   }

@@ -229,3 +229,31 @@ describe('generatePlan userId threading', () => {
     expect(rows.every((r) => r.userId === 42)).toBe(true);
   });
 });
+
+describe('chatJSON request shape and deadline', () => {
+  it('sends reasoning_effort=low by default and honours MINIMAX_REASONING_EFFORT', async () => {
+    const bodies: Record<string, unknown>[] = [];
+    _setFetch((async (_u: unknown, init: RequestInit) => {
+      bodies.push(JSON.parse(String(init.body)));
+      return { ok: true, json: async () => ({ choices: [{ message: { content: '{"ok":true}' } }], usage: {} }) };
+    }) as unknown as typeof fetch);
+    await chatJSON('s', 'u');
+    process.env.MINIMAX_REASONING_EFFORT = 'high';
+    try {
+      await chatJSON('s', 'u');
+    } finally {
+      delete process.env.MINIMAX_REASONING_EFFORT;
+    }
+    expect(bodies.map((b) => b.reasoning_effort)).toEqual(['low', 'high']);
+  });
+
+  it('stops retrying a malformed response once the deadline cannot fit another attempt', async () => {
+    let calls = 0;
+    _setFetch((async () => {
+      calls++;
+      return { ok: true, json: async () => ({ choices: [{ message: { content: '{"a": 1 "b": 2}' } }], usage: {} }) };
+    }) as unknown as typeof fetch);
+    await expect(chatJSON('s', 'u', { deadlineMs: 10_000 })).rejects.toThrow();
+    expect(calls).toBe(1); // < backoff + 15s left → no retry
+  });
+});

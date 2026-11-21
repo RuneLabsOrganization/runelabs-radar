@@ -204,7 +204,7 @@ async function generateBriefInner(
     `<money-comps>\n${compsText}\n</money-comps>`;
 
   try {
-    const res = await chatJSON<Record<string, unknown>>(system, user, { feature: 'opportunity-brief', userId });
+    const res = await chatJSON<Record<string, unknown>>(system, user, { feature: 'opportunity-brief', userId, deadlineMs: 85_000 });
     const brief = sanitizeBrief(res);
     if (!brief) return { ok: false, error: 'brief failed validation — try again' };
     // only market-class briefs may occupy the shared on-row cache (see above)

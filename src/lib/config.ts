@@ -34,6 +34,11 @@ export const config = {
   get minimaxModel(): string {
     return process.env.MINIMAX_MODEL ?? 'MiniMax-M3.1-Flash';
   },
+  /** MiniMax M3.x thinking depth: low|medium|high|xhigh|max (API default is max — slow/expensive for JSON jobs). */
+  get minimaxReasoningEffort(): string {
+    const v = (process.env.MINIMAX_REASONING_EFFORT ?? 'low').trim().toLowerCase();
+    return ['low', 'medium', 'high', 'xhigh', 'max'].includes(v) ? v : 'low';
+  },
   get minimaxDailyCallCap(): number {
     return intEnv('MINIMAX_DAILY_CALL_CAP', 500);
   },
