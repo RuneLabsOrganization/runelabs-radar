@@ -1,6 +1,6 @@
 import { config } from '../config';
-import { fetchJson } from '../ingest/adapters/shared';
-import { reserveSearchCall } from './budget';
+import { fetchJson, HttpFetchError } from '../ingest/adapters/shared';
+import { reserveSearchCall, SearchBudgetError } from './budget';
 
 export interface ExaHit {
   title: string;
@@ -28,6 +28,14 @@ const SEARCH_ENDPOINT = 'https://api.exa.ai/search';
 const DEFAULT_COUNT = 10;
 const MAX_COUNT = 25;
 const EXCERPT_MAX = 400;
+
+/** Process-local circuit breaker: Exa answers 402 when credit is gone; stop paying for doomed requests. */
+const QUOTA_BLOCK_MS = 6 * 36e5;
+let quotaBlockedUntil = 0;
+
+export function resetExaQuotaGate(): void {
+  quotaBlockedUntil = 0;
+}
 
 export class ExaSearchError extends Error {
   constructor(message: string) {
@@ -79,19 +87,28 @@ export async function exaSearch(opts: { query: string; count?: number }): Promis
     Math.max(1, Math.floor(Number.isFinite(opts.count) ? (opts.count as number) : DEFAULT_COUNT)),
   );
   const key = token();
+  if (Date.now() < quotaBlockedUntil) {
+    throw new SearchBudgetError('exa', `Exa credit exhausted (HTTP 402) — paused until ${new Date(quotaBlockedUntil).toISOString()}`);
+  }
   reserveSearchCall('exa'); // paid request — refuses once the monthly/daily cap is spent
-  const res = await fetchJson<ExaSearchResponse>(SEARCH_ENDPOINT, {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      'x-api-key': key,
-    },
-    body: JSON.stringify({
-      query: opts.query,
-      numResults,
-      type: 'auto',
-      contents: { highlights: true },
-    }),
-  });
+  let res: ExaSearchResponse;
+  try {
+    res = await fetchJson<ExaSearchResponse>(SEARCH_ENDPOINT, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-api-key': key,
+      },
+      body: JSON.stringify({
+        query: opts.query,
+        numResults,
+        type: 'auto',
+        contents: { highlights: true },
+      }),
+    });
+  } catch (e) {
+    if (e instanceof HttpFetchError && e.status === 402) quotaBlockedUntil = Date.now() + QUOTA_BLOCK_MS;
+    throw e;
+  }
   return mapResults(res.results);
 }

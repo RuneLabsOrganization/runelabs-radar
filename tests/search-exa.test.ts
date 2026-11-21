@@ -1,7 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { exaSearch, ExaSearchError } from '@/lib/search/exa';
+import { exaSearch, ExaSearchError, resetExaQuotaGate } from '@/lib/search/exa';
+import { SearchBudgetError } from '@/lib/search/budget';
 import { HttpFetchError } from '@/lib/ingest/adapters/shared';
 import { useTestDb } from './helpers/db';
 
@@ -22,6 +23,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  resetExaQuotaGate();
   vi.unstubAllGlobals();
   vi.unstubAllEnvs();
 });
@@ -83,5 +85,15 @@ describe('exaSearch', () => {
     stubFetch('forbidden', 403);
     await expect(exaSearch({ query: 'AI' })).rejects.toThrow(HttpFetchError);
     await expect(exaSearch({ query: 'AI' })).rejects.toThrow('HTTP 403 fetching https://api.exa.ai/search');
+  });
+});
+
+describe('exaSearch 402 breaker', () => {
+  it('stops sending requests after Exa answers 402', async () => {
+    vi.stubEnv('EXA_API_KEY', 'test-exa-key');
+    const fn = stubFetch('{"error":"no credits"}', 402);
+    await expect(exaSearch({ query: 'q' })).rejects.toBeInstanceOf(HttpFetchError);
+    await expect(exaSearch({ query: 'q' })).rejects.toBeInstanceOf(SearchBudgetError);
+    expect(fn).toHaveBeenCalledTimes(1);
   });
 });
