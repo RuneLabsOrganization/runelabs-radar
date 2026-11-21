@@ -38,8 +38,8 @@ describe('applyProposal concurrency guard', () => {
   });
 
   it('a later apply of an already-approved proposal is a no-op', async () => {
-    expect(await applyProposal(proposalId)).toEqual({ ok: true });
-    expect(await applyProposal(proposalId)).toEqual({ ok: false });
+    expect(await applyProposal(proposalId)).toEqual({ ok: true, held: [] });
+    expect(await applyProposal(proposalId)).toEqual({ ok: false, held: [] });
 
     expect(db.select().from(boardHistory).all()).toHaveLength(1);
     expect(db.select().from(kitPickHistory).all()).toHaveLength(1);

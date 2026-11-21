@@ -49,7 +49,7 @@ describe('board proposal apply/reject', () => {
   });
 
   it('applyProposal updates entry fields, writes a diff history row, approves the proposal', async () => {
-    expect(await applyProposal(proposalId)).toEqual({ ok: true });
+    expect(await applyProposal(proposalId)).toEqual({ ok: true, held: [] });
 
     const entry = db.select().from(boardEntries).where(eq(boardEntries.id, entryId)).get()!;
     expect(entry.bestOverall).toBe('Claude Fable 5');
@@ -94,7 +94,7 @@ describe('board proposal apply/reject', () => {
       .returning()
       .get().id;
 
-    expect(await applyProposal(pid)).toEqual({ ok: true });
+    expect(await applyProposal(pid)).toEqual({ ok: true, held: [] });
 
     const entry = db.select().from(boardEntries).where(eq(boardEntries.domain, 'copy')).get()!;
     expect(entry.task).toBe('social');
@@ -120,7 +120,7 @@ describe('board proposal apply/reject', () => {
       .returning()
       .get().id;
 
-    expect(await applyProposal(pid)).toEqual({ ok: true });
+    expect(await applyProposal(pid)).toEqual({ ok: true, held: [] });
 
     const entry = db.select().from(boardEntries).where(eq(boardEntries.id, entryId)).get()!;
     expect(entry.costNote).toBe('only the cost note changed');
@@ -150,11 +150,11 @@ describe('board proposal apply/reject', () => {
   });
 
   it('returns {ok:false} for missing or non-pending proposals', async () => {
-    expect(await applyProposal(999999)).toEqual({ ok: false });
+    expect(await applyProposal(999999)).toEqual({ ok: false, held: [] });
     expect(await rejectProposal(999999)).toEqual({ ok: false });
 
     await rejectProposal(proposalId);
-    expect(await applyProposal(proposalId)).toEqual({ ok: false });
+    expect(await applyProposal(proposalId)).toEqual({ ok: false, held: [] });
     expect(await rejectProposal(proposalId)).toEqual({ ok: false });
 
     // entry still untouched after the failed apply
