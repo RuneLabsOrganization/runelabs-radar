@@ -11,8 +11,13 @@ import { clusterNewItems, CURATION_WINDOW_MS } from './cluster';
 import { passesGate } from './gate';
 import { semanticPreDedup } from './semantic-merge';
 
-/** Max 'raw' stories sent to MiniMax per run. */
+/** Max 'raw' stories sent to MiniMax per run (CURATE_BATCH_LIMIT overrides — one-off backfills). */
 const CURATE_BATCH_LIMIT = 50;
+
+function envPositive(name: string, fallback: number): number {
+  const n = Number(process.env[name]);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : fallback;
+}
 /** Max already-curated stories re-scored per run after gaining new member items. */
 const RECURATE_LIMIT = 10;
 /**
@@ -221,10 +226,14 @@ export async function runCurate(): Promise<CurateStats> {
     .select()
     .from(stories)
     .where(
-      and(eq(stories.status, 'raw'), gte(stories.createdAt, new Date(Date.now() - CURATION_WINDOW_MS))),
+      and(
+        eq(stories.status, 'raw'),
+        // CURATE_WINDOW_HOURS widens the scoring window for a manual backfill (default: the 72h display window)
+        gte(stories.createdAt, new Date(Date.now() - envPositive('CURATE_WINDOW_HOURS', CURATION_WINDOW_MS / 36e5) * 36e5)),
+      ),
     )
     .orderBy(desc(stories.createdAt), desc(stories.id))
-    .limit(CURATE_BATCH_LIMIT)
+    .limit(envPositive('CURATE_BATCH_LIMIT', CURATE_BATCH_LIMIT))
     .all();
 
   const recentVotes: CurationVote[] = db
@@ -324,20 +333,28 @@ export async function runCurate(): Promise<CurateStats> {
   }
 
   let aborted = false;
-  for (const story of rawStories) {
-    try {
-      const r = await curateStory(story, true);
-      if (r === 'filtered') filtered++;
-      else curated++;
-    } catch (e) {
-      if (!(e instanceof LlmError)) throw e;
-      failed++;
-      if (!e.retryable) {
-        aborted = true; // daily cap / config error — no point continuing this batch
-        break;
+  // CURATE_CONCURRENCY>1 (backfills) runs several LLM calls at once; the DB writes
+  // are synchronous so workers never interleave inside a statement. Default 1 = unchanged.
+  const concurrency = envPositive('CURATE_CONCURRENCY', 1);
+  let cursor = 0;
+  async function worker(): Promise<void> {
+    while (!aborted && cursor < rawStories.length) {
+      const story = rawStories[cursor++]!;
+      try {
+        const r = await curateStory(story, true);
+        if (r === 'filtered') filtered++;
+        else curated++;
+      } catch (e) {
+        if (!(e instanceof LlmError)) throw e;
+        failed++;
+        if (!e.retryable) {
+          aborted = true; // daily cap / config error — no point continuing this batch
+          return;
+        }
       }
     }
   }
+  await Promise.all(Array.from({ length: Math.min(concurrency, Math.max(1, rawStories.length)) }, () => worker()));
 
   if (!aborted) {
     for (const story of recurateQueue) {
