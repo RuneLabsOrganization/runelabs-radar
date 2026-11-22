@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, lt } from 'drizzle-orm';
+import { and, asc, desc, eq, exists, gte, lt } from 'drizzle-orm';
 import { getDb } from './db';
 import { batchItems, batchRunItems, batchRuns, batches, opportunities } from './db/schema';
 import { can } from './entitlements';
@@ -27,7 +27,13 @@ export function listBatchesForUser(userId: number | null) {
   const drops = db
     .select()
     .from(batches)
-    .where(eq(batches.kind, 'drop'))
+    // an empty drop is a dead "0 items" card — only show drops that hold something
+    .where(
+      and(
+        eq(batches.kind, 'drop'),
+        exists(db.select({ one: batchItems.id }).from(batchItems).where(eq(batchItems.batchId, batches.id))),
+      ),
+    )
     .orderBy(desc(batches.createdAt))
     .limit(12)
     .all();
@@ -251,7 +257,52 @@ export async function runBatchOp(batchId: number, op: 'debate' | 'plan' | 'scout
   return db.select().from(batchRuns).where(eq(batchRuns.id, run.id)).get()!;
 }
 
-/** Weekly Radar Batch drop — top pursue opportunities of the week. */
+const DROP_SIZE = 10;
+/** A "watch" opening must be reviewed with at least this confidence to fill a drop (unverified rows sit at 40). */
+const DROP_MIN_WATCH_CONFIDENCE = 50;
+
+/**
+ * Pursue-grade openings first; when the red-team critic has cleared fewer than
+ * DROP_SIZE (it has cleared NONE since launch — 0 pursue across hundreds of
+ * reviewed openings, which left every weekly drop at 0 items), the best
+ * reviewed "watch" openings fill the rest, ranked by flip score.
+ */
+function pickDropOpportunities(db: ReturnType<typeof getDb>): { rows: (typeof opportunities.$inferSelect)[]; pursue: number } {
+  const pursue = db
+    .select()
+    .from(opportunities)
+    .where(and(eq(opportunities.status, 'active'), eq(opportunities.verdict, 'pursue'), publicOnly()))
+    .orderBy(desc(opportunities.flipScore))
+    .limit(DROP_SIZE)
+    .all();
+  const watch =
+    pursue.length >= DROP_SIZE
+      ? []
+      : db
+          .select()
+          .from(opportunities)
+          .where(
+            and(
+              eq(opportunities.status, 'active'),
+              eq(opportunities.verdict, 'watch'),
+              gte(opportunities.confidence, DROP_MIN_WATCH_CONFIDENCE),
+              publicOnly(),
+            ),
+          )
+          .orderBy(desc(opportunities.flipScore))
+          .limit(DROP_SIZE - pursue.length)
+          .all();
+  return { rows: [...pursue, ...watch], pursue: pursue.length };
+}
+
+function dropDescription(pursue: number, total: number): string {
+  return pursue === total
+    ? 'Weekly curated pursue-grade openings.'
+    : `Weekly curated openings: ${pursue} pursue-grade and the ${total - pursue} strongest "watch" ` +
+        'openings (real, reviewed, with named risks) — the red-team reviewer cleared fewer than ten to pursue.';
+}
+
+/** Weekly Radar Batch drop — the week's best reviewed openings (pursue first, then top watch). */
 export async function createWeeklyRadarDrop(): Promise<{ slug: string; count: number }> {
   const db = getDb();
   const now = new Date();
@@ -259,37 +310,33 @@ export async function createWeeklyRadarDrop(): Promise<{ slug: string; count: nu
   const cohort = `${now.getUTCFullYear()}-W${String(week).padStart(2, '0')}`;
   const slug = `radar-${cohort.toLowerCase()}`;
   const existing = db.select().from(batches).where(eq(batches.slug, slug)).get();
-  if (existing) return { slug, count: getBatchItems(existing.id).length };
+  // an existing drop with items is final for the week; an EMPTY one (created
+  // before anything qualified) is refilled instead of staying empty until Monday
+  if (existing && getBatchItems(existing.id).length > 0) return { slug, count: getBatchItems(existing.id).length };
 
-  const tops = db
-    .select()
-    .from(opportunities)
-    .where(
-      and(
-        eq(opportunities.status, 'active'),
-        eq(opportunities.verdict, 'pursue'),
-        publicOnly(),
-      ),
-    )
-    .orderBy(desc(opportunities.flipScore))
-    .limit(10)
-    .all();
+  const picked = pickDropOpportunities(db);
+  const tops = picked.rows;
+  // never publish an empty drop card
+  if (tops.length === 0) return { slug, count: 0 };
 
-  const batch = db
-    .insert(batches)
-    .values({
-      ownerId: null,
-      kind: 'drop',
-      slug,
-      title: `Radar Batch ${cohort}`,
-      cohort,
-      visibility: 'members',
-      description: 'Weekly curated pursue-grade openings.',
-      createdAt: now,
-      updatedAt: now,
-    })
-    .returning()
-    .get();
+  const description = dropDescription(picked.pursue, tops.length);
+  const batch = existing
+    ? db.update(batches).set({ description, updatedAt: now }).where(eq(batches.id, existing.id)).returning().get()!
+    : db
+        .insert(batches)
+        .values({
+          ownerId: null,
+          kind: 'drop',
+          slug,
+          title: `Radar Batch ${cohort}`,
+          cohort,
+          visibility: 'members',
+          description,
+          createdAt: now,
+          updatedAt: now,
+        })
+        .returning()
+        .get();
 
   tops.forEach((o, i) => {
     db.insert(batchItems)
