@@ -37,10 +37,14 @@ function insertMention(db: Db, name: string, daysAgo: number): void {
     .run();
 }
 
-function seedAaSnapshot(models: Record<string, unknown>[]): void {
+function seedAaSnapshot(models: Record<string, unknown>[], ageDays = 0): void {
   getDb()
     .insert(benchmarkSnapshots)
-    .values({ source: 'artificial-analysis', raw: JSON.stringify({ compact: true, models }), fetchedAt: new Date() })
+    .values({
+      source: 'artificial-analysis',
+      raw: JSON.stringify({ compact: true, models }),
+      fetchedAt: new Date(Date.now() - ageDays * DAY),
+    })
     .run();
 }
 
@@ -275,11 +279,47 @@ describe('computeRadarScores (§6e)', () => {
     seedAaSnapshot([
       { name: 'Alpha', org: null, intelligence: 50, coding: null, price: 8, priceIn: 8, priceOut: 8, speed: null, released: null },
       { name: 'Beta', org: null, intelligence: 90, coding: null, price: 3, priceIn: 2, priceOut: 6, speed: null, released: null },
-    ]);
+    ], 30); // stale: the seeded cohort is scored, so AA is a genuine second opinion
     computeRadarScores();
     // overlap cohort {Alpha, Beta}: both sides sit ±1 MAD apart → hi−lo = ±0.3215
     // (was ±1 under min-max — a two-model cohort always spanned the full range)
     expect(scoreRows('aa_divergence')).toEqual(new Map([['Alpha', 0.3215], ['Beta', -0.3215]]));
+  });
+
+  describe('live cohort (fresh AA snapshot)', () => {
+    const aaRow = (name: string, intelligence: number, price: number, speed: number | null = null) => ({
+      name, org: null, intelligence, coding: null, price, priceIn: price, priceOut: price, speed, released: null,
+    });
+
+    it('scores the fresh AA models — one per model, base-name entity — not the hand-seeded table', () => {
+      // the stale seed claims Old Model is the best there is
+      recordMetrics([{ source: 'open-bench', entity: 'Old Model', metric: 'intelligence', value: 68 }]);
+      seedAaSnapshot([
+        aaRow('Fable X (Max, Fallback)', 64, 16, 50),
+        aaRow('Fable X (High, Fallback)', 60, 16, 50),
+        aaRow('Astra Y (Max)', 62, 16, 90),
+        aaRow('Flash Z', 45, 0.5, 200),
+      ]);
+      const res = computeRadarScores();
+      expect(res.models.map((m) => m.entity).sort()).toEqual(['Astra Y', 'Fable X', 'Flash Z']);
+      expect(scoreRows('capability_raw').get('Fable X')).toBe(64); // best effort variant wins
+      expect(scoreRows('capability_raw').has('Old Model')).toBe(false);
+      // AA speed feeds the speed input
+      expect(scoreRows('speed_raw').get('Flash Z')).toBe(200);
+    });
+
+    it('falls back to the seeded cohort when the snapshot is stale', () => {
+      recordMetrics([{ source: 'open-bench', entity: 'Old Model', metric: 'intelligence', value: 68 }]);
+      seedAaSnapshot([aaRow('Fable X', 64, 16)], 30);
+      const res = computeRadarScores();
+      expect(res.models.map((m) => m.entity)).toEqual(['Old Model']);
+    });
+
+    it('does not rewrite history: a past as-of date still scores the seeded cohort', () => {
+      recordMetrics([{ source: 'open-bench', entity: 'Old Model', metric: 'intelligence', value: 68, date: '2026-08-30' }]);
+      seedAaSnapshot([aaRow('Fable X', 64, 16)]);
+      expect(computeRadarScores('2026-08-30').models.map((m) => m.entity)).toEqual(['Old Model']);
+    });
   });
 
   it('writes no divergence rows without an AA snapshot', () => {

@@ -160,21 +160,28 @@ export function metricsFromOpenRouter(payload: unknown): MetricInput[] {
 // ── LiveBench (live, best-effort) ────────────────────────────────────────────
 
 /**
- * LiveBench serves a static export per release — table_<date>.csv (models ×
- * subtask scores) and categories_<date>.json (category → subtasks) — but the
- * release list exists only inside the site's JS bundle. Discovery: homepage →
- * main.*.js path → newest 20YY-MM-DD strings in the bundle, newest first.
- * Returns up to 3 underscored candidates (a spurious future date string in
- * the bundle would 404, so the caller tries them in order).
+ * LiveBench 2.0 serves one static export per release at
+ * /data/<yyyymmdd>/table.csv (models × suite scores, one column per suite) and
+ * /data/<yyyymmdd>/categories.json (suite label → columns, plus an optional
+ * "_overall_weights" map) — but the release list exists only inside the site's
+ * JS bundle. Discovery: homepage → main.*.js path → every 8-digit release id
+ * in the bundle's release array, newest first. (The pre-2.0 layout —
+ * /table_<date>.csv — now 404s, which silently froze this series for weeks.)
+ * Returns up to 3 candidates so a half-published release falls back to the
+ * previous one.
  */
 export async function liveBenchReleaseCandidates(text: FetchTextFn): Promise<string[]> {
   const html = await text(`${LIVEBENCH_BASE}/`);
   const jsPath = html.match(/static\/js\/main\.[\w-]+\.js/)?.[0];
   if (!jsPath) throw new Error('livebench: main JS bundle not found on homepage');
   const js = await text(`${LIVEBENCH_BASE}/${jsPath}`);
-  const dates = [...new Set([...js.matchAll(/20\d\d-\d\d-\d\d/g)].map((m) => m[0]))].sort().reverse();
-  if (dates.length === 0) throw new Error('livebench: no release dates found in JS bundle');
-  return dates.slice(0, 3).map((d) => d.replaceAll('-', '_'));
+  // the release array: ["20261014","20261025","20261106"]
+  const ids = new Set<string>();
+  for (const arr of js.matchAll(/\[\s*"(20\d{6})"(?:\s*,\s*"20\d{6}")*\s*,?\s*\]/g)) {
+    for (const id of arr[0].matchAll(/20\d{6}/g)) ids.add(id[0]);
+  }
+  if (ids.size === 0) throw new Error('livebench: no release ids found in JS bundle');
+  return [...ids].sort().reverse().slice(0, 3);
 }
 
 /** LiveBench's export is machine-generated: no quoting, no embedded commas. */
@@ -188,50 +195,72 @@ function parseSimpleCsv(csv: string): string[][] {
 
 const round2 = (v: number) => Math.round(v * 100) / 100;
 
+const SLUG_ACRONYMS = new Set(['gpt', 'glm', 'llm', 'vl', 'moe']);
+
 /**
- * LiveBench global average per model: mean of per-category means (their
- * published methodology). Slugs (e.g. 'claude-opus-4-7-xhigh-effort') are
- * mapped onto seed names via each model's `livebench` prefix; a model ships
- * several rows (effort/thinking variants) — take the best published
- * configuration, as the leaderboard advertises. Rows matching no seed prefix
- * are dropped: entity naming stays vendor-public and joinable.
+ * 'claude-fable-5.2' → 'Claude Fable 5.2'. Joins with every other source via
+ * normalizeModelKey (case/punctuation-folded), so the exact casing only has to
+ * read well. A trailing snapshot stamp (-1017) is dropped.
  */
-export function liveBenchPoints(tableCsv: string, categoriesJson: string, seeds: SeedModel[] = SEED_MODELS): MetricInput[] {
+export function liveBenchEntityName(slug: string): string {
+  return slug
+    .replace(/-\d{4}$/, '')
+    .split('-')
+    .filter((t) => t.length > 0)
+    .map((t) => (SLUG_ACRONYMS.has(t) ? t.toUpperCase() : t.charAt(0).toUpperCase() + t.slice(1)))
+    .join(' ');
+}
+
+/**
+ * LiveBench global score per model, as the site computes it: the weighted mean
+ * of per-suite scores, Σ weight × suite ÷ Σ weight over the suites the model
+ * has a score for ("_overall_weights" gives each release's weights; a suite
+ * without one counts once). A blank / "—" cell is NO score — it must not
+ * count as 0. Every model in the table becomes an entity (named by
+ * liveBenchEntityName); when several rows collapse to one name the best score
+ * wins.
+ */
+export function liveBenchPoints(tableCsv: string, categoriesJson: string): MetricInput[] {
   const categories = JSON.parse(categoriesJson) as Record<string, unknown>;
+  const weightsRaw = categories._overall_weights;
+  const weights: Record<string, number> =
+    weightsRaw && typeof weightsRaw === 'object' ? (weightsRaw as Record<string, number>) : {};
   const rows = parseSimpleCsv(tableCsv);
   if (rows.length < 2) return [];
   const colOf = new Map(rows[0].map((name, i) => [name, i]));
 
-  // slug → global average across categories
-  const overall = new Map<string, number>();
+  const best = new Map<string, number>();
   for (const row of rows.slice(1)) {
     const slug = row[0];
     if (!slug) continue;
-    const catMeans: number[] = [];
-    for (const subtasks of Object.values(categories)) {
-      if (!Array.isArray(subtasks)) continue;
+    let weighted = 0;
+    let weightSum = 0;
+    for (const [label, cols] of Object.entries(categories)) {
+      if (label.startsWith('_') || !Array.isArray(cols)) continue;
       const vals: number[] = [];
-      for (const st of subtasks) {
-        const col = colOf.get(String(st));
-        if (col === undefined) continue;
-        const v = Number(row[col]);
+      for (const col of cols) {
+        const i = colOf.get(String(col));
+        const cell = i === undefined ? undefined : row[i];
+        if (cell === undefined || cell === '' || cell === '—') continue;
+        const v = Number(cell);
         if (Number.isFinite(v)) vals.push(v);
       }
-      if (vals.length > 0) catMeans.push(vals.reduce((a, b) => a + b, 0) / vals.length);
+      if (vals.length === 0) continue;
+      const w = typeof weights[label] === 'number' && weights[label] > 0 ? weights[label] : 1;
+      weighted += (w * vals.reduce((a, b) => a + b, 0)) / vals.length;
+      weightSum += w;
     }
-    if (catMeans.length > 0) overall.set(slug, catMeans.reduce((a, b) => a + b, 0) / catMeans.length);
+    if (weightSum === 0) continue;
+    const entity = liveBenchEntityName(slug);
+    const score = weighted / weightSum;
+    if (entity !== '' && (best.get(entity) ?? -Infinity) < score) best.set(entity, score);
   }
-
-  const out: MetricInput[] = [];
-  for (const seed of seeds) {
-    if (!seed.livebench) continue;
-    let best: number | null = null;
-    for (const [slug, score] of overall) {
-      if (slug.startsWith(seed.livebench) && (best === null || score > best)) best = score;
-    }
-    if (best !== null) out.push({ source: 'open-bench', entity: seed.entity, metric: 'livebench', value: round2(best) });
-  }
-  return out;
+  return [...best].map(([entity, score]) => ({
+    source: 'open-bench',
+    entity,
+    metric: 'livebench',
+    value: round2(score),
+  }));
 }
 
 // ── Sync ─────────────────────────────────────────────────────────────────────
@@ -276,12 +305,12 @@ export async function runOpenBenchSync(text: FetchTextFn = fetchText): Promise<O
     for (const candidate of await liveBenchReleaseCandidates(text)) {
       try {
         const [table, categories] = await Promise.all([
-          text(`${LIVEBENCH_BASE}/table_${candidate}.csv`),
-          text(`${LIVEBENCH_BASE}/categories_${candidate}.json`),
+          text(`${LIVEBENCH_BASE}/data/${candidate}/table.csv`),
+          text(`${LIVEBENCH_BASE}/data/${candidate}/categories.json`),
         ]);
         const points = liveBenchPoints(table, categories);
-        if (points.length === 0) throw new Error('no seed-mapped models in table');
-        result = { points, raw: table, release: candidate.replaceAll('_', '-') };
+        if (points.length === 0) throw new Error('no scorable models in table');
+        result = { points, raw: table, release: `${candidate.slice(0, 4)}-${candidate.slice(4, 6)}-${candidate.slice(6, 8)}` };
         break;
       } catch (e) {
         lastErr = e;
@@ -305,5 +334,20 @@ export async function runOpenBenchSync(text: FetchTextFn = fetchText): Promise<O
     failed('open-bench-seed', e);
   }
 
+  return stats;
+}
+
+/**
+ * The scheduled job. Sources are failure-isolated inside runOpenBenchSync (the
+ * seed always lands), but a live source that fails must not look like a green
+ * run: LiveBench sat 39 days stale behind an "ok" job. Everything is recorded
+ * first, then the run is failed so /trust and job_runs show it.
+ */
+export async function runOpenBenchJob(text: FetchTextFn = fetchText): Promise<OpenBenchStats> {
+  const stats = await runOpenBenchSync(text);
+  const bad = stats.sources.filter((s) => !s.ok);
+  if (bad.length > 0) {
+    throw new Error(`openbench: ${bad.map((s) => `${s.name} (${s.error ?? 'failed'})`).join('; ')}`);
+  }
   return stats;
 }

@@ -510,6 +510,37 @@ function firstPartyModels(): { latestDate: string | null; models: MarketModel[] 
  */
 const AA_FRESH_DAYS = 14;
 
+/** 'Claude Fable 5.2 (Max, Default Fallback)' → 'Claude Fable 5.2': AA lists one row per effort setting. */
+export function modelBaseName(name: string): string {
+  return name.replace(/\s*\([^)]*\)\s*$/, '').trim();
+}
+
+/**
+ * Keeps the highest-intelligence row per model (effort variants collapsed on
+ * modelBaseName), ordered by intelligence. Left uncollapsed, a "top 40" is ~13
+ * models, which crowds everything else out of prompts and cohorts.
+ */
+export function collapseVariants<T extends { name: string; intelligence: number }>(models: readonly T[]): T[] {
+  const best = new Map<string, T>();
+  for (const m of models) {
+    const base = modelBaseName(m.name).toLowerCase();
+    const cur = best.get(base);
+    if (!cur || m.intelligence > cur.intelligence) best.set(base, m);
+  }
+  return [...best.values()].sort((a, b) => b.intelligence - a.intelligence);
+}
+
+/**
+ * The AA snapshot's models, wide-read, ONLY while the snapshot is fresh
+ * (≤ AA_FRESH_DAYS). The live capability source for anything that must not be
+ * built on the hand-seeded first-party table (Radar Score, board prompt).
+ */
+export function freshAaModels(limit = 400): { fetchedAt: string; models: AaModel[] } | null {
+  const aa = latestAaSnapshotModels(limit);
+  if (!aa) return null;
+  return (Date.now() - Date.parse(aa.fetchedAt)) / 864e5 <= AA_FRESH_DAYS ? aa : null;
+}
+
 /**
  * Merged model-market reader (§6d): the AA snapshot when it is fresh, the
  * first-party series (§6a/§6b) as the fallback when it is not.

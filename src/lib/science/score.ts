@@ -42,7 +42,15 @@ import { and, eq, gte, lt, sql } from 'drizzle-orm';
 import { getDb } from '../db';
 import { llmCalls, metricPoints } from '../db/schema';
 import { recordMetrics, utcDay } from '../metrics';
-import { aaSnapshotModels, entityDailySeries, normalizeModelKey } from '../analytics';
+import {
+  aaSnapshotModels,
+  collapseVariants,
+  entityDailySeries,
+  freshAaModels,
+  modelBaseName,
+  normalizeModelKey,
+} from '../analytics';
+import { valuePicks } from '../opportunities/value-picks';
 import { canonicalEntityKey } from '../entity';
 import { blendedPrice } from '../market-price';
 import { robustScale } from '../stats';
@@ -187,6 +195,65 @@ export function rollupModelSpeed(date: string = utcDay()): { models: number } {
   return { models: points.length };
 }
 
+/** One scored model's raw inputs, before robust scaling. */
+interface CohortRow {
+  entity: string;
+  /** capability on the AA-style 0-100 index */
+  intel: number;
+  priceIn: number | null;
+  priceOut: number | null;
+  /** direct blended price, used only when neither side of the in/out price is known */
+  price: number | null;
+  /** vendor-published output speed, when the source carries one */
+  speed: number | null;
+}
+
+/** Frontier cohort size and extra intelligence-per-dollar names for the live cohort. */
+const LIVE_COHORT_FRONTIER = 40;
+const LIVE_COHORT_VALUE = 10;
+
+/**
+ * Live cohort: the fresh Artificial Analysis snapshot, one row per model (best
+ * effort setting, entity = base name). The legacy cohort below is a
+ * hand-transcribed table last reviewed 2026-08 on an older index scale — scored
+ * alone it rated August's models against each other and never saw a new
+ * release. Only used for today's run: the snapshot has no as-of history.
+ */
+function liveCohort(date: string): CohortRow[] | null {
+  if (date !== utcDay()) return null;
+  const aa = freshAaModels();
+  if (!aa) return null;
+  const best = collapseVariants(aa.models);
+  const frontier = best.slice(0, LIVE_COHORT_FRONTIER);
+  const listed = new Set(frontier.map((m) => m.name));
+  const value = valuePicks(best, { limit: LIVE_COHORT_VALUE + frontier.length })
+    .filter((m) => !listed.has(m.name))
+    .slice(0, LIVE_COHORT_VALUE);
+  const rows = new Map<string, CohortRow>();
+  for (const m of [...frontier, ...value]) {
+    const entity = modelBaseName(m.name);
+    if (entity !== '' && !rows.has(entity)) {
+      rows.set(entity, { entity, intel: m.intelligence, priceIn: m.priceIn, priceOut: m.priceOut, price: m.price, speed: m.speed });
+    }
+  }
+  return rows.size > 0 ? [...rows.values()] : null;
+}
+
+/** Legacy cohort: every model with an open-bench 'intelligence' value, priced from provider-pricing. */
+function seededCohort(date: string): CohortRow[] {
+  const intelligence = latestValues('open-bench', 'intelligence', date);
+  const priceIn = latestValues('provider-pricing', 'price_in', date);
+  const priceOut = latestValues('provider-pricing', 'price_out', date);
+  return [...intelligence].map(([entity, intel]) => ({
+    entity,
+    intel,
+    priceIn: priceIn.get(entity) ?? null,
+    priceOut: priceOut.get(entity) ?? null,
+    price: null,
+    speed: null,
+  }));
+}
+
 interface RawInputs {
   entity: string;
   capability: number;
@@ -219,21 +286,20 @@ interface RawInputs {
  * backfilled); all other inputs honor the as-of date.
  */
 export function computeRadarScores(date: string = utcDay()): RadarScoreResult {
-  const intelligence = latestValues('open-bench', 'intelligence', date);
-  if (intelligence.size === 0) return { scored: 0, models: [], methodology: METHODOLOGY };
+  const cohort = liveCohort(date) ?? seededCohort(date);
+  if (cohort.length === 0) return { scored: 0, models: [], methodology: METHODOLOGY };
   const evalScores = latestValues('radar-eval', RADAR_EVAL_METRIC, date);
-  const priceIn = latestValues('provider-pricing', 'price_in', date);
-  const priceOut = latestValues('provider-pricing', 'price_out', date);
+  const evalByKey = new Map([...evalScores].map(([e, v]) => [normalizeModelKey(e), v]));
   const speed = latestValues('radar-speed', 'output_toks_per_s', date);
 
-  const entities = [...intelligence.keys()];
+  const entities = cohort.map((c) => c.entity);
   // 15 days so 14 CLOSED UTC days remain after dropping today's partial day:
   // the job runs intraday, and counting today would bias "recent 7d" downward
   // by an amount that varies with run time.
   const heat = entityDailySeries(entities, MOMENTUM_FETCH_DAYS);
 
   // rollupModelSpeed keys the speed series by raw llm_calls.model API ids —
-  // bridge to open-bench display names with the same normalizeModelKey join
+  // bridge to display names with the same normalizeModelKey join
   // the AA backstop uses, or the input silently renormalizes out wherever
   // the two strings differ.
   const speedByKey = new Map<string, number>();
@@ -242,13 +308,16 @@ export function computeRadarScores(date: string = utcDay()): RadarScoreResult {
     if (key !== '') speedByKey.set(key, v);
   }
 
-  const raws: RawInputs[] = entities.map((entity) => {
-    const intel = intelligence.get(entity)!;
-    const evalScore = evalScores.get(entity);
+  const raws: RawInputs[] = cohort.map((c) => {
+    const { entity, intel } = c;
+    const evalScore = evalByKey.get(normalizeModelKey(entity));
     // blend activates only when the radar-eval series exists for this model
     const capability =
       evalScore !== undefined ? RADAR_EVAL_WEIGHT * evalScore + (1 - RADAR_EVAL_WEIGHT) * intel : intel;
-    const { price, singleSided } = blendedPrice(priceIn.get(entity) ?? null, priceOut.get(entity) ?? null);
+    const { price, singleSided } =
+      c.priceIn !== null || c.priceOut !== null
+        ? blendedPrice(c.priceIn, c.priceOut)
+        : { price: c.price, singleSided: false };
     const freeSku = price !== null && price < PRICE_FLOOR_USD;
     // free/near-free SKUs join the composite WITHOUT cost-efficiency (flagged
     // freeSku) rather than crushing the cohort scale from a floored denominator
@@ -264,7 +333,7 @@ export function computeRadarScores(date: string = utcDay()): RadarScoreResult {
       costEfficiency,
       freeSku,
       singleSided,
-      speed: speedByKey.get(normalizeModelKey(entity)) ?? null,
+      speed: c.speed ?? speedByKey.get(normalizeModelKey(entity)) ?? null,
       momentum,
     };
   });

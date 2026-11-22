@@ -3,13 +3,17 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { benchmarkSnapshots, metricPoints } from '@/lib/db/schema';
 import {
+  liveBenchEntityName,
   liveBenchPoints,
+  liveBenchReleaseCandidates,
   metricsFromOpenRouter,
+  runOpenBenchJob,
   runOpenBenchSync,
   SEED_MODELS,
   seedPoints,
   type FetchTextFn,
 } from '@/lib/ingest/openbench';
+import { normalizeModelKey } from '@/lib/analytics';
 import { useTestDb } from './helpers/db';
 
 function fixture(name: string): string {
@@ -24,9 +28,11 @@ const failingFetcher: FetchTextFn = async (url) => {
 const offlineFetcher: FetchTextFn = async (url) => {
   if (url.includes('openrouter.ai')) return fixture('openbench-openrouter.json');
   if (url === 'https://livebench.ai/') return '<script src="./static/js/main.deadbeef.js"></script>';
-  if (url.includes('/static/js/main.deadbeef.js')) return 'window.releases = ["2024-07-26", "2026-06-25"];';
-  if (url.includes('table_2026_06_25.csv')) return fixture('openbench-livebench-table.csv');
-  if (url.includes('categories_2026_06_25.json')) return fixture('openbench-livebench-categories.json');
+  // v1 dated releases sit alongside the 2.0 id array — only the 8-digit ids are releases
+  if (url.includes('/static/js/main.deadbeef.js'))
+    return 'var v1=["2024-07-26","2026-06-25"],Yt=["20261014","20261106"];';
+  if (url === 'https://livebench.ai/data/20261106/table.csv') return fixture('openbench-livebench-table.csv');
+  if (url === 'https://livebench.ai/data/20261106/categories.json') return fixture('openbench-livebench-categories.json');
   throw new Error(`unexpected url: ${url}`);
 };
 
@@ -64,23 +70,42 @@ describe('livebench parsing', () => {
   const table = fixture('openbench-livebench-table.csv');
   const categories = fixture('openbench-livebench-categories.json');
 
-  it('computes category-mean global scores, best variant per seed prefix', () => {
+  it('computes the release-weighted global score for every model; blanks are not zeros', () => {
     const points = liveBenchPoints(table, categories);
     const byEntity = Object.fromEntries(points.map((p) => [p.entity, p.value]));
 
     expect(points.every((p) => p.source === 'open-bench' && p.metric === 'livebench')).toBe(true);
-    // two gpt-5-5 variants: 84.58 (base) vs 86.53 (high) — best wins
-    expect(byEntity['GPT-5.5']).toBeCloseTo(86.53, 2);
-    expect(byEntity['Claude Opus 4.7']).toBeCloseTo(91.03, 2);
-    expect(byEntity['Qwen3-235B']).toBeCloseTo(77.68, 2);
-    // slugs matching no seed prefix never surface as entities
-    expect(points.some((p) => p.entity.includes('unmapped'))).toBe(false);
-    expect(points).toHaveLength(3);
+    // weights: Long Agentic 2, Coding 1.5, others 1 → (2*80 + 90 + 1.5*88 + 70) / 5.5
+    expect(byEntity['GPT 6.2 Astra']).toBeCloseTo(((2 * 80 + 90 + 1.5 * 88 + 70) / 5.5), 2);
+    // a blank browser cell drops that suite from numerator AND denominator
+    expect(byEntity['Claude Fable 5.2']).toBeCloseTo((2 * 82.9 + 88.8 + 1.5 * 79.2) / 4.5, 2);
+    // trailing snapshot stamp dropped, rows with no scores skipped
+    expect(byEntity['Deepseek V4.1 Flash']).toBeDefined();
+    expect(Object.keys(byEntity).some((e) => e.toLowerCase().includes('broken'))).toBe(false);
+    expect(points).toHaveLength(4);
+  });
+
+  it('without _overall_weights every suite counts once', () => {
+    const plain = JSON.stringify({ Coding: ['coding'], Reasoning: ['reasoning'] });
+    const csv = ['model,coding,reasoning', 'claude-opus-5.5,80,90'].join('\n');
+    const [p] = liveBenchPoints(csv, plain);
+    expect(p).toMatchObject({ entity: 'Claude Opus 5.5', value: 85 });
+  });
+
+  it('names slugs so they join other sources via normalizeModelKey', () => {
+    expect(liveBenchEntityName('claude-fable-5.2')).toBe('Claude Fable 5.2');
+    expect(liveBenchEntityName('gpt-6.2-astra')).toBe('GPT 6.2 Astra');
+    expect(normalizeModelKey(liveBenchEntityName('claude-fable-5.2'))).toBe(normalizeModelKey('Claude Fable 5.2'));
+  });
+
+  it('discovers only the newest 8-digit 2.0 release ids, newest first', async () => {
+    const ids = await liveBenchReleaseCandidates(offlineFetcher);
+    expect(ids).toEqual(['20261106', '20261014']);
   });
 
   it('returns [] for empty tables and empty category maps', () => {
     expect(liveBenchPoints('', categories)).toEqual([]);
-    expect(liveBenchPoints('model,code_generation\nx,1', '{}')).toEqual([]);
+    expect(liveBenchPoints(['model,coding', 'x,1'].join('\n'), '{}')).toEqual([]);
   });
 });
 
@@ -115,7 +140,7 @@ describe('full sync (offline fetcher)', () => {
     const stats = await runOpenBenchSync(offlineFetcher);
 
     expect(stats.sources.every((s) => s.ok)).toBe(true);
-    expect(stats.sources.find((s) => s.name === 'open-bench-livebench')).toMatchObject({ release: '2026-06-25' });
+    expect(stats.sources.find((s) => s.name === 'open-bench-livebench')).toMatchObject({ release: '2026-11-06' });
 
     const rows = db.select().from(metricPoints).all();
     const get = (source: string, entity: string, metric: string) =>
@@ -128,7 +153,7 @@ describe('full sync (offline fetcher)', () => {
     // seed composite and live augmentation coexist under distinct metric keys
     const seedGpt = SEED_MODELS.find((m) => m.entity === 'GPT-5.5');
     expect(get('open-bench', 'GPT-5.5', 'intelligence')?.value).toBe(seedGpt?.intelligence);
-    expect(get('open-bench', 'GPT-5.5', 'livebench')?.value).toBeCloseTo(86.53, 2);
+    expect(get('open-bench', 'GPT 6.2 Astra', 'livebench')?.value).toBeCloseTo(82.18, 2);
     expect(get('open-bench', 'Claude Sonnet 4.5', 'elo')?.value).toBe(
       SEED_MODELS.find((m) => m.entity === 'Claude Sonnet 4.5')?.elo,
     );
@@ -166,5 +191,24 @@ describe('full sync (offline fetcher)', () => {
 
     const sources = new Set(db.select().from(metricPoints).all().map((r) => r.source));
     expect(sources).toEqual(new Set(['open-bench']));
+  });
+});
+
+describe('runOpenBenchJob', () => {
+  it('records everything it can, then fails the run when a live source failed', async () => {
+    const db = useTestDb();
+    const noLiveBench: FetchTextFn = async (url) => {
+      if (url.includes('livebench.ai/data/')) throw new Error('HTTP 404');
+      return offlineFetcher(url);
+    };
+    await expect(runOpenBenchJob(noLiveBench)).rejects.toThrow(/open-bench-livebench/);
+    // the seed and openrouter rows still landed before the run was failed
+    expect(db.select().from(metricPoints).all().length).toBeGreaterThan(seedPoints().length);
+  });
+
+  it('succeeds when every source is healthy', async () => {
+    useTestDb();
+    const stats = await runOpenBenchJob(offlineFetcher);
+    expect(stats.sources.every((x) => x.ok)).toBe(true);
   });
 });

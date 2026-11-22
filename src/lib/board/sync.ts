@@ -9,7 +9,14 @@ import { applyProposal, pickFalsifiers } from './apply';
 import { dampingPolicyFromEnv } from './damping';
 import { promptLine } from '../prompt-hygiene';
 import { valuePicks } from '../opportunities/value-picks';
-import { latestRadarScores, marketModels, normalizeModelKey, type MarketModel } from '../analytics';
+import {
+  collapseVariants,
+  latestRadarScores,
+  marketModels,
+  modelBaseName,
+  normalizeModelKey,
+  type MarketModel,
+} from '../analytics';
 
 /*
  * Artificial Analysis retired the legacy /api/v2/data/* endpoints on
@@ -282,14 +289,15 @@ function marketPromptLines(limit = 30, valueLimit = 12): string | null {
   if (config.radarScoreConsumers) {
     const scores = latestRadarScores();
     radar = scores;
+    // Radar Score entities are base names ("Claude Fable 5.2"), not AA's per-effort rows
     models = [...models].sort(
       (a, b) =>
-        (scores.get(normalizeModelKey(b.name))?.composite ?? -1) -
-        (scores.get(normalizeModelKey(a.name))?.composite ?? -1),
+        (scores.get(normalizeModelKey(modelBaseName(b.name)))?.composite ?? -1) -
+        (scores.get(normalizeModelKey(modelBaseName(a.name)))?.composite ?? -1),
     );
   }
   const line = (m: MarketModel): string => {
-    const r = radar?.get(normalizeModelKey(m.name));
+    const r = radar?.get(normalizeModelKey(modelBaseName(m.name)));
     return (
       `- ${m.name} (${m.org ?? '?'}): intelligence ${m.intelligence}, ` +
       `coding ${m.coding ?? 'n/a'}, $${m.price}/1M blended, ${m.speed ?? '?'} tok/s` +
@@ -310,21 +318,7 @@ function marketPromptLines(limit = 30, valueLimit = 12): string | null {
   );
 }
 
-/**
- * AA lists one row per reasoning-effort setting of the same model. Left in, 40
- * prompt lines were ~13 models, so the frontier list crowded out everything
- * else. Keeps the highest-intelligence row per base name (trailing
- * parenthetical stripped), ordered by intelligence.
- */
-export function collapseVariants(models: readonly MarketModel[]): MarketModel[] {
-  const best = new Map<string, MarketModel>();
-  for (const m of models) {
-    const base = m.name.replace(/\s*\([^)]*\)\s*$/, '').trim().toLowerCase();
-    const cur = best.get(base);
-    if (!cur || m.intelligence > cur.intelligence) best.set(base, m);
-  }
-  return [...best.values()].sort((a, b) => b.intelligence - a.intelligence);
-}
+export { collapseVariants };
 
 function asOptString(v: unknown): string | null {
   return typeof v === 'string' && v.trim() !== '' ? v.trim() : null;

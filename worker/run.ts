@@ -31,7 +31,7 @@ import { runOpportunities } from '../src/lib/opportunities/engine';
 import { runOppRescore } from '../src/lib/opportunities/rescore';
 import { runSecondLook } from '../src/lib/science/second-look';
 import { runPricingSync } from '../src/lib/ingest/pricing';
-import { runOpenBenchSync } from '../src/lib/ingest/openbench';
+import { runOpenBenchJob } from '../src/lib/ingest/openbench';
 import { runDatasetDump } from '../src/lib/dump';
 import { runWeeklyReport } from '../src/lib/brief/weekly';
 import { syncAgentPlans } from '../src/lib/agent-plans';
@@ -63,7 +63,7 @@ const jobs: Record<JobName, () => Promise<Record<string, unknown>>> = {
   'opp-rescore': runOppRescore,
   'second-look': runSecondLook,
   pricing: runPricingSync,
-  openbench: runOpenBenchSync,
+  openbench: runOpenBenchJob,
   'dataset-dump': runDatasetDump,
   'weekly-report': runWeeklyReport,
   'agent-plans': syncAgentPlans,

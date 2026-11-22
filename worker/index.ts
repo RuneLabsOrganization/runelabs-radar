@@ -17,7 +17,7 @@ import { runScience } from '../src/lib/science/run';
 import { runOpportunities } from '../src/lib/opportunities/engine';
 import { runSecondLook } from '../src/lib/science/second-look';
 import { runPricingSync } from '../src/lib/ingest/pricing';
-import { runOpenBenchSync } from '../src/lib/ingest/openbench';
+import { runOpenBenchJob } from '../src/lib/ingest/openbench';
 import { runDatasetDump } from '../src/lib/dump';
 import { runWeeklyReport } from '../src/lib/brief/weekly';
 import { syncAgentPlans } from '../src/lib/agent-plans';
@@ -69,7 +69,7 @@ const tasks = [
   schedule('15 9 * * 0', () => fireAndForget(withJobRun('gate-audit', runGateAudit), 'gate-audit')),
   // weekly: first-party provider prices + open benchmarks (Phase 6 data foundations)
   schedule('10 5 * * 2', () => fireAndForget(withJobRun('pricing', runPricingSync), 'pricing')),
-  schedule('20 4 * * 3', () => fireAndForget(withJobRun('openbench', runOpenBenchSync), 'openbench')),
+  schedule('20 4 * * 3', () => fireAndForget(withJobRun('openbench', runOpenBenchJob), 'openbench')),
   // daily: the public first-party dataset dump (Phase 10 free databook)
   schedule('20 5 * * *', () => fireAndForget(withJobRun('dataset-dump', runDatasetDump), 'dataset-dump')),
   // weekly: coding-agent plan prices (manual seed, idempotent re-sync)
