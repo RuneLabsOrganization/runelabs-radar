@@ -78,6 +78,45 @@ export interface GateOutput {
   review: ReviewTrail;
 }
 
+/** `monthlyCostUsd` is the run cost for about this many users (see the proposer prompt) — a TOTAL, not per customer. */
+export const RUN_COST_USERS = 100;
+
+export interface KpiEconomics {
+  /** run cost per user per month (monthlyCostUsd ÷ RUN_COST_USERS) */
+  perUserRunUsd: number | null;
+  /** priceUsd − perUserRunUsd, before support and acquisition */
+  unitMarginUsd: number | null;
+  /** steady-state customers × price */
+  steadyRevenueUsd: number | null;
+  /** steady-state revenue − run cost (the R8 figure) */
+  steadyProfitUsd: number | null;
+  /** initial build cost ÷ steady profit; null when there is no positive profit */
+  paybackMonths: number | null;
+}
+
+/**
+ * The one place the KPI arithmetic lives — the R8 gate and the critic prompt
+ * both read it. The critic used to be shown "run $180/mo · price $79/mo" with
+ * no units and rejected two-thirds of all openings as "every customer loses
+ * money", comparing a TOTAL run cost for ~100 users with a PER-CUSTOMER price.
+ */
+export function kpiEconomics(k: GateKpis | null): KpiEconomics {
+  const price = k?.priceUsd ?? null;
+  const run = k?.monthlyCostUsd ?? null;
+  const customers = k?.breakEvenCustomers ?? null;
+  const init = k?.initialCostUsd ?? null;
+  const perUserRunUsd = run === null ? null : run / RUN_COST_USERS;
+  const steadyRevenueUsd = customers !== null && price !== null ? customers * price : null;
+  const steadyProfitUsd = steadyRevenueUsd !== null && run !== null ? steadyRevenueUsd - run : null;
+  return {
+    perUserRunUsd,
+    unitMarginUsd: price !== null && perUserRunUsd !== null ? price - perUserRunUsd : null,
+    steadyRevenueUsd,
+    steadyProfitUsd,
+    paybackMonths: init !== null && steadyProfitUsd !== null && steadyProfitUsd > 0 ? init / steadyProfitUsd : null,
+  };
+}
+
 const clamp20 = (v: number): number => Math.max(0, Math.min(20, Math.round(v)));
 const VERDICT_RANK: Record<Verdict, number> = { reject: 0, watch: 1, pursue: 2 };
 
@@ -219,21 +258,15 @@ export function applyGate(input: GateInput, critic: CriticResult): GateOutput {
   // scale. `breakEvenCustomers` is consumed as the steady-state paying-customer
   // count (see GateKpis): steady-state monthly profit = customers × price −
   // run cost, and the initial build pays back in init / profit months.
-  const steadyStateCustomers = input.kpis?.breakEvenCustomers ?? null;
-  const price = input.kpis?.priceUsd ?? null;
-  const run = input.kpis?.monthlyCostUsd ?? null;
-  const init = input.kpis?.initialCostUsd ?? null;
-  if (steadyStateCustomers !== null && price !== null && run !== null && init !== null && w !== null) {
-    const monthlyProfit = steadyStateCustomers * price - run;
-    if (monthlyProfit <= 0) {
+  const econ = kpiEconomics(input.kpis);
+  const initCost = input.kpis?.initialCostUsd ?? null;
+  if (econ.steadyProfitUsd !== null && initCost !== null && w !== null) {
+    if (econ.steadyProfitUsd <= 0) {
       flags.push('never breaks even at stated economics');
       cap('both', 'economics don’t close', 50);
-    } else {
-      const paybackMonths = init / monthlyProfit;
-      if (paybackMonths > w) {
-        flags.push(`payback ~${Math.ceil(paybackMonths)}mo exceeds window ${w}mo`);
-        cap('both', 'economics don’t close', 50);
-      }
+    } else if (econ.paybackMonths !== null && econ.paybackMonths > w) {
+      flags.push(`payback ~${Math.ceil(econ.paybackMonths)}mo exceeds window ${w}mo`);
+      cap('both', 'economics don’t close', 50);
     }
   }
 

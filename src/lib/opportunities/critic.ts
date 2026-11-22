@@ -6,7 +6,8 @@ import { getIdentity } from '../identity';
 import { chatJSON, LlmError } from '../llm/minimax';
 import { promptLine, stripCjkDeep } from '../prompt-hygiene';
 import { SUB_KEYS, type SubKey } from './axes';
-import type { AxisAdjustment, CriticResult } from './gate';
+import { kpiEconomics, RUN_COST_USERS, type AxisAdjustment, type CriticResult } from './gate';
+import type { OppKpis } from './engine';
 import type { OppDraft } from './engine';
 import { valuePicks } from './value-picks';
 import { visibleTo } from './scope';
@@ -37,8 +38,13 @@ export async function runCritique(
     'high, a single anecdote scores low), "axisAdjustments" — ONLY where a sub-score ' +
     'contradicts the evidence or the stated KPIs: [{"axis", "delta" (-6..+6), "reason" ' +
     '(<= 12 words)}], "coherenceFlags" — contradictions you found (window vs timing/moat, ' +
-    'competitor count vs field openness, break-even arithmetic, thesis claims the cited ' +
-    'refs do not support). Unsupported citations are the worst sin — always flag them. ' +
+    'competitor count vs field openness, thesis claims the cited refs do not support). ' +
+    'The unit economics are computed for you under "economics:" from the proposer\'s inputs — ' +
+    'the run cost is the TOTAL monthly cost to serve about 100 users, NOT a per-customer cost, ' +
+    'and the price is per customer. Do not recompute them and never call a product ' +
+    'unprofitable because the total run cost exceeds one customer\'s price; flag the economics ' +
+    'only when the computed figures themselves are negative or the inputs look unrealistic. ' +
+    'Unsupported citations are the worst sin — always flag them. ' +
     'Verdict calibration: pursue = you would advise a builder to start this week; watch = a ' +
     'real opening with named risks worth watching; reject = broken economics, fabricated or ' +
     'contradicted evidence, or no plausible distribution. Most evidence-backed openings are ' +
@@ -54,10 +60,9 @@ export async function runCritique(
         `thesis: ${promptLine(d.thesis, 400)}\n` +
         `window: ${promptLine(d.window ?? '(unstated)', 80)} (${d.windowMonths ?? '?'} months)\n` +
         `sub-scores: ${SUB_KEYS.map((k) => `${k} ${d.sub[k]}`).join(' · ')}\n` +
-        `kpis: cost $${d.kpis.initialCostUsd ?? '?'} · run $${d.kpis.monthlyCostUsd ?? '?'}/mo · ` +
-        `price $${d.kpis.priceUsd ?? '?'}/mo · mvp ${d.kpis.timeToMvpDays ?? '?'}d · ` +
-        `breakeven ${d.kpis.breakEvenCustomers ?? '?'} cust · competitors ` +
+        `kpis: build cost $${d.kpis.initialCostUsd ?? '?'} · mvp ${d.kpis.timeToMvpDays ?? '?'}d · competitors ` +
         `${d.kpis.competitorCount ?? '?'} (${promptLine(d.kpis.competitionNote ?? '', 120)})\n` +
+        `${economicsLines(d.kpis)}\n` +
         `evidence cited: ${d.evidenceRefs.join(', ') || '(none)'}`,
     )
     .join('\n\n');
@@ -76,6 +81,32 @@ export async function runCritique(
     throw e;
   }
   return new Map(reviews.map((r) => [r.slug, r]));
+}
+
+const usd = (v: number): string => `$${Math.round(v).toLocaleString('en-US')}`;
+
+/**
+ * The proposal's unit economics with their units spelled out, computed once in
+ * code (kpiEconomics) so the critic reviews numbers instead of re-deriving —
+ * and mis-deriving — them. Exported for tests.
+ */
+export function economicsLines(k: OppKpis): string {
+  const e = kpiEconomics(k);
+  const parts: string[] = [];
+  if (k.priceUsd !== null) parts.push(`price ${usd(k.priceUsd)} per customer per month`);
+  if (k.monthlyCostUsd !== null) {
+    parts.push(
+      `run cost ${usd(k.monthlyCostUsd)}/mo TOTAL for ~${RUN_COST_USERS} users` +
+        (e.perUserRunUsd !== null ? ` (≈${usd(e.perUserRunUsd)} per user)` : ''),
+    );
+  }
+  if (e.unitMarginUsd !== null) parts.push(`unit margin ≈${usd(e.unitMarginUsd)} per customer before support and acquisition`);
+  if (k.breakEvenCustomers !== null) parts.push(`expected steady-state customers ${k.breakEvenCustomers}`);
+  if (e.steadyRevenueUsd !== null && e.steadyProfitUsd !== null) {
+    parts.push(`steady-state revenue ${usd(e.steadyRevenueUsd)}/mo, ${usd(e.steadyProfitUsd)}/mo after run cost`);
+  }
+  if (e.paybackMonths !== null) parts.push(`build cost pays back in ≈${Math.ceil(e.paybackMonths)} months`);
+  return parts.length > 0 ? `economics: ${parts.join(' · ')}` : 'economics: (not stated)';
 }
 
 /** Validates the critic's review block. Exported for tests. */
