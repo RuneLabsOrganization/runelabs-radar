@@ -244,7 +244,8 @@ function seed(db: ReturnType<typeof useTestDb>): void {
     .run();
 
   for (let d = 0; d < 90; d++) {
-    const day = new Date(Date.UTC(2026, 5, 1 + d)).toISOString().slice(0, 10);
+    // relative to today: a fixed calendar range rots out of the 90-day series window
+    const day = new Date(Date.now() - (89 - d) * 864e5).toISOString().slice(0, 10);
     db.insert(metricPoints)
       .values({
         source: 'provider-pricing',

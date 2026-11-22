@@ -42,7 +42,7 @@ describe('/api/v1/metrics AA gate case handling', () => {
 
   it('non-aa sources are unaffected', async () => {
     db.insert(metricPoints)
-      .values({ source: 'github', entity: 'repo-a', metric: 'stars', value: 42, date: '2026-08-01', createdAt: new Date() })
+      .values({ source: 'github', entity: 'repo-a', metric: 'stars', value: 42, date: new Date().toISOString().slice(0, 10), createdAt: new Date() })
       .run();
     const res = await GET(new Request('http://localhost/api/v1/metrics?source=github&entity=repo-a&metric=stars'));
     expect(res.status).toBe(200);
