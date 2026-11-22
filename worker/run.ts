@@ -32,6 +32,8 @@ import { runOppRescore } from '../src/lib/opportunities/rescore';
 import { runSecondLook } from '../src/lib/science/second-look';
 import { runPricingSync } from '../src/lib/ingest/pricing';
 import { runOpenBenchJob } from '../src/lib/ingest/openbench';
+import { runEpochBenchSync } from '../src/lib/ingest/epoch-bench';
+import { runBenchComposites } from '../src/lib/science/composite-bench';
 import { runDatasetDump } from '../src/lib/dump';
 import { runWeeklyReport } from '../src/lib/brief/weekly';
 import { syncAgentPlans } from '../src/lib/agent-plans';
@@ -78,6 +80,8 @@ const jobs: Record<JobName, () => Promise<Record<string, unknown>>> = {
   'kit-grade': () => Promise.resolve(runKitGrade()),
   'source-review': runSourceReview,
   'verdict-grade': runVerdictGrade,
+  'epoch-bench': runEpochBenchSync,
+  'bench-composite': () => Promise.resolve(runBenchComposites()),
 };
 
 const name = process.argv[2] as JobName | undefined;

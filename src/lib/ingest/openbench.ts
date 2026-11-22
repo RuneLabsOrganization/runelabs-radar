@@ -263,6 +263,49 @@ export function liveBenchPoints(tableCsv: string, categoriesJson: string): Metri
   }));
 }
 
+/**
+ * Per-suite LiveBench scores (metric 'livebench_<column>', e.g. livebench_coding,
+ * livebench_long_agentic): the raw single-benchmark inputs the composite
+ * benchmarks average with the Epoch series. LiveBench refreshes with every new
+ * frontier release, so it keeps the newest models in the composite while
+ * Epoch's third-party benchmarks catch up. Blank cells are skipped, never 0.
+ */
+export function liveBenchSuitePoints(tableCsv: string, categoriesJson: string): MetricInput[] {
+  const categories = JSON.parse(categoriesJson) as Record<string, unknown>;
+  const cols = new Set<string>();
+  for (const [label, list] of Object.entries(categories)) {
+    if (label.startsWith('_') || !Array.isArray(list)) continue;
+    for (const c of list) cols.add(String(c));
+  }
+  const rows = parseSimpleCsv(tableCsv);
+  if (rows.length < 2) return [];
+  const header = rows[0];
+  // column → entity → best score (several slugs can collapse to one entity name)
+  const best = new Map<string, Map<string, number>>();
+  for (const row of rows.slice(1)) {
+    const slug = row[0];
+    if (!slug) continue;
+    const entity = liveBenchEntityName(slug);
+    for (const col of cols) {
+      const i = header.indexOf(col);
+      const cell = i < 0 ? undefined : row[i];
+      if (cell === undefined || cell === '' || cell === '—') continue;
+      const v = Number(cell);
+      if (!Number.isFinite(v)) continue;
+      const byEntity = best.get(col) ?? new Map<string, number>();
+      if ((byEntity.get(entity) ?? -Infinity) < v) byEntity.set(entity, v);
+      best.set(col, byEntity);
+    }
+  }
+  const out: MetricInput[] = [];
+  for (const [col, byEntity] of best) {
+    for (const [entity, v] of byEntity) {
+      out.push({ source: 'open-bench', entity, metric: `livebench_${col}`, value: round2(v) });
+    }
+  }
+  return out;
+}
+
 // ── Sync ─────────────────────────────────────────────────────────────────────
 
 /**
@@ -308,7 +351,7 @@ export async function runOpenBenchSync(text: FetchTextFn = fetchText): Promise<O
           text(`${LIVEBENCH_BASE}/data/${candidate}/table.csv`),
           text(`${LIVEBENCH_BASE}/data/${candidate}/categories.json`),
         ]);
-        const points = liveBenchPoints(table, categories);
+        const points = [...liveBenchPoints(table, categories), ...liveBenchSuitePoints(table, categories)];
         if (points.length === 0) throw new Error('no scorable models in table');
         result = { points, raw: table, release: `${candidate.slice(0, 4)}-${candidate.slice(4, 6)}-${candidate.slice(6, 8)}` };
         break;

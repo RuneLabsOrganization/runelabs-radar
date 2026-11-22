@@ -26,6 +26,8 @@ import { boardRows, type BoardRow } from '@/lib/kits/board-view';
 import { DOMAIN_COLORS, DOMAIN_LABELS, DOMAINS, isDomain } from '@/lib/domains';
 import ChartFrame from '@/components/ChartFrame';
 import PageHeader from '@/components/PageHeader';
+import BenchComposite from '@/components/BenchComposite';
+import { CAPABILITIES, COMPOSITES, latestBenchComposite } from '@/lib/science/composite-bench';
 
 type BoardEntry = BoardRow;
 
@@ -92,6 +94,13 @@ export default async function BoardPage() {
   const chartBrand = `${getIdentity().productName} · ${new URL(config.siteUrl).host}`;
 
   const entries = boardRows();
+  // composites are built from CC BY / open inputs only (no AA), so they are shown to everyone
+  const composites = CAPABILITIES.map((capability) => ({
+    capability,
+    label: COMPOSITES[capability].label,
+    ...latestBenchComposite(capability),
+  }));
+  const hasComposites = composites.some((c) => c.models.length > 0);
 
   const cutoff = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
   const history = db
@@ -116,6 +125,7 @@ export default async function BoardPage() {
   // nav anchors mirror the exact render conditions below — no dead links for
   // anonymous visitors (AA sections) or missing media arenas
   const navSections: [string, string][] = [['boards', 'Rankings']];
+  if (hasComposites) navSections.push(['bench', 'Benchmarks']);
   if (aa && aa.models.length > 0) {
     navSections.push(
       ['market', 'Market'],
@@ -223,6 +233,8 @@ export default async function BoardPage() {
           </section>
         );
       })}
+
+      <BenchComposite composites={composites} />
 
       {/* the evidence: market analytics below the rankings they support */}
       {aa && aa.models.length > 0 && (

@@ -5,6 +5,7 @@ import { benchmarkSnapshots, metricPoints } from '@/lib/db/schema';
 import {
   liveBenchEntityName,
   liveBenchPoints,
+  liveBenchSuitePoints,
   liveBenchReleaseCandidates,
   metricsFromOpenRouter,
   runOpenBenchJob,
@@ -210,5 +211,19 @@ describe('runOpenBenchJob', () => {
     useTestDb();
     const stats = await runOpenBenchJob(offlineFetcher);
     expect(stats.sources.every((x) => x.ok)).toBe(true);
+  });
+});
+
+describe('livebench per-suite points', () => {
+  it('emits one raw metric per suite column per model, skipping blanks', () => {
+    const table = ['model,long_agentic,coding,browser', 'claude-fable-5.2,82.9,79.2,', 'gemini-4-neon,82.6,89.7,95.6'].join('\n');
+    const cats = JSON.stringify({ 'Long Agentic': ['long_agentic'], Coding: ['coding'], Browser: ['browser'], _overall_weights: { Coding: 2 } });
+    const points = liveBenchSuitePoints(table, cats);
+    const get = (entity: string, metric: string) => points.find((p) => p.entity === entity && p.metric === metric)?.value;
+    expect(get('Claude Fable 5.2', 'livebench_coding')).toBe(79.2);
+    expect(get('Gemini 4 Neon', 'livebench_browser')).toBe(95.6);
+    expect(get('Claude Fable 5.2', 'livebench_browser')).toBeUndefined(); // blank is not 0
+    expect(points.every((p) => p.source === 'open-bench')).toBe(true);
+    expect(points).toHaveLength(5);
   });
 });

@@ -92,6 +92,14 @@ export const config = {
   get radarScoreConsumers(): boolean {
     return process.env.RADAR_SCORE_CONSUMERS === 'true';
   },
+  /**
+   * The multi-benchmark composites (science/composite-bench.ts) are fed to the
+   * weekly board-proposal prompt. On by default; BENCH_COMPOSITE_CONSUMERS=false
+   * restores the pre-composite prompt.
+   */
+  get benchCompositeConsumers(): boolean {
+    return !['0', 'false', 'off', 'no'].includes((process.env.BENCH_COMPOSITE_CONSUMERS ?? 'true').trim().toLowerCase());
+  },
   /** Where the local embedding model weights are cached (persist on a volume). */
   get transformersCache(): string {
     return process.env.TRANSFORMERS_CACHE ?? '.hfcache';

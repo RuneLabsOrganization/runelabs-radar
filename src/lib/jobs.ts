@@ -34,7 +34,9 @@ export type JobName =
   | 'kit-prices'
   | 'kit-grade'
   | 'source-review'
-  | 'verdict-grade';
+  | 'verdict-grade'
+  | 'epoch-bench'
+  | 'bench-composite';
 
 // In-process overlap guard: a slow run (e.g. curate during a MiniMax incident)
 // must not overlap the next cron tick — overlapping curates would double-score

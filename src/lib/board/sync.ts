@@ -9,6 +9,7 @@ import { applyProposal, pickFalsifiers } from './apply';
 import { dampingPolicyFromEnv } from './damping';
 import { promptLine } from '../prompt-hygiene';
 import { valuePicks } from '../opportunities/value-picks';
+import { benchPromptLines, COMPOSITES, type Capability } from '../science/composite-bench';
 import {
   collapseVariants,
   latestRadarScores,
@@ -320,6 +321,29 @@ function marketPromptLines(limit = 30, valueLimit = 12): string | null {
 
 export { collapseVariants };
 
+/** Which composite speaks for each board domain; image/video have no multi-benchmark composite yet. */
+const DOMAIN_COMPOSITE: Partial<Record<Domain, { capability: Capability; note: string }>> = {
+  coding: { capability: 'coding', note: '' },
+  agentic: { capability: 'agentic', note: '' },
+  copy: { capability: 'reasoning', note: ' (general reasoning — a proxy for writing quality, no writing composite exists)' },
+  ads: { capability: 'reasoning', note: ' (general reasoning — a proxy for ad-copy quality, no ads composite exists)' },
+};
+
+/** Prompt block with the domain's multi-benchmark composite, or '' (off via BENCH_COMPOSITE_CONSUMERS=false, or no data). */
+function benchSection(domain: Domain): string {
+  if (!config.benchCompositeConsumers) return '';
+  const spec = DOMAIN_COMPOSITE[domain];
+  if (!spec) return '';
+  const lines = benchPromptLines(spec.capability);
+  if (!lines) return '';
+  return (
+    `Multi-benchmark composite — ${COMPOSITES[spec.capability].label}${spec.note} ` +
+    '(0-100; each model is the average of its standing across many independent benchmarks, each normalized ' +
+    'against its own cohort; n = benchmarks averaged):\n' +
+    `${lines}\n\n`
+  );
+}
+
 function asOptString(v: unknown): string | null {
   return typeof v === 'string' && v.trim() !== '' ? v.trim() : null;
 }
@@ -378,6 +402,10 @@ async function proposeForDomain(
     '"falsifiers":{"bestOverall":"...","bestValue":"...","cheapestViable":"..."}}]}\n' +
     'Rules: "task" MUST be exactly one of the allowed tasks the user lists; at most one proposal ' +
     'per task; only include a task when you have a concrete, defensible recommendation; ' +
+    'When a "Multi-benchmark composite" block is present, treat it as the primary quality evidence for that ' +
+    'domain: it averages many independent benchmarks, so prefer it over any single benchmark number, give ' +
+    'less weight to models with few benchmarks or a "hinges on one benchmark" note, and check the newest ' +
+    'releases the composite may not cover yet against the other snapshots and the news.\n' +
     '"rationale" must cite the benchmark data or news evidence you relied on. Repeating a current ' +
     'pick is fine: rewording or reordering a combo does not change the board.\n' +
     '"falsifiers": for each pick you set, one sentence stating what observable evidence within the ' +
@@ -394,6 +422,7 @@ async function proposeForDomain(
       snapshotText ||
       '(no benchmark data available — derive proposals from the news below and make that clear in the rationale)'
     }\n\n` +
+    benchSection(domain) +
     `Top curated stories from the last 7 days:\n<untrusted_stories>\n${storiesText}\n</untrusted_stories>`;
 
   const res = await chatJSON<{ proposals?: unknown[] }>(system, user, { feature: 'board' });

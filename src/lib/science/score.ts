@@ -129,7 +129,7 @@ export interface RadarScoreResult {
  * which is documented only as a side effect of min/max aggregation. The
  * (source, entity, metric, date) upsert key keeps the join from fanning out.
  */
-function latestValues(source: string, metric: string, asOf: string): Map<string, number> {
+export function latestValues(source: string, metric: string, asOf: string, since?: string): Map<string, number> {
   const db = getDb();
   const latest = db
     .select({
@@ -142,6 +142,8 @@ function latestValues(source: string, metric: string, asOf: string): Map<string,
         eq(metricPoints.source, source),
         eq(metricPoints.metric, metric),
         sql`${metricPoints.date} <= ${asOf}`,
+        // optional recency floor: a series whose entity stopped being updated must not linger as "latest"
+        ...(since ? [sql`${metricPoints.date} >= ${since}`] : []),
       ),
     )
     .groupBy(metricPoints.entity)
