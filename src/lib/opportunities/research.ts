@@ -32,7 +32,10 @@ export interface ResearchStats {
   insufficientEvidence: number;
   synthesisFailed: number;
   adapterFailures: number;
-  coverage: { referencePopulation: number; reachableMarket: number; competitors: number; acquisition: number; acquisitionBenchmark: number };
+  coverage: {
+    referencePopulation: number; reachableMarket: number; competitors: number; acquisition: number; acquisitionBenchmark: number;
+    observedCohortCac: number; scenarioCac: number; channelBenchmark: number; externalBenchmark: number;
+  };
 }
 
 /** At most 3 finalists × 3 questions × 3 budgeted adapter requests per sweep. */
@@ -97,7 +100,10 @@ const instructions = [
 export async function researchFinalists(drafts: OppDraft[], geography: string): Promise<ResearchStats> {
   const search = opportunitySearchProviders(true);
   const finalists = drafts.slice(0, 3);
-  const coverage = { referencePopulation: 0, reachableMarket: 0, competitors: 0, acquisition: 0, acquisitionBenchmark: 0 };
+  const coverage = {
+    referencePopulation: 0, reachableMarket: 0, competitors: 0, acquisition: 0, acquisitionBenchmark: 0,
+    observedCohortCac: 0, scenarioCac: 0, channelBenchmark: 0, externalBenchmark: 0,
+  };
   const stats: ResearchStats = {
     finalists: finalists.length, finalistSlugs: finalists.map(d => d.slug), enriched: 0,
     searchUnavailable: 0, insufficientEvidence: 0, synthesisFailed: 0, adapterFailures: 0, coverage,
@@ -141,6 +147,10 @@ export async function researchFinalists(drafts: OppDraft[], geography: string): 
         if (profile.competition?.length) coverage.competitors++;
         if (profile.cac) coverage.acquisition++;
         if (profile.cacReferences?.length) coverage.acquisitionBenchmark++;
+        if (profile.cac?.kind === 'observed') coverage.observedCohortCac++;
+        if (profile.cac?.kind === 'scenario') coverage.scenarioCac++;
+        if (profile.cacReferences?.some(r => r.unit !== 'paying customer')) coverage.channelBenchmark++;
+        if (profile.cacReferences?.some(r => r.scope === 'external')) coverage.externalBenchmark++;
       } else stats.insufficientEvidence++;
     } catch {
       stats.synthesisFailed++;
