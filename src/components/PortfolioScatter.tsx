@@ -4,6 +4,7 @@ import * as React from 'react';
 import { useMemo } from 'react';
 import { isDomain, DOMAIN_COLORS } from '@/lib/domains';
 import { fmtUsd } from '@/lib/costs';
+import { opportunityScore, type OpportunitySort } from '@/lib/opportunities/ranking';
 import type { OppView } from './OppDossier';
 
 /** Portfolio overview: every opening as a bubble — cost vs score, one glance across the field. */
@@ -13,7 +14,7 @@ export default function PortfolioScatter({
   onSelect,
 }: {
   opps: OppView[];
-  sortKey: 'flip' | 'hold';
+  sortKey: OpportunitySort;
   /** when set, bubble clicks select the matching list card instead of anchor-jumping */
   onSelect?: (id: number) => void;
 }) {
@@ -34,7 +35,6 @@ export default function PortfolioScatter({
   const span = Math.max(0.001, Math.log10(maxC) - Math.log10(minC));
   const x = (c: number) => PAD.left + ((Math.log10(c) - Math.log10(minC)) / span) * (W - PAD.left - PAD.right);
   const y = (s: number) => PAD.top + (1 - s / 100) * (H - PAD.top - PAD.bottom);
-  const score = (o: OppView) => (sortKey === 'flip' ? o.flipScore : o.holdScore);
 
   return (
     <div className="mb-5">
@@ -58,14 +58,14 @@ export default function PortfolioScatter({
             }}
           >            <circle
               cx={x(cost)}
-              cy={y(score(o))}
+              cy={y(opportunityScore(o, sortKey))}
               r={7}
               fill={o.sector && isDomain(o.sector) ? DOMAIN_COLORS[o.sector] : 'var(--phosphor)'}
               fillOpacity={0.55}
               stroke="var(--scope-0)"
               strokeWidth={1.5}
             >
-              <title>{`${o.title} — ${fmtUsd(cost)} initial · ${sortKey} ${score(o)}`}</title>
+              <title>{`${o.title} — ${fmtUsd(cost)} initial · ${sortKey} ${opportunityScore(o, sortKey)}`}</title>
             </circle>
           </a>
         ))}

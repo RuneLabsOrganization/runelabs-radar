@@ -2,6 +2,7 @@
 // No DB/LLM imports — pure functions, exhaustively unit-tested.
 
 import { compositeScore, FLIP_WEIGHTS, HOLD_WEIGHTS, type SubKey, type SubScores } from './axes';
+import type { CommercialProfile } from './commercial';
 
 export type Verdict = 'pursue' | 'watch' | 'reject';
 
@@ -15,6 +16,10 @@ export interface AxisAdjustment {
 /** What the adversarial critic returned for one proposal (post-sanitizer). */
 export interface CriticResult {
   slug: string;
+  businessModel?: string;
+  targetGeo?: string;
+  /** Material contradiction with a reference validated against this proposal. */
+  blocker?: string;
   verdict: Verdict;
   confidence: number;
   killRisks: string[];
@@ -25,6 +30,7 @@ export interface CriticResult {
 }
 
 export interface GateKpis {
+  commercial?: Pick<CommercialProfile, 'businessModel'>;
   initialCostUsd: number | null;
   monthlyCostUsd: number | null;
   priceUsd: number | null;
@@ -59,6 +65,8 @@ export interface CapNote {
 
 /** The auditable trail: raw LLM numbers → adjustments → caps → final verdict. */
 export interface ReviewTrail {
+  businessModel?: string;
+  targetGeo?: string;
   killRisks: string[];
   adjustments: AxisAdjustment[];
   flags: string[];
@@ -118,7 +126,6 @@ export function kpiEconomics(k: GateKpis | null): KpiEconomics {
 }
 
 const clamp20 = (v: number): number => Math.max(0, Math.min(20, Math.round(v)));
-const VERDICT_RANK: Record<Verdict, number> = { reject: 0, watch: 1, pursue: 2 };
 
 /**
  * Hard ceiling for a stated window, in months. ONE value shared by the parser
@@ -205,6 +212,7 @@ export function applyGate(input: GateInput, critic: CriticResult): GateOutput {
   }
 
   const flags = [...critic.flags];
+  if (critic.blocker) flags.push(critic.blocker);
 
   // F2: clamped KPIs stay in the economics check — but never silently
   if (input.kpiClamped && input.kpiClamped.length > 0) {
@@ -260,15 +268,17 @@ export function applyGate(input: GateInput, critic: CriticResult): GateOutput {
   // run cost, and the initial build pays back in init / profit months.
   const econ = kpiEconomics(input.kpis);
   const initCost = input.kpis?.initialCostUsd ?? null;
+  let failedEconomics = false;
   if (econ.steadyProfitUsd !== null && initCost !== null && w !== null) {
     if (econ.steadyProfitUsd <= 0) {
       flags.push('never breaks even at stated economics');
-      cap('both', 'economics don’t close', 50);
+      failedEconomics = true;
     } else if (econ.paybackMonths !== null && econ.paybackMonths > w) {
       flags.push(`payback ~${Math.ceil(econ.paybackMonths)}mo exceeds window ${w}mo`);
-      cap('both', 'economics don’t close', 50);
+      failedEconomics = true;
     }
   }
+  if (failedEconomics) cap('both', 'economics don’t close', 50);
 
   // R9: evidence floor — confidence follows citation depth. More than two
   // zero-filled axes is the same kind of thin input: cap it identically.
@@ -284,11 +294,13 @@ export function applyGate(input: GateInput, critic: CriticResult): GateOutput {
     flags.push('single-source evidence');
   }
 
-  // verdict: critic's call, hardened by the gate
   let verdict = critic.verdict;
-  if (critic.verdict === 'reject' || r1 || confidence < 30) {
+  if (r1 || confidence < 30) {
     verdict = 'reject';
-  } else if ((flags.length > 0 || capsApplied.length > 0) && VERDICT_RANK[verdict] > VERDICT_RANK.watch) {
+  } else if (verdict === 'reject' && !critic.blocker && !failedEconomics) {
+    flags.push('critic rejection lacks a confirmed blocker — validate the risk');
+    verdict = 'watch';
+  } else if (verdict === 'pursue' && (flags.length > 0 || capsApplied.length > 0)) {
     verdict = 'watch';
   }
 
@@ -298,6 +310,8 @@ export function applyGate(input: GateInput, critic: CriticResult): GateOutput {
     verdict,
     confidence,
     review: {
+      businessModel: input.kpis?.commercial?.businessModel ?? critic.businessModel,
+      targetGeo: critic.targetGeo,
       killRisks: critic.killRisks,
       adjustments: appliedAdj,
       flags,

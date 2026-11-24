@@ -120,7 +120,18 @@ export async function chatJSON<T>(
   user: string,
   opts?: { job?: string; maxTokens?: number; feature?: string; userId?: number | null; deadlineMs?: number },
 ): Promise<T> {
-  if (!config.minimaxApiKey) {
+  const modelOverrides: Record<string, string> = {
+    opportunity: 'OPP_ANTHROPIC_MODEL',
+    'opportunity-research': 'OPP_RESEARCH_ANTHROPIC_MODEL',
+  };
+  const override = modelOverrides[opts?.feature ?? ''];
+  const requested = override ? process.env[override]?.trim() : '';
+  if (requested && !['claude-sonnet-5-5', 'claude-opus-5-5'].includes(requested)) {
+    throw new LlmError(`Unsupported ${override}`, false);
+  }
+  const model = requested || config.minimaxModel;
+  if (requested && !process.env.ANTHROPIC_API_KEY) throw new LlmError('ANTHROPIC_API_KEY not set', false);
+  if (!requested && !config.minimaxApiKey) {
     throw new LlmError('MINIMAX_API_KEY not set', false);
   }
   // count the attempt BEFORE the cap checks: a call the cap refuses is still a
@@ -141,6 +152,25 @@ export async function chatJSON<T>(
   // to return its own error instead of a bare 504.
   const callStartedAt = Date.now();
   const remaining = () => (opts?.deadlineMs === undefined ? Infinity : opts.deadlineMs - (Date.now() - callStartedAt));
+  const maxTokens = opts?.maxTokens ?? 6000;
+  let endpoint: string;
+  let headers: Record<string, string>;
+  let body: string;
+  if (requested) {
+    endpoint = 'https://api.anthropic.com/v1/messages';
+    headers = { 'anthropic-version': '2023-06-01', 'x-api-key': process.env.ANTHROPIC_API_KEY! };
+    body = JSON.stringify({ model, system, max_tokens: maxTokens, messages: [{ role: 'user', content: user }] });
+  } else {
+    endpoint = `${config.minimaxBaseUrl}/chat/completions`;
+    headers = { authorization: `Bearer ${config.minimaxApiKey}` };
+    body = JSON.stringify({
+      model,
+      temperature: 0.2,
+      reasoning_effort: config.minimaxReasoningEffort,
+      max_tokens: maxTokens,
+      messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
+    });
+  }
   for (let attempt = 0; ; attempt++) {
     const startedAt = Date.now();
     try {
@@ -148,44 +178,31 @@ export async function chatJSON<T>(
       const timer = setTimeout(() => controller.abort(), Math.max(1_000, Math.min(120_000, remaining())));
       let res: Response;
       try {
-        res = await _fetch(`${config.minimaxBaseUrl}/chat/completions`, {
+        res = await _fetch(endpoint, {
           method: 'POST',
-          headers: {
-            'content-type': 'application/json',
-            authorization: `Bearer ${config.minimaxApiKey}`,
-          },
-          body: JSON.stringify({
-            model: config.minimaxModel,
-            temperature: 0.2,
-            // bound runaway output WITHOUT clipping the long jobs: MiniMax-M2
-            // spends thinking tokens (<think>) from this same budget — 800
-            // truncated the brief mid-think; 6000 fits thinking + a full brief
-            // M3.x defaults to reasoning_effort=max; these are structured-output jobs, so
-            // think lightly (faster, far fewer thinking tokens). Env-tunable.
-            reasoning_effort: config.minimaxReasoningEffort,
-            max_tokens: opts?.maxTokens ?? 6000,
-            messages: [
-              { role: 'system', content: system },
-              { role: 'user', content: user },
-            ],
-          }),
+          redirect: requested ? 'error' : 'follow',
+          headers: { 'content-type': 'application/json', ...headers },
+          body,
           signal: controller.signal,
         });
       } finally {
         clearTimeout(timer);
       }
       if (!res.ok) {
-        throw new LlmError(`MiniMax HTTP ${res.status}`, res.status === 429 || res.status >= 500);
+        throw new LlmError(`${requested ? 'Anthropic' : 'MiniMax'} HTTP ${res.status}`, res.status === 429 || res.status >= 500);
       }
       const data = (await res.json()) as {
         choices?: { message?: { content?: string } }[];
-        usage?: { prompt_tokens?: number; completion_tokens?: number };
+        content?: { type: string; text?: string }[];
+        usage?: { prompt_tokens?: number; completion_tokens?: number; input_tokens?: number; output_tokens?: number };
       };
-      const promptTokens = Number(data.usage?.prompt_tokens) || 0;
-      const completionTokens = Number(data.usage?.completion_tokens) || 0;
+      const promptTokens = Number(data.usage?.prompt_tokens ?? data.usage?.input_tokens) || 0;
+      const completionTokens = Number(data.usage?.completion_tokens ?? data.usage?.output_tokens) || 0;
       _promptTokens += promptTokens;
       _completionTokens += completionTokens;
-      const content = data.choices?.[0]?.message?.content ?? '';
+      const content = requested
+        ? data.content?.filter(block => block.type === 'text').map(block => block.text).join('') ?? ''
+        : data.choices?.[0]?.message?.content ?? '';
       const parsed = JSON.parse(extractJson(content)) as T;
       // meter the success — one row per call; must never break the caller
       try {
@@ -196,11 +213,11 @@ export async function chatJSON<T>(
             feature: opts?.feature ?? 'unknown',
             job: opts?.job ?? null,
             userId: opts?.userId ?? null,
-            model: config.minimaxModel,
+            model,
             promptTokens,
             completionTokens,
             durationMs: Date.now() - startedAt,
-            estCostUsd: estimateCostUsd(config.minimaxModel, promptTokens, completionTokens),
+            estCostUsd: estimateCostUsd(model, promptTokens, completionTokens),
           })
           .run();
       } catch (meterErr) {

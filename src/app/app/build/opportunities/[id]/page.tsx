@@ -84,7 +84,7 @@ export default async function OpportunityPage({ params }: { params: Promise<{ id
       </div>
 
       <div className="mt-6">
-        <OppDossier opp={opp} sortKey="flip" />
+        <OppDossier opp={opp} sortKey="commercial" />
       </div>
 
       <div className="mt-7">

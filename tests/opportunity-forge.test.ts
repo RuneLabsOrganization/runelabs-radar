@@ -1,5 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+vi.mock('@/lib/opportunities/demand-signals', () => ({ addDemandSignals: vi.fn() }));
 import { and, eq } from 'drizzle-orm';
+
+vi.mock('@/lib/opportunities/research', () => ({ opportunityGeography: () => 'United States', researchFinalists: vi.fn() }));
 
 const criticActual = vi.hoisted(() => ({
   runDebate: undefined as typeof import('@/lib/opportunities/critic').runDebate | undefined,

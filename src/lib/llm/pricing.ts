@@ -1,10 +1,12 @@
 /**
  * Static token prices in USD per 1M tokens, keyed by model name.
- * Source: MiniMax token-plan / pay-as-you-go docs
- * (https://platform.minimax.io/docs/guides/pricing-paygo). Update the map when
- * MiniMax reprices; unmapped models are unmetered, never silently $0.
+ * Standard uncached input and output rates. Refer to each provider's pricing
+ * when updating entries. Unmapped models are recorded as unmetered.
  */
 const PRICE_PER_1M_USD: Record<string, { in: number; out: number }> = {
+  // https://platform.claude.com/docs/en/models/overview
+  'claude-sonnet-5-5': { in: 2, out: 10 },
+  'claude-opus-5-5': { in: 4, out: 20 },
   'MiniMax-M2': { in: 0.3, out: 1.2 },
   // M3.1 Flash: $0.15 in / $0.60 out (cache read $0.015) — platform.minimax.io/docs/pricing/overview
   'MiniMax-M3.1-Flash': { in: 0.15, out: 0.6 },

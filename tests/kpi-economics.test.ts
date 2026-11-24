@@ -58,4 +58,14 @@ describe('economicsLines (what the critic is shown)', () => {
       'economics: (not stated)',
     );
   });
+
+  it('identifies the paying side and normalized monthly revenue for a commission model', () => {
+    const text = economicsLines(kpis({ priceUsd: 8, priceBasis: {
+      kind: 'commission', payer: 'Print sellers', usdPerEvent: 40, takeRate: 0.1,
+      eventsPerPayerMonth: 2, assumptions: 'Two print sales per active seller each month.',
+    } }));
+    expect(text).toContain('commission');
+    expect(text).toContain('Print sellers');
+    expect(text).toContain('$8 per active payer per month');
+  });
 });

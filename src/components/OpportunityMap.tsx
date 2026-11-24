@@ -6,6 +6,7 @@ import { hierarchy, treemap as d3treemap, type HierarchyRectangularNode } from '
 import { DOMAIN_COLORS, DOMAIN_LABELS, isDomain, type Domain } from '@/lib/domains';
 import { fmtMoney } from '@/lib/opportunities/sizing';
 import { OPTICS, opticById } from '@/lib/opportunities/optics';
+import { opportunityScore, type OpportunitySort } from '@/lib/opportunities/ranking';
 import type { OppView } from './OppDossier';
 
 type Sector = Domain | 'general';
@@ -48,7 +49,7 @@ export default function OpportunityMap({
   onSelect,
 }: {
   opps: OppView[];
-  sortKey: 'flip' | 'hold';
+  sortKey: OpportunitySort;
   /** when set, tile clicks select the matching list card instead of navigating */
   onSelect?: (id: number) => void;
 }) {
@@ -80,7 +81,7 @@ export default function OpportunityMap({
         opp: o,
         area: effectiveArea,
         demandOnly,
-        score: optic.colorOf(o, sortKey),
+        score: opportunityScore(o, sortKey),
         sector: o.sector && isDomain(o.sector) ? o.sector : 'general',
       });
     }
@@ -210,7 +211,7 @@ export default function OpportunityMap({
                       {t.opp.title}
                     </span>
                     <span className="mono mt-0.5 block text-[10px]" style={{ color: 'var(--ink-3)' }}>
-                      {optic.colorLabel} {t.score}
+                      {sortKey} {t.score}
                     </span>
                   </span>
                 )}
@@ -231,7 +232,7 @@ export default function OpportunityMap({
             <div style={{ color: 'var(--ink)' }}>{hover.tile.opp.title}</div>
             <div style={{ color: 'var(--ink-4)' }}>
               {sectorLabel(hover.tile.sector).toLowerCase()} &middot; flip {hover.tile.opp.flipScore} &middot; hold {hover.tile.opp.holdScore}
-              {hover.tile.opp.kpis?.priceUsd != null && ` · $${hover.tile.opp.kpis.priceUsd}/mo`}
+              {hover.tile.opp.kpis?.priceUsd != null && ` · $${hover.tile.opp.kpis.priceUsd} ${hover.tile.opp.kpis.priceBasis ? 'revenue/payer/mo' : 'stated price/mo'}`}
               {hover.tile.opp.kpis?.initialCostUsd != null && ` · cost ${fmtMoney(hover.tile.opp.kpis.initialCostUsd)}`}
               {hover.tile.opp.kpis?.timeToMvpDays != null && ` · mvp ~${Math.round(hover.tile.opp.kpis.timeToMvpDays)}d`}
               {hover.tile.demandOnly ? ' · demand-only' : ''}
@@ -243,7 +244,7 @@ export default function OpportunityMap({
         )}
       </div>
       <p className="mono mt-1.5 text-[10px]" style={{ color: 'var(--ink-4)' }}>
-        {optic.caption} &middot; hatched = no KPI data &middot; click tile to open its card below
+        {optic.caption.replace(`better ${optic.colorLabel} score`, `better ${sortKey} score`)} &middot; hatched = no KPI data &middot; click tile to open its card below
       </p>
     </div>
   );

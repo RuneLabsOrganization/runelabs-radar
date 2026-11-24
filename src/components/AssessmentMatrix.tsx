@@ -6,6 +6,7 @@ import { useState } from 'react';
 import { DOMAIN_COLORS, isDomain } from '@/lib/domains';
 import { SUB_KEYS } from '@/lib/opportunities/axes';
 import { cellAlpha } from '@/lib/heat';
+import type { OpportunitySort } from '@/lib/opportunities/ranking';
 import type { OppView } from './OppDossier';
 
 const AXIS_SHORT: Record<string, string> = {
@@ -44,7 +45,7 @@ export default function AssessmentMatrix({
   onSelect,
 }: {
   opps: OppView[];
-  sortKey: 'flip' | 'hold';
+  sortKey: OpportunitySort;
   /** when set, row clicks select the matching list card */
   onSelect?: (id: number) => void;
 }) {

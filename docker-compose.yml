@@ -20,7 +20,10 @@ services:
     build:
       context: .
       target: worker
-    env_file: .env
+    env_file:
+      - .env
+      - path: .env.opportunities
+        required: false
     environment:
       DATABASE_PATH: /data/radar.db
       # embedding model weights must survive container recreation

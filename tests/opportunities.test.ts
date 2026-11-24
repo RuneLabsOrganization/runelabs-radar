@@ -1,7 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+vi.mock('@/lib/opportunities/demand-signals', () => ({ addDemandSignals: vi.fn() }));
 import { useTestDb } from './helpers/db';
 import { opportunities, painPoints, stories } from '@/lib/db/schema';
 import { and, eq, isNull } from 'drizzle-orm';
+
+vi.mock('@/lib/opportunities/research', async (importOriginal) => ({
+  ...await importOriginal<typeof import('@/lib/opportunities/research')>(),
+  researchFinalists: vi.fn(),
+}));
 
 vi.mock('@/lib/llm/minimax', () => ({
   chatJSON: vi.fn(),
@@ -24,6 +30,7 @@ import {
 } from '@/lib/opportunities/engine';
 // eslint-disable-next-line import/first
 import { sanitizeBrief } from '@/lib/opportunities/brief';
+import { runCritique } from '@/lib/opportunities/critic';
 // eslint-disable-next-line import/first
 import { KPI_BOUNDS } from '@/lib/opportunities/kpi-bounds';
 // eslint-disable-next-line import/first
@@ -433,6 +440,46 @@ describe('runOpportunities lifecycle', () => {
     expect(review.adjustments).toEqual([{ axis: 'moat', delta: -6, reason: 'no defensibility named' }]);
     expect(review.rawHold).toBe(75); // the proposer's untouched number stays in the trail
     expect(review.capsApplied).toEqual([]);
+  });
+
+  it.each([[undefined, 'United States'], ['Brazil', 'Brazil']])(
+    'uses the configured review geography (%s) and records it with the model',
+    async (setting, expected) => {
+      vi.stubEnv('OPP_GEOGRAPHY', setting);
+      try {
+        const db = useTestDb();
+        seedSignal(db);
+        const d = { ...draft('market-review'), evidenceRefs: ['P1', 'S1'] };
+        vi.mocked(chatJSON)
+          .mockResolvedValueOnce({ opportunities: [d] })
+          .mockResolvedValueOnce({ reviews: [{ slug: d.slug, verdict: 'watch', businessModel: 'B2B2C' }] });
+        await runOpportunities();
+        const [system] = vi.mocked(chatJSON).mock.calls[1];
+        expect(system).toContain(`Target geography: ${expected}`);
+        const row = db.select().from(opportunities).where(eq(opportunities.slug, d.slug)).get()!;
+        expect(JSON.parse(row.review!)).toMatchObject({ targetGeo: expected, businessModel: 'B2B2C' });
+      } finally {
+        vi.unstubAllEnvs();
+      }
+    },
+  );
+
+  it('reviews the researched market and retains its business model when the critic relabels it', async () => {
+    const [d] = sanitizeOpportunities([draft('photo-market')], new Set(['P1']));
+    const commercial = {
+      geography: 'Canada', businessModel: 'marketplace' as const, payer: 'Print buyers',
+      researchedAt: '2025-03-11T00:00:00Z',
+      sources: [{ id: 'S1', title: 'Print exchange', snippet: 'A print exchange operates in Canada.',
+        url: 'https://example.org/prints', publishedAt: null }],
+      competition: [{ name: 'Print exchange', offering: 'Print sales', sourceIds: ['S1'] }],
+    };
+    vi.mocked(chatJSON).mockResolvedValueOnce({ reviews: [{ slug: d.slug, verdict: 'watch', businessModel: 'B2B' }] });
+    const reviews = await runCritique([{ ...d, kpis: { ...d.kpis, commercial } }], 'Signal evidence');
+    expect(vi.mocked(chatJSON).mock.calls[0][1]).toContain('Print buyers');
+    expect(vi.mocked(chatJSON).mock.calls[0][1]).toContain('Canada');
+    expect(vi.mocked(chatJSON).mock.calls[0][1]).toContain('[C-photo-market-S1] example.org');
+    expect(vi.mocked(chatJSON).mock.calls[0][1]).toContain('Competitor: Print exchange');
+    expect(reviews?.get(d.slug)?.businessModel).toBe('marketplace');
   });
 
   it('critic unavailable → every proposal lands unverified (watch/40)', async () => {
