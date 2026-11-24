@@ -9,6 +9,10 @@ export function applyComparableEconomics(profile: CommercialProfile, priceUsd: n
   bootstrapInputs?: Parameters<typeof bootstrapAssessment>[0]): CommercialProfile {
   const market = comparableBuyers(profile);
   const acquisition = comparableChannels(profile, priceUsd);
+  if (!bootstrapInputs && profile.bootstrap) {
+    const { initialCostUsd, monthlyCostUsd, days, daysBasis } = profile.bootstrap;
+    bootstrapInputs = { initialCostUsd, monthlyCostUsd, timeToMvpDays: daysBasis === 'MVP' ? days : null };
+  }
   const hasBootstrapInputs = bootstrapInputs && (profile.bootstrap || [bootstrapInputs.initialCostUsd, bootstrapInputs.monthlyCostUsd,
     bootstrapInputs.timeToMvpDays].some(n => n !== null && n !== undefined));
   if (!market && !acquisition && !hasBootstrapInputs) return profile;
@@ -58,7 +62,7 @@ export function applyComparableEconomics(profile: CommercialProfile, priceUsd: n
       next.cac = { ...primary, kind: 'scenario' };
     }
   }
-  if (hasBootstrapInputs) next.bootstrap = bootstrapAssessment(bootstrapInputs, next);
+  if (bootstrapInputs && (hasBootstrapInputs || next.channelMix)) next.bootstrap = bootstrapAssessment(bootstrapInputs, next);
   const valid = parseCommercial(next);
   if (!valid) throw new Error('Invalid comparable economics dossier');
   return valid;

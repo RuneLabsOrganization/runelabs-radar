@@ -5,7 +5,7 @@ import { safePublicHttpUrl } from '../safe-url';
 export const businessModels = ['B2B', 'B2C', 'B2B2C', 'marketplace', 'prosumer', 'other'] as const;
 const line = z.string().trim().min(1).max(600);
 const finite = z.number().finite().nonnegative().max(Number.MAX_SAFE_INTEGER);
-const ids = z.array(z.string().regex(/^[A-Z]\d+$/)).min(1).max(12);
+const ids = z.array(z.string().regex(/^[A-Z]\d+$/)).min(1).max(40);
 const scenario = (n: z.ZodNumber) =>
   z.object({ low: n, base: n, high: n }).refine(s => s.low <= s.base && s.base <= s.high);
 
@@ -40,22 +40,23 @@ export const aiUsage = z.object({
 });
 
 const channelScenario = z.object({
-  channel: line, usd: scenario(finite.positive()), assumptions: line, sourceIds: ids,
-});
-const percent = z.number().int().min(0).max(100);
+  channel: line, usd: scenario(finite.positive()), cashUsd: scenario(finite).optional(), assumptions: line, sourceIds: ids,
+}).refine(c => !c.cashUsd || (c.cashUsd.low <= c.usd.low && c.cashUsd.base <= c.usd.base && c.cashUsd.high <= c.usd.high));
+const percent = z.number().min(0).max(100).refine(p => p === Math.round(p * 100) / 100);
 const mixWeight = z.object({ channel: line, favorable: percent, base: percent, adverse: percent });
 export const blendedChannel = 'Blended CAC';
 
 /** Weights count mutually exclusive first paying customers, not dollars spent. */
-export function weightedChannelCac(channels: z.infer<typeof channelScenario>[], weights: z.infer<typeof mixWeight>[]) {
+export function weightedChannelCac(channels: z.infer<typeof channelScenario>[], weights: z.infer<typeof mixWeight>[],
+  field: 'usd' | 'cashUsd' = 'usd', customers = 1) {
   if (weights.length < 2 || weights.length !== channels.length) return null;
-  const byChannel = new Map(channels.map(c => [c.channel, c.usd]));
-  if (new Set(weights.map(w => w.channel)).size !== weights.length || weights.some(w => !byChannel.has(w.channel))) return null;
+  const byChannel = new Map(channels.map(c => [c.channel, c[field]]));
+  if (new Set(weights.map(w => w.channel)).size !== weights.length || weights.some(w => !byChannel.get(w.channel))) return null;
   const usd = { low: 0, base: 0, high: 0 };
   for (const [cost, share] of [['low', 'favorable'], ['base', 'base'], ['high', 'adverse']] as const) {
-    if (weights.reduce((sum, w) => sum + w[share], 0) !== 100) return null;
-    const total = weights.reduce((sum, w) => sum + Math.round(byChannel.get(w.channel)![cost] * 100) * w[share], 0);
-    usd[cost] = Math.round(total / 100) / 100;
+    if (weights.reduce((sum, w) => sum + Math.round(w[share] * 100), 0) !== 10_000) return null;
+    const total = weights.reduce((sum, w) => sum + Math.round(byChannel.get(w.channel)![cost] * 100) * Math.round(w[share] * 100), 0);
+    usd[cost] = Math.round(total * customers / 10_000) / 100;
   }
   return usd.low <= usd.base && usd.base <= usd.high ? usd : null;
 }
@@ -90,6 +91,7 @@ const commercial = z.object({
   channelMix: z.object({ weights: z.array(mixWeight).min(2).max(6), usd: scenario(finite.positive()),
     assumptions: line, sourceIds: ids }).optional(),
   bootstrap: z.object({ points: finite.max(10), initialCostUsd: finite.nullable(), monthlyCostUsd: finite.nullable(),
+    firstTenCashUsd: scenario(finite).optional(), launchCashUsd: scenario(finite).optional(),
     days: finite.nullable(), daysBasis: z.enum(['paid pilot', 'MVP']).nullable(), assumptions: line,
   }).refine(b => (b.days === null) === (b.daysBasis === null)).optional(),
   execution: z.object({
@@ -148,6 +150,18 @@ export function parseCommercial(value: unknown): CommercialProfile | null {
     const usd = weightedChannelCac(p.cacChannels ?? [], mix.weights);
     if (!usd || usd.low !== mix.usd.low || usd.base !== mix.usd.base || usd.high !== mix.usd.high ||
         p.cacChannels?.some(c => c.sourceIds.some(id => !mix.sourceIds.includes(id)))) return null;
+  }
+  const b = p.bootstrap;
+  if (b?.firstTenCashUsd || b?.launchCashUsd) {
+    if (!mix || !b.firstTenCashUsd) return null;
+    const cash = weightedChannelCac(p.cacChannels ?? [], mix.weights, 'cashUsd', 10);
+    if (!cash) return null;
+    const fixed = b.initialCostUsd !== null && b.monthlyCostUsd !== null ? b.initialCostUsd + 3 * b.monthlyCostUsd : null;
+    if ((fixed !== null) !== !!b.launchCashUsd) return null;
+    for (const key of ['low', 'base', 'high'] as const) {
+      if (cash[key] !== b.firstTenCashUsd[key] ||
+          (fixed !== null && Math.round((fixed + cash[key]) * 100) / 100 !== b.launchCashUsd?.[key])) return null;
+    }
   }
   if (p.cacChannels) {
     if (!cac || new Set(p.cacChannels.map(c => c.channel.toLowerCase())).size !== p.cacChannels.length) return null;

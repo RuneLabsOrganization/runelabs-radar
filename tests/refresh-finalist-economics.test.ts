@@ -120,7 +120,8 @@ it('runs the real CLI on a temporary .env-selected database and preserves the pr
     const preview = cli();
     expect(preview).toMatchObject({ mode: 'dry-run', activePublic: 4, updated: 0, changed: 1, mismatches: [] });
     expect(readFileSync(path).equals(bytes)).toBe(true);
-    expect(preview.finalists[0].after.coverage.acquisitionChannels).toBeGreaterThan(0);
+    expect(preview.finalists[0].after.coverage.acquisitionChannels).toBe(5);
+    expect(preview.finalists[0].after.bootstrap.firstTenCashUsd.base).toBeGreaterThan(0);
     expect(preview.finalists[0].after.market.buyerCounts).not.toEqual(rawProfile.market.buyerCounts);
     expect(preview.finalists[1].changedFields).toEqual([]);
     expect(cli('--apply')).toMatchObject({ updated: 1, finalists: preview.finalists });
