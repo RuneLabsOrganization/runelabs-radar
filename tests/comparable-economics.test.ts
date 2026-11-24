@@ -16,7 +16,7 @@ afterEach(() => vi.resetAllMocks());
 
 const profile = { ...commercialFixture, geography: 'United States' };
 const paid = { channel: 'Paid search', assumptions: 'Cost per click divided by click-to-paid conversion.',
-  usd: { low: 120, base: 200, high: 350 }, sourceIds: ['C1'] };
+  usd: { low: 120, base: 200, high: 350 }, cashUsd: { low: 20, base: 30, high: 40 }, sourceIds: ['C1'] };
 function scenarios() {
   vi.mocked(comparableChannels).mockReturnValue({
     channels: [paid, { ...paid, channel: 'Publisher referrals', usd: { low: 50, base: 75, high: 125 } }],
@@ -75,6 +75,24 @@ it('retains both excerpts when another measurement comes from an existing report
     comparableEvidence: { snippet: 'Additional qualified segment count.' } });
   expect(p.market?.sourceIds).toEqual(['S1']);
   expect(applyComparableEconomics(p, 49)).toEqual(p);
+});
+
+it('round-trips launch cash and rejects a stale first-ten estimate after a channel cost changes', () => {
+  const cash = { low: 1, base: 2.01, high: 3.50 };
+  const free = { low: 0, base: 0, high: 0 };
+  vi.mocked(comparableChannels).mockReturnValue({ channels: [
+    { ...paid, cashUsd: cash }, { ...paid, channel: 'Founder referrals', cashUsd: free },
+  ], sources: [{ ...profile.sources[0], id: 'C1' }] });
+  vi.mocked(comparableMix).mockReturnValue({ weights: [
+    { channel: paid.channel, favorable: 10, base: 33, adverse: 70 },
+    { channel: 'Founder referrals', favorable: 90, base: 67, adverse: 30 },
+  ], assumptions: 'Share of new paying customers.', sources: [{ ...profile.sources[1], id: 'W1' }] });
+  const p = applyComparableEconomics(profile, 49, { initialCostUsd: 100, monthlyCostUsd: 10, timeToMvpDays: 20 });
+  expect(p.bootstrap?.firstTenCashUsd).toEqual({ low: 1, base: 6.63, high: 24.50 });
+  expect(p.bootstrap?.launchCashUsd).toEqual({ low: 131, base: 136.63, high: 154.50 });
+  expect(applyComparableEconomics(p, 49)).toEqual(p);
+  expect(parseCommercial({ ...p, bootstrap: { ...p.bootstrap, launchCashUsd: undefined } })).toBeNull();
+  expect(parseCommercial({ ...p, cacChannels: [{ ...p.cacChannels![0], cashUsd: free }, p.cacChannels![1]] })).toBeNull();
 });
 
 it('keeps source ID collisions separate from unrelated existing evidence', () => {

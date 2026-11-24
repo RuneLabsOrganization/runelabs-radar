@@ -7,6 +7,7 @@ const dollars = new Intl.NumberFormat('en-US', {
   style: 'currency', currency: 'USD', maximumSignificantDigits: 4,
 });
 const counts = new Intl.NumberFormat('en-US');
+const cashDollars = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
 
 function Scenario({ label, range, format }: {
   label: string;
@@ -133,6 +134,7 @@ export default function CommercialResearch({ profile, audience }: ResearchProps)
               {profile.cacChannels.map((c, index) => (
                 <div key={c.channel}>
                   <Scenario label={c.channel} range={c.usd} format={dollars} />
+                  {c.cashUsd && <Scenario label="Launch cash per new paying customer" range={c.cashUsd} format={cashDollars} />}
                   <p>{c.assumptions} {citations(c.sourceIds)}</p>
                   {!mix && index === 0 && profile.cac?.kind === 'scenario' && (
                     <p className="text-ink-3">Primary channel for ranking. Payback uses {dollars.format(c.usd.high)} per new paying customer.</p>
@@ -153,6 +155,20 @@ export default function CommercialResearch({ profile, audience }: ResearchProps)
                 <div><dt>{bootstrap.daysBasis ? `Time to ${bootstrap.daysBasis}` : 'Time estimate'}</dt>
                   <dd className="mono">{bootstrap.days === null ? 'Unknown' : `${bootstrap.days} ${bootstrap.days === 1 ? 'day' : 'days'}`}</dd></div>
               </dl>
+              {bootstrap.firstTenCashUsd ? (
+                <>
+                  <Scenario label="Acquisition cash for the first 10 paying customers" range={bootstrap.firstTenCashUsd} format={cashDollars} />
+                  <p className="text-ink-3">This estimate assumes 10 new paying customers through the modeled routes. Actual customer counts and spending can vary.</p>
+                  {bootstrap.launchCashUsd ? (
+                    <>
+                      <Scenario label="Total launch cash" range={bootstrap.launchCashUsd} format={cashDollars} />
+                      <p>Launch cash covers build costs, a three-month operating reserve and acquisition spending for the first 10 paying customers.
+                        Reaching 10 by day 90 is not guaranteed. Later operating months require additional cash.</p>
+                      <p>The cash score uses the base launch estimate. The high estimate shows the adverse scenario.</p>
+                    </>
+                  ) : <p className="text-ink-3">Total launch cash is unknown because a build or monthly cost estimate is missing.</p>}
+                </>
+              ) : <p className="text-ink-3">Acquisition cash for the first 10 paying customers is unavailable and excluded from the cash score.</p>}
               <p>{bootstrap.assumptions}</p>
             </div>
           )}
@@ -194,7 +210,8 @@ export default function CommercialResearch({ profile, audience }: ResearchProps)
           for monthly AI and operating costs. Acquisition payback adds up to 15 using {mix ? 'the high blended CAC'
             : profile?.cac?.kind === 'observed' ? 'the matched cohort’s observed CAC' : 'high CAC'} and that margin.
           Market headroom adds up to 10 using the low buyer count relative to the customer target.
-          {' '}{bootstrap ? 'Bootstrapping adds up to 10 points using initial cash, monthly costs and time to a paid pilot or MVP.'
+          {' '}{bootstrap?.launchCashUsd ? 'Bootstrapping adds up to 5 points for base launch cash and up to 5 for time to a paid pilot or MVP.'
+            : bootstrap ? 'Bootstrapping adds up to 10 points using initial cash, monthly costs and time to a paid pilot or MVP.'
             : 'Shorter pilots add up to 10 points.'} Cited evidence for market, acquisition, competition and AI pricing adds up to 10.
           Missing inputs earn no points for that factor. Rejected openings rank last.</p>
       </details>

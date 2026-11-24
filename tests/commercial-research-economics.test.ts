@@ -2,6 +2,7 @@ import { createElement, type ComponentProps } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { expect, it } from 'vitest';
 import CommercialResearch from '@/components/CommercialResearch';
+import { bootstrapAssessment } from '@/lib/opportunities/bootstrap';
 import { commercialFixture } from './fixtures/opportunity-commercial';
 
 const paid = { ...commercialFixture.cac!, channel: 'Paid search', usd: { low: 100, base: 150, high: 200 } };
@@ -79,4 +80,32 @@ it('labels missing bootstrap estimates as unknown', () => {
   for (const expected of ['0/10 points', 'Initial cash estimate Unknown', 'Monthly cash estimate Unknown', 'Time estimate Unknown']) {
     expect(html).toContain(expected);
   }
+});
+
+it('distinguishes launch cash from full CAC and shows the base used for scoring alongside the stress case', () => {
+  const cash = { low: 50, base: 75, high: 90 };
+  const profile = { ...channels, cac: modeled, channelMix: mix, cacChannels: [
+    { ...paid, cashUsd: cash }, { ...referral, cashUsd: { low: 0, base: 2, high: 5 } },
+  ] };
+  const assessment = bootstrapAssessment({ initialCostUsd: 0, monthlyCostUsd: 150, timeToMvpDays: 30 }, profile);
+  const html = text(render({ ...profile, bootstrap: assessment }));
+  for (const expected of [
+    'Launch cash per new paying customer $75.00 base ($50.00 low · $90.00 high)',
+    'Launch cash per new paying customer $2.00 base ($0.00 low · $5.00 high)',
+    'Acquisition cash for the first 10 paying customers $385.00 base ($125.00 low · $687.50 high)',
+    'Total launch cash $835.00 base ($575.00 low · $1,137.50 high)',
+    'build costs, a three-month operating reserve and acquisition spending for the first 10 paying customers.',
+    'Reaching 10 by day 90 is not guaranteed. Later operating months require additional cash.',
+    'The cash score uses the base launch estimate.', 'Actual customer counts and spending can vary.',
+    'Payback uses the high blended CAC of $175', 'Excludes founder pay',
+  ]) expect(html).toContain(expected);
+});
+
+it('discloses omitted acquisition and incomplete launch budgets without displaying a zero range', () => {
+  const legacy = text(render({ ...commercialFixture, bootstrap }));
+  expect(legacy).toContain('Acquisition cash for the first 10 paying customers is unavailable');
+  const partial = text(render({ ...commercialFixture, bootstrap: { ...bootstrap, monthlyCostUsd: null,
+    firstTenCashUsd: { low: 0, base: 1, high: 2 } } }));
+  expect(partial).toContain('Total launch cash is unknown');
+  expect(partial).not.toContain('The cash score uses the base launch estimate.');
 });

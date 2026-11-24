@@ -107,10 +107,12 @@ it('adds the comparable estimates to a newly researched US agency finalist', asy
   const d = draft();
   d.kpis.priceUsd = 149;
   const stats = await researchFinalists([d], 'United States');
-  expect(stats.coverage).toMatchObject({ comparableBuyerPools: 1, modeledChannels: 2, scenarioCac: 1 });
+  expect(stats.coverage).toMatchObject({ comparableBuyerPools: 1, modeledChannels: 4, scenarioCac: 1 });
   expect(d.kpis.commercial?.market?.scope).toBe('comparable-cohort');
   expect(d.kpis.commercial?.cac?.channel).toBe('Blended CAC');
-  expect(d.kpis.commercial?.channelMix?.weights).toHaveLength(2);
+  expect(d.kpis.commercial?.channelMix?.weights).toHaveLength(4);
+  expect(d.kpis.commercial?.bootstrap?.firstTenCashUsd?.base).toBeGreaterThan(0);
+  expect(d.kpis.commercial?.bootstrap?.launchCashUsd).toBeUndefined();
   expect(parseCommercial(d.kpis.commercial)).toEqual(d.kpis.commercial);
 });
 
