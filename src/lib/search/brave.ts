@@ -3,7 +3,7 @@ import { fetchJson, HttpFetchError, parseDate, toExcerpt } from '../ingest/adapt
 import { reserveSearchCall } from './budget';
 
 export type BraveKind = 'news' | 'web';
-export type BraveFreshness = 'pd' | 'pw' | 'pm';
+export type BraveFreshness = 'pd' | 'pw' | 'pm' | 'all';
 
 export interface BraveHit {
   title: string;
@@ -133,9 +133,9 @@ export async function braveSearch(opts: {
   const params = new URLSearchParams({
     q: opts.query,
     count: String(count),
-    freshness: opts.freshness ?? 'pd',
     extra_snippets: 'true',
   });
+  if (opts.freshness !== 'all') params.set('freshness', opts.freshness ?? 'pd');
   const headers = {
     Accept: 'application/json',
     'X-Subscription-Token': token(),

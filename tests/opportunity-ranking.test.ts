@@ -50,6 +50,19 @@ describe('commercial ranking', () => {
     };
     expect(rank({ ...kpis, commercial: noCac })).toBeGreaterThan(rank({ ...kpis, commercial: expensive }));
   });
+
+  it('credits a local channel benchmark only for coverage', () => {
+    const commercial = { ...profile, geography: 'US', cac: undefined };
+    const reference = { publisher: 'Survey', geography: 'United States', cohort: 'Agencies', period: '2025',
+      channel: 'Search', methodology: 'Median CPC', unit: 'click' as const, usd: 5, sourceIds: ['A1'] };
+    const baseline = rank({ ...kpis, commercial });
+    const withBenchmark = (scope: 'matched' | 'external') => rank({ ...kpis, commercial: {
+      ...commercial, cacReferences: [{ ...reference, scope }],
+    } });
+    expect(withBenchmark('external')).toBe(baseline);
+    expect(withBenchmark('matched') - baseline).toBeGreaterThanOrEqual(2);
+    expect(withBenchmark('matched') - baseline).toBeLessThanOrEqual(3);
+  });
 });
 
 describe('commercial dossier', () => {

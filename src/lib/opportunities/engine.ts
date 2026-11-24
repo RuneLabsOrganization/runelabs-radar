@@ -87,7 +87,7 @@ export interface OppDraft {
   windowMonths: number | null;
   sub: SubScores;
   kpis: OppKpis;
-  researchTarget?: OpportunityAudience & { task: string };
+  researchTarget?: OpportunityAudience & { task: string; alternative?: string; population?: string; sellerCategory?: string };
   /** KPI fields clamped into range during sanitize — forwarded to the gate trail. */
   kpiClamped?: string[];
   evidenceRefs: string[];
@@ -217,7 +217,8 @@ export function sanitizeOpportunities(
       user: term('user') || 'Unspecified', payer: term('payer') || 'Unspecified', industry: term('industry') || 'Unspecified',
     };
     if (publicDaily) generated.audience = audience;
-    const researchTarget = { ...audience, task: term('task') };
+    const researchTarget = { ...audience, task: term('task'), alternative: term('alternative'),
+      population: term('population'), sellerCategory: term('sellerCategory') };
     out.push({
       slug,
       title,
@@ -470,7 +471,7 @@ export async function proposeOpportunities(constraints?: ScoutConstraints, daily
       ' Public daily discovery for ' + dailyGeography + '. Explore end-use industries broadly, independent of the AI capability sector.',
       ' Consider B2B, B2C, B2B2C, marketplaces, prosumers and other models equally. No model preference or quota.',
       ' Order by strongest evidence of a paid need first. Identify the end user, paying customer (including the paying side of a marketplace), recurring task, current alternative and concrete advantage.',
-      ' Include researchTarget:{businessModel,user,payer,industry,task}. For businessModel use B2B, B2C, B2B2C, marketplace, prosumer or other. Use short literal search terms (2-5 words) for industry, payer and task. The sector field still describes the AI capability.',
+      ' Include researchTarget:{businessModel,user,payer,industry,task,alternative,population,sellerCategory}. For businessModel use B2B, B2C, B2B2C, marketplace, prosumer or other. Give three concise lookup terms: alternative is a known directly comparable product (omit if unknown), population is a countable payer segment such as advertising agencies, sellerCategory is the category of product being sold such as B2B marketing software. The latter determines comparable acquisition channels. Keep lookup terms to 2–5 words. The sector field describes the AI capability.',
       ' Estimate monthlyCostUsd for 100 active paying customers, including all their end-user usage in indirect models; breakEvenCustomers counts the same paying unit.',
       ' For ALL models priceUsd means average monthly revenue to the product per active paying customer. Supply kpis.priceBasis:{kind:"direct"|"commission"|"advertising",usdPerEvent,eventsPerPayerMonth,payer,assumptions,takeRate?}. State how often an active payer pays, including for one-off sales. For ad support identify the advertiser and billable unit. For commissions usdPerEvent is gross merchandise value per transaction, and takeRate is the platform commission fraction (0 to 1). Otherwise usdPerEvent is revenue per billable event. Use null when price or frequency is unknown.',
     ].join('') : '');
