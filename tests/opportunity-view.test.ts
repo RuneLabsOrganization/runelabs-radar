@@ -1,4 +1,9 @@
 import { beforeEach, describe, expect, it } from 'vitest';
+import * as React from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import OppDossier from '@/components/OppDossier';
+import OpportunityList from '@/components/OpportunityList';
+import { commercialFixture } from './fixtures/opportunity-commercial';
 import { oppViewFromRow } from '@/lib/opportunities/view';
 import { SUB_KEYS } from '@/lib/opportunities/engine';
 import { opportunities, stories } from '@/lib/db/schema';
@@ -136,6 +141,44 @@ describe('oppViewFromRow — current shape', () => {
     expect(view.isNew).toBe(true);
     expect(view.firstSeenLabel).toBe('just now');
   });
+});
+
+describe('oppViewFromRow — commercial profile', () => {
+  it('shows proposal audience on the card and dossier without awarding research points', () => {
+    const audience = { businessModel: 'B2B2C', industry: 'Music education', user: 'Piano pupils', payer: 'Music schools' };
+    const view = oppViewFromRow(row({ kpis: JSON.stringify({ audience }) }));
+    expect(view.commercialScore).toBe(oppViewFromRow(row()).commercialScore);
+    const card = React.createElement(OpportunityList, { opps: [view], canGenerate: false });
+    const dossier = React.createElement(OppDossier, { opp: view, sortKey: 'commercial' });
+    for (const element of [card, dossier]) {
+      const html = renderToStaticMarkup(element);
+      for (const value of Object.values(audience)) expect(html).toContain(value);
+      expect(html).toContain('Commercial research unavailable');
+    }
+  });
+
+  it('keeps historical economics when a stored research profile is invalid', () => {
+    const commercial = { ...commercialFixture, sources: [{ ...commercialFixture.sources[0], url: 'broken' }] };
+    const view = oppViewFromRow(row({ kpis: JSON.stringify({ commercial, priceUsd: 19 }) }));
+    expect(view.kpis?.commercial).toBeUndefined();
+    expect(view.kpis?.priceUsd).toBe(19);
+    expect(view.commercialScore).toBe(32);
+  });
+
+  it('discloses how a marketplace converts transaction value to monthly revenue per payer', () => {
+    const view = oppViewFromRow(row({ kpis: JSON.stringify({
+      priceUsd: 20,
+      priceBasis: { kind: 'commission', usdPerEvent: 100, eventsPerPayerMonth: 2, takeRate: 0.1,
+        payer: 'Studio owners', assumptions: 'Two completed bookings per studio monthly.' },
+      commercial: { ...commercialFixture, businessModel: 'marketplace' },
+    }) }));
+    const html = renderToStaticMarkup(React.createElement(OppDossier, { opp: view, sortKey: 'commercial' }));
+    for (const value of ['revenue / active payer / mo', '$20.0', '$100.0 in gross transaction value',
+      '2 events per active payer per month', '10% commission', 'Two completed bookings per studio monthly.']) {
+      expect(html).toContain(value);
+    }
+  });
+
 });
 
 describe('oppViewFromRow — legacy shape', () => {

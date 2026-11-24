@@ -8,6 +8,7 @@ data/
 *.db-shm
 .env
 .env.local
+.env.opportunities
 dist/
 *.tsbuildinfo
 next-env.d.ts

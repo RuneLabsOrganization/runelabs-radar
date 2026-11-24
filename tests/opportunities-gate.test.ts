@@ -142,7 +142,7 @@ describe('applyGate', () => {
 
   it('R9: confidence follows citation depth', () => {
     expect(applyGate(input({ evidenceCount: 0 }), critic()).confidence).toBeLessThanOrEqual(30);
-    expect(applyGate(input({ evidenceCount: 1 }), critic()).confidence).toBeLessThanOrEqual(50);
+    expect(applyGate(input({ evidenceCount: 1 }), critic())).toMatchObject({ confidence: 50, verdict: 'watch' });
     expect(applyGate(input({ evidenceCount: 0 }), critic()).verdict).toBe('watch');
   });
 
@@ -185,6 +185,7 @@ describe('applyGate', () => {
     const one = applyGate(input({ missingAxes: ['moat'] }), critic());
     expect(one.review.flags.some((f) => f.includes('moat'))).toBe(true);
     expect(one.confidence).toBe(80);
+    expect(one.verdict).toBe('watch');
     const complete = applyGate(input(), critic());
     expect(complete.confidence).toBe(80);
     expect(complete.review.flags).toEqual([]);
@@ -202,8 +203,22 @@ describe('applyGate', () => {
     expect(out.review.rawHold).toBe(75); // pre-adjustment number preserved
   });
 
-  it('a critic reject sticks; confidence under 30 rejects too', () => {
-    expect(applyGate(input(), critic({ verdict: 'reject' })).verdict).toBe('reject');
+  it('keeps a hypothetical objection and its test on watch, including the original critic call', () => {
+    const risk = 'An incumbent could bundle this. Test switching intent with five paying users.';
+    const out = applyGate(input(), critic({ verdict: 'reject', killRisks: [risk] }));
+    expect(out.verdict).toBe('watch');
+    expect(out.review).toMatchObject({ criticVerdict: 'reject', killRisks: [risk] });
+  });
+
+  it('honors a reject for failed economics even when scores already fall below the cap', () => {
+    const low = Object.fromEntries(Object.keys(sub()).map(k => [k, 7])) as SubScores;
+    const kpis = { initialCostUsd: 100, monthlyCostUsd: 300, priceUsd: 5, breakEvenCustomers: 10, competitorCount: null };
+    const out = applyGate(input({ sub: low, kpis }), critic({ verdict: 'reject' }));
+    expect(out.review.capsApplied).toEqual([]);
+    expect(out.verdict).toBe('reject');
+  });
+
+  it('confidence under 30 independently rejects', () => {
     expect(applyGate(input(), critic({ confidence: 25 })).verdict).toBe('reject');
   });
 
@@ -230,7 +245,28 @@ describe('blendScore', () => {
 });
 
 describe('sanitizeCritiques', () => {
-  const slugs = new Set(['a', 'b']);
+  const slugs = new Map([['a', ['P1']], ['b', ['b-E1']]]);
+
+  it.each([
+    ['[b-E1]', 'reject'], ['P1', 'watch'], ['invented', 'watch'],
+  ])('checks blocker ref %s against this proposal before honoring a rejection', (ref, verdict) => {
+    const [review] = sanitizeCritiques([{
+      slug: 'b', verdict: 'reject', confidence: 80,
+      blocker: { ref, reason: 'The sole distribution partner discontinued this API.' },
+    }], slugs);
+    const out = applyGate(input(), review);
+    expect(out.verdict).toBe(verdict);
+    if (verdict === 'reject') expect(out.review.flags.join(' ')).toContain('[b-E1]');
+  });
+
+  it.each(['B2B', 'B2C', 'B2B2C', 'marketplace', 'prosumer', 'cooperative'])(
+    'retains %s in the review without changing ranking or verdict', businessModel => {
+      const [review] = sanitizeCritiques([{ slug: 'a', verdict: 'pursue', confidence: 80, businessModel }], slugs);
+      expect(applyGate(input(), review)).toMatchObject({
+        flipScore: 75, holdScore: 75, verdict: 'pursue', review: { businessModel },
+      });
+    },
+  );
 
   it('bounds verdict, confidence, risks, adjustments, flags', () => {
     const out = sanitizeCritiques(

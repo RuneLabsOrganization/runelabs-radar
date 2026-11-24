@@ -6,12 +6,14 @@ import Link from 'next/link';
 import { DOMAINS, DOMAIN_COLORS, DOMAIN_LABELS, isDomain, type Domain } from '@/lib/domains';
 import { fmtUsd } from '@/lib/costs';
 import { gradeBand, gradeColor } from '@/lib/opportunities/axes';
+import { compareOpportunities, opportunityScore, type OpportunitySort } from '@/lib/opportunities/ranking';
 import { paths } from '@/lib/urls';
 import OppDossier, { LaunchChecks, ScoreBar, VerdictChip, type OppView } from './OppDossier';
 import BriefSection from './BriefSection';
 import OpportunityMap from './OpportunityMap';
 import PortfolioScatter from './PortfolioScatter';
 import AssessmentMatrix from './AssessmentMatrix';
+import { AudienceSummary } from './CommercialResearch';
 
 export type { OppView } from './OppDossier';
 
@@ -25,7 +27,7 @@ function Card({
 }: {
   opp: OppView;
   canGenerate: boolean;
-  sortKey: 'flip' | 'hold';
+  sortKey: OpportunitySort;
   selected: boolean;
 }) {
   // collapsed by default — the full dossier is an expand-away (Turo accordion
@@ -33,7 +35,7 @@ function Card({
   const [dossier, setDossier] = useState(false);
   const ref = useRef<HTMLElement>(null);
   const k = opp.kpis;
-  const primary = sortKey === 'flip' ? opp.flipScore : opp.holdScore;
+  const primary = opportunityScore(opp, sortKey);
 
   // a chart picked this opening: light it up and open its dossier
   useEffect(() => {
@@ -65,7 +67,7 @@ function Card({
           aria-label={`${dossier ? 'Collapse' : 'Expand'} dossier: ${opp.title}`}
           className="absolute inset-0 cursor-pointer rounded-[6px] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
         />
-        <div className="pointer-events-none relative flex items-start gap-4 p-5">
+        <div className="pointer-events-none relative flex flex-col items-stretch gap-4 p-5 sm:flex-row sm:items-start">
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
               {opp.isNew && (
@@ -92,9 +94,15 @@ function Card({
             <p className="mt-1.5 line-clamp-2 text-[13px] leading-relaxed" style={{ color: 'var(--ink-3)' }}>
               {opp.thesis}
             </p>
+            {(k?.commercial || k?.audience) && (
+              <div className="mt-2"><AudienceSummary profile={k.commercial} audience={k.audience} /></div>
+            )}
             <div className="mono mt-2.5 flex flex-wrap gap-x-4 gap-y-1 text-[10.5px]" style={{ color: 'var(--ink-4)' }}>
+              {k?.commercial ? (
+                <span>Research · {k.commercial.geography}</span>
+              ) : <span>Commercial research unavailable</span>}
               {k?.initialCostUsd != null && <span>cost {fmtUsd(k.initialCostUsd)}</span>}
-              {k?.priceUsd != null && <span>price {fmtUsd(k.priceUsd)}/mo</span>}
+              {k?.priceUsd != null && <span>{fmtUsd(k.priceUsd)} {k.priceBasis ? 'revenue/payer/mo' : 'stated price/mo'}</span>}
               {k?.timeToMvpDays != null && <span>mvp ~{Math.round(k.timeToMvpDays)}d</span>}
               {opp.window && <span>window {opp.window}</span>}
               <span>first seen {opp.firstSeenLabel}</span>
@@ -112,12 +120,13 @@ function Card({
               </div>
             )}
           </div>
-          <div className="flex w-[132px] shrink-0 flex-col gap-1.5">
+          <div className="flex shrink-0 flex-col gap-1.5 sm:w-[160px]">
+            <ScoreBar label="commercial" value={opp.commercialScore} emphasized={sortKey === 'commercial'} />
             <ScoreBar label="flip" value={opp.flipScore} emphasized={sortKey === 'flip'} />
             <ScoreBar label="hold" value={opp.holdScore} emphasized={sortKey === 'hold'} />
             <span className="mono mt-0.5 flex items-baseline justify-between text-[11px]">
               <span style={{ color: gradeColor(primary) }} title={`${sortKey} score ${primary}/100`}>
-                {gradeBand(primary)}
+                {sortKey === 'commercial' && !k?.commercial ? 'provisional' : gradeBand(primary)}
               </span>
               <span style={{ color: 'var(--ink-4)' }}>{dossier ? '▾ dossier' : '▸ dossier'}</span>
             </span>
@@ -153,7 +162,7 @@ function chipCls(on: boolean): string {
  * scrolls to and expands the matching card.
  */
 export default function OpportunityList({ opps, canGenerate }: { opps: OppView[]; canGenerate: boolean }) {
-  const [sortKey, setSortKey] = useState<'flip' | 'hold'>('flip');
+  const [sortKey, setSortKey] = useState<OpportunitySort>('commercial');
   const [sector, setSector] = useState<Domain | null>(null);
   const [analysis, setAnalysis] = useState(false);
   const [selectedId, setSelectedId] = useState<number | null>(null);
@@ -196,9 +205,7 @@ export default function OpportunityList({ opps, canGenerate }: { opps: OppView[]
     () => (showRejected ? filtered : filtered.filter((o) => o.verdict !== 'reject')),
     [filtered, showRejected],
   );
-  const sorted = [...visible].sort((a, b) =>
-    sortKey === 'flip' ? b.flipScore - a.flipScore : b.holdScore - a.holdScore,
-  );
+  const sorted = [...visible].sort((a, b) => compareOpportunities(a, b, sortKey));
 
   return (
     <div>
@@ -214,20 +221,19 @@ export default function OpportunityList({ opps, canGenerate }: { opps: OppView[]
         </button>
         <span className="mx-2 h-[10px] w-px" style={{ background: 'var(--grat)' }} aria-hidden />
         <span style={{ color: 'var(--ink-4)' }}>sort</span>
-        {(['flip', 'hold'] as const).map((k) => (
+        {(['commercial', 'flip', 'hold'] as const).map((k) => (
           <button
             key={k}
             type="button"
             onClick={() => setSortKey(k)}
             aria-pressed={sortKey === k}
-            title={k === 'flip' ? 'flip = speed + timing window' : 'hold = margin + durable demand'}
             className={chipCls(sortKey === k)}
           >
-            {k === 'flip' ? 'flip — build & sell' : 'hold — keep for mrr'}
+            {{ commercial: 'commercial', flip: 'flip — build & sell', hold: 'hold — keep for mrr' }[k]}
           </button>
         ))}
         <span className="mx-2 h-[10px] w-px" style={{ background: 'var(--grat)' }} aria-hidden />
-        <span style={{ color: 'var(--ink-4)' }}>sector</span>
+        <span style={{ color: 'var(--ink-4)' }}>AI capability</span>
         <button
           type="button"
           onClick={() => setSector(null)}

@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { _setFetch, chatJSON } from '@/lib/llm/minimax';
 import { UNMETERED_COST_USD, estimateCostUsd } from '@/lib/llm/pricing';
@@ -20,6 +20,7 @@ beforeEach(() => {
 
 afterEach(() => {
   _setFetch(globalThis.fetch);
+  vi.unstubAllEnvs();
   if (savedEnv.key === undefined) delete process.env.MINIMAX_API_KEY;
   else process.env.MINIMAX_API_KEY = savedEnv.key;
   if (savedEnv.model === undefined) delete process.env.MINIMAX_MODEL;
@@ -54,6 +55,39 @@ describe('estimateCostUsd', () => {
 });
 
 describe('chatJSON metering', () => {
+  it('meters the configured discovery and finalist models independently', async () => {
+    vi.stubEnv('OPP_ANTHROPIC_MODEL', 'claude-sonnet-5-5');
+    vi.stubEnv('OPP_RESEARCH_ANTHROPIC_MODEL', 'claude-opus-5-5');
+    vi.stubEnv('ANTHROPIC_API_KEY', 'test-anthropic');
+    const urls: string[] = [];
+    _setFetch(async (url, init) => {
+      urls.push(String(url));
+      const headers = new Headers(init?.headers);
+      if (String(url) === 'https://api.anthropic.com/v1/messages') {
+        expect(headers.get('x-api-key')).toBe('test-anthropic');
+        expect(headers.has('authorization')).toBe(false);
+        expect(JSON.parse(String(init?.body))).toMatchObject({
+          model: urls.length === 1 ? 'claude-sonnet-5-5' : 'claude-opus-5-5',
+          system: 'system', messages: [{ role: 'user', content: 'prompt' }],
+        });
+        return Response.json({
+          content: [{ type: 'text', text: '{"ok":true}' }],
+          usage: { input_tokens: 200, output_tokens: 50 },
+        });
+      }
+      expect(headers.has('x-api-key')).toBe(false);
+      return Response.json({ choices: [{ message: { content: '{}' } }] });
+    });
+    expect(await chatJSON('system', 'prompt', { feature: 'opportunity' })).toEqual({ ok: true });
+    await chatJSON('system', 'prompt', { feature: 'opportunity-research' });
+    await chatJSON('system', 'prompt', { feature: 'scout' });
+    expect(urls).toHaveLength(3);
+    const rows = db.select().from(llmCalls).all();
+    expect(rows.map(row => row.model)).toEqual(['claude-sonnet-5-5', 'claude-opus-5-5', 'MiniMax-M3.1-Flash']);
+    expect(rows[0]!.estCostUsd).toBeCloseTo(0.0009, 12);
+    expect(rows[1]!.estCostUsd).toBeCloseTo(0.0018, 12);
+  });
+
   it('writes exactly one llm_calls row with feature/userId/model/tokens/cost on success', async () => {
     mockCompletion({ ok: true });
     const out = await chatJSON<{ ok: boolean }>('sys', 'user', { feature: 'x', userId: 42 });

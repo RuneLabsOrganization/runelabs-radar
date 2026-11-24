@@ -18,12 +18,19 @@ import { MIN_SIGNALS, SIGNAL_LOOKBACK_DAYS } from './signals';
 import { valuePicks } from './value-picks';
 import { normalizeSlug } from './slug';
 import { publicOnly } from './scope';
+import { businessModels, parseAudience, parseCommercial, parsePriceBasis, type CommercialProfile, type OpportunityAudience, type PriceBasis } from './commercial';
+import { opportunityGeography, researchFinalists, type ResearchStats } from './research';
+import { addDemandSignals } from './demand-signals';
 
 export { normalizeSlug };
 
 export interface OppKpis {
+  commercial?: CommercialProfile;
+  audience?: OpportunityAudience;
+  priceBasis?: PriceBasis;
   initialCostUsd: number | null;
   monthlyCostUsd: number | null;
+  /** Daily proposals normalize to monthly product revenue per active payer using priceBasis. */
   priceUsd: number | null;
   timeToMvpDays: number | null;
   /**
@@ -47,12 +54,18 @@ export interface OppKpis {
  */
 export function sanitizeKpis(v: unknown, clamped?: string[]): OppKpis {
   const rec = (typeof v === 'object' && v !== null ? v : {}) as Record<string, unknown>;
+  const commercial = parseCommercial(rec.commercial);
+  const audience = parseAudience(rec.audience);
+  const priceBasis = parsePriceBasis(rec.priceBasis);
   const num = (key: KpiKey): number | null => {
     const { value, clamped: wasClamped } = clampKpi(rec[key], KPI_BOUNDS[key]);
     if (wasClamped) clamped?.push(key);
     return value;
   };
   return {
+    ...(commercial && { commercial }),
+    ...(audience && { audience }),
+    ...(priceBasis && { priceBasis }),
     initialCostUsd: num('initialCostUsd'),
     monthlyCostUsd: num('monthlyCostUsd'),
     priceUsd: num('priceUsd'),
@@ -74,6 +87,7 @@ export interface OppDraft {
   windowMonths: number | null;
   sub: SubScores;
   kpis: OppKpis;
+  researchTarget?: OpportunityAudience & { task: string };
   /** KPI fields clamped into range during sanitize — forwarded to the gate trail. */
   kpiClamped?: string[];
   evidenceRefs: string[];
@@ -97,6 +111,7 @@ export function sanitizeOpportunities(
   validRefs: Set<string>,
   rejects?: SanitizeReject[],
   max = MAX_PROPOSALS,
+  publicDaily = false,
 ): OppDraft[] {
   if (!Array.isArray(v)) {
     rejects?.push({
@@ -184,6 +199,25 @@ export function sanitizeOpportunities(
         ? Math.round(rec.windowMonths)
         : null;
     const kpiClamped: string[] = [];
+    // A proposer cannot certify its own commercial evidence. Only the public
+    // research stage may attach a profile; stored rows take the read path above.
+    const generated = { ...(typeof rec.kpis === 'object' && rec.kpis !== null ? rec.kpis : {}) } as Record<string, unknown>;
+    delete generated.commercial;
+    delete generated.audience;
+    if (publicDaily) {
+      const b = parsePriceBasis(generated.priceBasis);
+      generated.priceUsd = b ? b.usdPerEvent * b.eventsPerPayerMonth * (b.takeRate ?? 1) : null;
+    }
+    const target = publicDaily && rec.researchTarget && typeof rec.researchTarget === 'object'
+      ? rec.researchTarget as Record<string, unknown> : {};
+    const term = (key: string) => typeof target[key] === 'string' ? promptLine(target[key], 90) : '';
+    const suppliedModel = term('businessModel').toLowerCase();
+    const audience: OpportunityAudience = {
+      businessModel: businessModels.find(m => m.toLowerCase() === suppliedModel) ?? 'unknown',
+      user: term('user') || 'Unspecified', payer: term('payer') || 'Unspecified', industry: term('industry') || 'Unspecified',
+    };
+    if (publicDaily) generated.audience = audience;
+    const researchTarget = { ...audience, task: term('task') };
     out.push({
       slug,
       title,
@@ -195,7 +229,8 @@ export function sanitizeOpportunities(
       window: windowText,
       windowMonths: wm !== null && wm > 0 && wm <= MAX_WINDOW_MONTHS ? wm : parseWindowMonths(windowText),
       sub,
-      kpis: sanitizeKpis(rec.kpis, kpiClamped),
+      kpis: sanitizeKpis(generated, kpiClamped),
+      ...(publicDaily && { researchTarget }),
       kpiClamped,
       evidenceRefs,
     });
@@ -204,8 +239,9 @@ export function sanitizeOpportunities(
 }
 
 export interface EvidenceItem {
-  type: 'pain' | 'pattern' | 'entity' | 'story' | 'market' | 'launches';
+  type: 'pain' | 'pattern' | 'entity' | 'story' | 'market' | 'launches' | 'demand';
   label: string;
+  href?: string;
 }
 
 export interface Context {
@@ -361,12 +397,13 @@ function renderConstraints(c: ScoutConstraints): string {
  * when the scope is too thin (< MIN_SIGNALS signals — the one threshold the
  * scout tool shares).
  */
-export async function proposeOpportunities(constraints?: ScoutConstraints): Promise<{
+export async function proposeOpportunities(constraints?: ScoutConstraints, dailyGeography?: string): Promise<{
   drafts: OppDraft[];
   ctx: Context;
 }> {
   const ctx = buildContext();
   if (ctx.signalCount < MIN_SIGNALS) return { drafts: [], ctx };
+  if (dailyGeography && !constraints) await addDemandSignals(ctx, dailyGeography);
 
   const db = getDb();
   // Manual board-fill knobs (both default off): OPP_EXPAND=1 tells the scout the listed
@@ -429,7 +466,14 @@ export async function proposeOpportunities(constraints?: ScoutConstraints): Prom
     ? system +
       ' A <builder-constraints> profile is attached: weight proposals toward what THIS builder can ' +
       'realistically ship within it, but keep every proposal grounded in the cited evidence.'
-    : system + expandText;
+    : system + expandText + (dailyGeography ? [
+      ' Public daily discovery for ' + dailyGeography + '. Explore end-use industries broadly, independent of the AI capability sector.',
+      ' Consider B2B, B2C, B2B2C, marketplaces, prosumers and other models equally. No model preference or quota.',
+      ' Order by strongest evidence of a paid need first. Identify the end user, paying customer (including the paying side of a marketplace), recurring task, current alternative and concrete advantage.',
+      ' Include researchTarget:{businessModel,user,payer,industry,task}. For businessModel use B2B, B2C, B2B2C, marketplace, prosumer or other. Use short literal search terms (2-5 words) for industry, payer and task. The sector field still describes the AI capability.',
+      ' Estimate monthlyCostUsd for 100 active paying customers, including all their end-user usage in indirect models; breakEvenCustomers counts the same paying unit.',
+      ' For ALL models priceUsd means average monthly revenue to the product per active paying customer. Supply kpis.priceBasis:{kind:"direct"|"commission"|"advertising",usdPerEvent,eventsPerPayerMonth,payer,assumptions,takeRate?}. State how often an active payer pays, including for one-off sales. For ad support identify the advertiser and billable unit. For commissions usdPerEvent is gross merchandise value per transaction, and takeRate is the platform commission fraction (0 to 1). Otherwise usdPerEvent is revenue per billable event. Use null when price or frequency is unknown.',
+    ].join('') : '');
   const user =
     `${ctx.blocks}\n\n<existing-opportunities>\n${existingText}\n</existing-opportunities>` +
     (constraintsText ? `\n\n${constraintsText}` : '');
@@ -437,12 +481,12 @@ export async function proposeOpportunities(constraints?: ScoutConstraints): Prom
   const res = await chatJSON<{ opportunities?: unknown }>(systemText, user, {
     feature: constraints ? 'scout' : 'opportunity',
   });
-  return { drafts: sanitizeOpportunities(res.opportunities, new Set(ctx.refMap.keys()), undefined, maxProposals), ctx };
+  return { drafts: sanitizeOpportunities(res.opportunities, new Set(ctx.refMap.keys()), undefined, maxProposals, !!dailyGeography && !constraints), ctx };
 }
 
 /**
- * Daily opportunity synthesis: one LLM call over the machine's whole picture
- * (pains × market × launches × surges × stories) → scored openings.
+ * Daily public opportunity synthesis: propose openings from signals, research
+ * the finalists, and persist the reviewed openings and their supporting data.
  * Re-detections upsert by slug (briefs and firstSeenAt survive); active
  * opportunities not re-detected for 7 days are archived.
  */
@@ -453,14 +497,17 @@ export async function runOpportunities(): Promise<{
   refreshed: number;
   archived: number;
   debated: number;
+  research?: ResearchStats;
 }> {
   const db = getDb();
-  const { drafts, ctx } = await proposeOpportunities();
+  const geography = opportunityGeography();
+  const { drafts, ctx } = await proposeOpportunities(undefined, geography);
   if (ctx.signalCount < MIN_SIGNALS) {
     console.warn('[opportunities] skipped — not enough signal on the scope yet');
     return { proposed: 0, critiqued: 0, created: 0, refreshed: 0, archived: 0, debated: 0 };
   }
 
+  const research = await researchFinalists(drafts, geography);
   // layers 2+3: the red team attacks every proposal, then the deterministic
   // gate reconciles — the proposer's numbers are never trusted unreviewed
   const critiques = drafts.length > 0 ? await runCritique(drafts, ctx.blocks) : new Map();
@@ -492,6 +539,15 @@ export async function runOpportunities(): Promise<{
       .map((r) => ctx.refMap.get(r))
       .filter((e): e is EvidenceItem => e !== undefined);
     const prior = bySlug.get(d.slug);
+    // An outage or expansion-run cutoff must not erase evidence for an
+    // identical active opening. Never carry it across a scope/thesis change.
+    if (!d.kpis.commercial && prior?.status === 'active' && prior.title === d.title &&
+        prior.thesis === d.thesis && prior.kpis) {
+      try {
+        const saved = parseCommercial(JSON.parse(prior.kpis)?.commercial);
+        if (saved?.geography === geography) d.kpis.commercial = saved;
+      } catch { /* malformed legacy KPI JSON */ }
+    }
     // hysteresis against yesterday's score on plain refreshes; a resurrected
     // archived slug starts fresh (its old score is 7+ days stale)
     const priorScore = prior?.status === 'active' ? prior : null;
@@ -573,6 +629,7 @@ export async function runOpportunities(): Promise<{
     refreshed,
     archived,
     debated,
+    research,
     ...drainLlmUsageStats(),
   };
 }

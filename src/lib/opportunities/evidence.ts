@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm';
 import { getDb } from '../db';
 import { entitySlug } from '../entity';
+import { commercialUrl } from './commercial';
 
 /**
  * Evidence rows come from the opportunity engine as {type, label} text —
@@ -33,8 +34,9 @@ export function entityEvidenceHref(label: string): string | null {
  * with the label (labels are stored as title prefixes, possibly ellipsized).
  * Pain/pattern/market/launches evidence has no target → href null.
  */
-export function enrichEvidence(items: { type: string; label: string }[]): EvidenceItem[] {
+export function enrichEvidence(items: EvidenceItem[]): EvidenceItem[] {
   return items.map((e) => {
+    if (e.type === 'demand') return { ...e, href: typeof e.href === 'string' ? commercialUrl(e.href) : null };
     if (e.type === 'entity') return { ...e, href: entityEvidenceHref(e.label) };
     if (e.type === 'story') {
       const prefix = e.label.replace(/…$/, '').trim().slice(0, 60);

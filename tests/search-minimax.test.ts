@@ -5,25 +5,13 @@ import { adapters } from '@/lib/ingest/adapters';
 import type { Source } from '@/lib/ingest/types';
 import { useTestDb } from './helpers/db';
 
-const messages = {
-  content: [
-    { type: 'thinking', thinking: 'x' },
-    { type: 'server_tool_use', name: 'web_search', input: { query: 'q' } },
-    {
-      type: 'web_search_tool_result',
-      content: [
-        { type: 'web_search_result', title: 'A', url: 'https://a.example/1', page_age: 'Nov 13, 2026', content: 'alpha' },
-        { type: 'web_search_result', title: 'B', url: 'https://b.example/2', page_age: '4 days ago', content: 'beta' },
-      ],
-    },
-    {
-      type: 'web_search_tool_result',
-      content: [
-        { type: 'web_search_result', title: 'A dup', url: 'https://a.example/1', content: 'dup' },
-        { type: 'web_search_result', title: 'C', url: 'https://c.example/3', content: null },
-      ],
-    },
-    { type: 'text', text: 'DONE' },
+const searchResults = {
+  base_resp: { status_code: 0 },
+  organic: [
+    { title: 'A', link: 'https://a.example/1', date: 'Nov 13, 2026', snippet: 'alpha' },
+    { title: 'B', link: 'https://b.example/2', date: '4 days ago', snippet: 'beta' },
+    { title: 'A dup', link: 'https://a.example/1', snippet: 'dup' },
+    { title: 'C', link: 'https://c.example/3', snippet: null },
   ],
 };
 
@@ -43,20 +31,26 @@ afterEach(() => {
 });
 
 describe('minimaxSearch', () => {
-  it('posts the web_search server tool and returns deduped hits from result blocks', async () => {
-    const fn = vi.fn(async () => new Response(JSON.stringify(messages), { status: 200 }));
+  it('posts the query to the MiniMax search API and deduplicates organic results', async () => {
+    const fn = vi.fn(async () => new Response(JSON.stringify(searchResults), { status: 200 }));
     vi.stubGlobal('fetch', fn);
     const hits = await minimaxSearch({ query: 'ai coding' });
     expect(hits.map((h) => h.url)).toEqual(['https://a.example/1', 'https://b.example/2', 'https://c.example/3']);
     expect(hits[0]!.publishedAt?.getUTCFullYear()).toBe(2026);
     expect(hits[1]!.publishedAt).toBeNull(); // "4 days ago" is not a date
     const [url, init] = fn.mock.calls[0] as unknown as [string, RequestInit];
-    expect(url).toContain('/anthropic/v1/messages');
-    expect(JSON.parse(String(init.body)).tools[0].type).toBe('web_search_20250305');
+    expect(url).toContain('/v1/coding_plan/search');
+    expect(JSON.parse(String(init.body))).toEqual({ q: 'ai coding' });
+    expect(new Headers(init.headers).get('authorization')).toBe('Bearer mm-key');
+  });
+
+  it('surfaces provider errors returned with HTTP 200', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json({ base_resp: { status_code: 1004 } })));
+    await expect(minimaxSearch({ query: 'q' })).rejects.toThrow('1004');
   });
 
   it('respects count', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify(messages), { status: 200 })));
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify(searchResults), { status: 200 })));
     expect(await minimaxSearch({ query: 'q', count: 1 })).toHaveLength(1);
   });
 });
@@ -67,7 +61,7 @@ describe('exa adapter → MiniMax fallback', () => {
     const fn = vi.fn(async (input: RequestInfo | URL) => {
       const u = String(input);
       if (u.includes('api.exa.ai')) return new Response('no credit', { status: 402 });
-      if (u.includes('minimax')) return new Response(JSON.stringify(messages), { status: 200 });
+      if (u.includes('minimax')) return new Response(JSON.stringify(searchResults), { status: 200 });
       throw new Error(`unexpected fetch ${u}`);
     });
     vi.stubGlobal('fetch', fn);

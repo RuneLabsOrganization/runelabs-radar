@@ -1,9 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import * as React from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { eq } from 'drizzle-orm';
 import { opportunities } from '@/lib/db/schema';
 import OpportunitiesPage from '@/app/app/build/opportunities/page';
-import OpportunityList from '@/components/OpportunityList';
-import { useTestDb } from './helpers/db';
+import OpportunityList, { type OppView } from '@/components/OpportunityList';
+import { seedUser, useTestDb } from './helpers/db';
+import { commercialFixture } from './fixtures/opportunity-commercial';
 import type { Db } from '@/lib/db';
 
 // pages treat a null viewer as anonymous — enough to render the public radar
@@ -64,10 +67,10 @@ function textOf(node: unknown): string {
   return textOf((node as El).props?.children);
 }
 
-function listProps(tree: unknown): { opps: { id: number }[] } {
+function listProps(tree: unknown): { opps: OppView[] } {
   const list = [...elements(tree)].find((el) => el.type === OpportunityList);
   expect(list).toBeDefined();
-  return list!.props as { opps: { id: number }[] };
+  return list!.props as { opps: OppView[] };
 }
 
 describe('opportunities index payload bounding', () => {
@@ -77,10 +80,30 @@ describe('opportunities index payload bounding', () => {
     const tree = await OpportunitiesPage({ searchParams: Promise.resolve({}) });
     const { opps } = listProps(tree);
     expect(opps).toHaveLength(50);
-    // highest flip scores survive the cap (ordered desc, limited)
+    // With all other inputs equal, improving flip increases the baseline.
     expect(opps.map((o) => o.id)).toContain(60);
     expect(opps.map((o) => o.id)).not.toContain(1);
     expect(textOf(tree)).toContain('showing the top 50 of 60');
+  });
+
+  it('ranks every visible active opening before limiting and defaults to that order on the client', async () => {
+    for (let i = 1; i <= 60; i++) seedOpp(i);
+    const kpis = JSON.stringify({ commercial: commercialFixture, priceUsd: 20, monthlyCostUsd: 100, breakEvenCustomers: 50 });
+    db.update(opportunities).set({ kpis }).where(eq(opportunities.id, 1)).run();
+    db.update(opportunities).set({ kpis, ownerUserId: seedUser(db) }).where(eq(opportunities.id, 59)).run();
+    db.update(opportunities).set({ kpis, verdict: 'reject' }).where(eq(opportunities.id, 60)).run();
+    const firstPage = listProps(await OpportunitiesPage({ searchParams: Promise.resolve({}) })).opps;
+    const full = listProps(await OpportunitiesPage({ searchParams: Promise.resolve({ all: '1' }) })).opps;
+    expect(firstPage.map(o => o.id)).toEqual(full.slice(0, 50).map(o => o.id));
+    expect(firstPage[0].id).toBe(1); // lowest flip, strongest commercial case
+    expect(full.some(o => o.id === 59)).toBe(false);
+    expect(full.at(-1)?.id).toBe(60);
+    const html = renderToStaticMarkup(React.createElement(OpportunityList, {
+      opps: [firstPage[1], firstPage[0]], canGenerate: false,
+    }));
+    expect(html.indexOf('id="opp-1"')).toBeLessThan(html.indexOf(`id="opp-${firstPage[1].id}"`));
+    expect(html).toContain('flip — build &amp; sell');
+    expect(html).toContain('hold — keep for mrr');
   });
 
   it('?all=1 ships the complete active set', async () => {

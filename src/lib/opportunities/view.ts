@@ -2,6 +2,7 @@ import { sanitizeBrief } from './brief';
 import { enrichEvidence, type EvidenceItem } from './evidence';
 import { parseSubScores } from './axes';
 import { sanitizeKpis, type OppKpis } from './engine';
+import { commercialScore } from './ranking';
 import { timeAgo } from '../feed';
 import type { opportunities } from '../db/schema';
 import type { OppReview, OppView, Verdict } from '@/components/OppDossier';
@@ -48,6 +49,25 @@ function parseReview(json: string | null): OppReview | null {
   }
 }
 
+export function rankingFromRow(r: Pick<OppRow, 'id' | 'verdict' | 'flipScore' | 'holdScore' | 'kpis'>) {
+  let kpis: OppKpis | null = null;
+  if (r.kpis) {
+    try {
+      kpis = sanitizeKpis(JSON.parse(r.kpis));
+    } catch {
+      kpis = null;
+    }
+  }
+  return {
+    id: r.id,
+    verdict: r.verdict as Verdict,
+    flipScore: r.flipScore,
+    holdScore: r.holdScore,
+    commercialScore: commercialScore(r.flipScore, r.holdScore, kpis),
+    kpis,
+  };
+}
+
 /** Row → the view model shared by the list page and the detail page. */
 export function oppViewFromRow(r: OppRow): OppView {
   let brief = null;
@@ -58,32 +78,20 @@ export function oppViewFromRow(r: OppRow): OppView {
       brief = null;
     }
   }
-  let kpis: OppKpis | null = null;
-  if (r.kpis) {
-    try {
-      kpis = sanitizeKpis(JSON.parse(r.kpis));
-    } catch {
-      kpis = null;
-    }
-  }
   // the ONE shared parser decides both the sub-scores and the legacy flag —
   // the dossier never scores a stored row differently from rescore/forge
   const parsedScores = parseSubScores(r.scores);
   const legacy = parsedScores.legacy;
   const evidence: EvidenceItem[] = enrichEvidence(parseEvidence(r.evidence));
   return {
-    id: r.id,
+    ...rankingFromRow(r),
     title: r.title,
     thesis: r.thesis,
     sector: r.sector,
     window: r.window,
-    flipScore: r.flipScore,
-    holdScore: r.holdScore,
-    verdict: r.verdict as Verdict,
     confidence: r.confidence,
     review: parseReview(r.review),
     sub: parsedScores.sub,
-    kpis,
     legacy,
     evidence,
     brief,

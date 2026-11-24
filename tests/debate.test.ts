@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+vi.mock('@/lib/opportunities/demand-signals', () => ({ addDemandSignals: vi.fn() }));
 import { eq } from 'drizzle-orm';
 import { _setFetch } from '@/lib/llm/minimax';
 import { runDebate } from '@/lib/opportunities/critic';
@@ -6,6 +7,8 @@ import { runOpportunities, SUB_KEYS } from '@/lib/opportunities/engine';
 import { generatePlan } from '@/lib/plans/generate';
 import { debates, llmCalls, opportunities, painPoints, stories } from '@/lib/db/schema';
 import { seedUser, useTestDb } from './helpers/db';
+
+vi.mock('@/lib/opportunities/research', () => ({ opportunityGeography: () => 'United States', researchFinalists: vi.fn() }));
 
 const authHooks = vi.hoisted(() => ({
   currentUser: null as { id: number; name: string; role: 'admin' | 'member' } | null,
@@ -66,6 +69,7 @@ const REALIST = {
 };
 const JUDGE = {
   verdict: 'pursue',
+  businessModel: 'prosumer',
   confidence: 78,
   reasoning:
     'Demand evidence is multi-source and the economics close inside the window; platform risk is real but mitigated by the API-first positioning.',
@@ -157,6 +161,7 @@ describe('runDebate', () => {
     expect(transcript.map((t) => t.role)).toEqual(['advocate', 'skeptic', 'realist', 'judge']);
     // the judge's turn carries the structured outcome for the dossier page
     expect(transcript[3]!.killRisks).toEqual(JUDGE.killRisks);
+    expect(transcript[3]!.businessModel).toBe('prosumer');
     expect(transcript[3]!.conditionsToSucceed).toEqual(JUDGE.conditionsToSucceed);
     expect(transcript[3]!.strengthenedVariants).toHaveLength(3);
   });

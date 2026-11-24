@@ -9,6 +9,8 @@ import type { OppBrief as OppBriefType } from '@/lib/opportunities/brief';
 import type { EvidenceItem } from '@/lib/opportunities/evidence';
 import SpiderChart from './SpiderChart';
 import { gradeColor } from '@/lib/opportunities/axes';
+import { opportunityScore, type OpportunitySort } from '@/lib/opportunities/ranking';
+import CommercialResearch from './CommercialResearch';
 
 export type Verdict = 'pursue' | 'watch' | 'reject';
 
@@ -27,6 +29,7 @@ export interface OppView {
   window: string | null;
   flipScore: number;
   holdScore: number;
+  commercialScore: number;
   verdict: Verdict;
   confidence: number;
   review: OppReview | null;
@@ -123,10 +126,10 @@ export function LaunchChecks({ sub }: { sub: SubScores }) {
 export function ScoreBar({ label, value, emphasized }: { label: string; value: number; emphasized: boolean }) {
   return (
     <span className="flex items-center gap-2" title={`${label} score ${value}/100`}>
-      <span className="mono w-8 text-[10px] tracking-[0.1em] uppercase" style={{ color: emphasized ? 'var(--phosphor)' : 'var(--ink-4)' }}>
+      <span className="mono w-[66px] shrink-0 text-[10px] tracking-[0.06em] uppercase" style={{ color: emphasized ? 'var(--phosphor)' : 'var(--ink-4)' }}>
         {label}
       </span>
-      <span className="h-[4px] min-w-16 flex-1 rounded-[1px]" style={{ background: 'var(--grat-soft)' }}>
+      <span className="h-[4px] flex-1 rounded-[1px]" style={{ background: 'var(--grat-soft)' }}>
         <span
           className="anim-bar block h-full rounded-[1px]"
           style={{ width: `${value}%`, background: emphasized ? gradeColor(value) : 'var(--grat-strong)', opacity: 0.85 }}
@@ -247,7 +250,7 @@ function EvidenceItemRow({ item }: { item: EvidenceItem }) {
  * The full opportunity dossier, shared by card expansion (list page) and the
  * detail page. Server-rendered; the brief flow lives separately (BriefSection).
  */
-export default function OppDossier({ opp, sortKey }: { opp: OppView; sortKey: 'flip' | 'hold' }) {
+export default function OppDossier({ opp, sortKey }: { opp: OppView; sortKey: OpportunitySort }) {
   const k = opp.kpis;
   return (
     <div className="gap-6 md:grid md:grid-cols-[218px_minmax(0,1fr)]">
@@ -260,9 +263,10 @@ export default function OppDossier({ opp, sortKey }: { opp: OppView; sortKey: 'f
             arrives on the next sweep
           </p>
         ) : (
-          <SpiderChart sub={opp.sub} grade={sortKey === 'flip' ? opp.flipScore : opp.holdScore} />
+          <SpiderChart sub={opp.sub} grade={opportunityScore(opp, sortKey)} />
         )}
         <div className="mt-1 flex flex-col gap-1.5">
+          <ScoreBar label="commercial" value={opp.commercialScore} emphasized={sortKey === 'commercial'} />
           <ScoreBar label="flip" value={opp.flipScore} emphasized={sortKey === 'flip'} />
           <ScoreBar label="hold" value={opp.holdScore} emphasized={sortKey === 'hold'} />
         </div>
@@ -276,13 +280,24 @@ export default function OppDossier({ opp, sortKey }: { opp: OppView; sortKey: 'f
 
         {/* hard numbers */}
         <div className="mt-3.5 flex flex-wrap gap-x-7 gap-y-2.5 border-t border-[var(--grat-soft)] pt-3">
-          <KpiTile label="initial cost" value={k?.initialCostUsd !== null && k ? fmtUsd(k.initialCostUsd!) : null} />
-          <KpiTile label="run / mo" value={k?.monthlyCostUsd !== null && k ? fmtUsd(k.monthlyCostUsd!) : null} />
-          <KpiTile label="price / mo" value={k?.priceUsd !== null && k ? fmtUsd(k.priceUsd!) : null} />
+          <KpiTile label="initial cost" value={k?.initialCostUsd != null ? fmtUsd(k.initialCostUsd) : null} />
+          <KpiTile label={k?.priceBasis ? 'run / mo · 100 payers' : 'run / mo · 100 users'} value={k?.monthlyCostUsd != null ? fmtUsd(k.monthlyCostUsd) : null} />
+          <KpiTile label={k?.priceBasis ? 'revenue / active payer / mo' : 'stated price / mo'} value={k?.priceUsd != null ? fmtUsd(k.priceUsd) : null} />
           <KpiTile label="time to mvp" value={fmtDays(k?.timeToMvpDays ?? null)} />
-          <KpiTile label="break-even" value={k?.breakEvenCustomers != null ? `${Math.round(k.breakEvenCustomers)} cust` : null} />
+          <KpiTile label="customer target" value={k?.breakEvenCustomers != null ? `${Math.round(k.breakEvenCustomers)} cust` : null} />
           <KpiTile label="window" value={opp.window} />
         </div>
+        {k?.priceBasis && (
+          <p className="mt-2 text-[12px] leading-relaxed text-ink-3">
+            {k.priceBasis.payer} · {k.priceBasis.kind} · {fmtUsd(k.priceBasis.usdPerEvent)}
+            {k.priceBasis.kind === 'commission' ? ' in gross transaction value' : ' revenue'} per event
+            {' '}× {k.priceBasis.eventsPerPayerMonth} events per active payer per month
+            {k.priceBasis.kind === 'commission' && k.priceBasis.takeRate != null && ` × ${Number((100 * k.priceBasis.takeRate).toPrecision(5))}% commission`}.
+            {' '}{k.priceBasis.assumptions}
+          </p>
+        )}
+
+        <CommercialResearch profile={k?.commercial} audience={k?.audience} />
 
         {/* risk panel */}
         {!opp.legacy && (
@@ -309,10 +324,10 @@ export default function OppDossier({ opp, sortKey }: { opp: OppView; sortKey: 'f
 
         {opp.evidence.length > 0 && (
           <div className="mono mt-2.5 flex flex-wrap gap-x-3 gap-y-1 text-[10.5px]" style={{ color: 'var(--ink-3)' }}>
-            {opp.evidence.slice(0, 4).map((e, i) => (
+            {opp.evidence.slice(0, 6).map((e, i) => (
               <EvidenceItemRow key={i} item={e} />
             ))}
-            {opp.evidence.length > 4 && <span style={{ color: 'var(--ink-4)' }}>+{opp.evidence.length - 4}</span>}
+            {opp.evidence.length > 6 && <span style={{ color: 'var(--ink-4)' }}>+{opp.evidence.length - 6}</span>}
           </div>
         )}
 
