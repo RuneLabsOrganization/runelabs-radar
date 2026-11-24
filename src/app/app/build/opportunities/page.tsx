@@ -15,9 +15,9 @@ import OpportunityList from '@/components/OpportunityList';
 import PageHeader from '@/components/PageHeader';
 
 export const metadata = {
-  title: 'Opportunities — monetizable openings',
+  title: 'Opportunities — business viability',
   description:
-    'Compare opportunities by commercial potential, acquisition economics, reachable buyers and evidence. Explore flip and hold scores for each opening.',
+    'Compare business viability, estimated cash for the first 10 paying customers and total launch cash. Explore flip and hold scores for each opportunity.',
 };
 
 /**
@@ -68,9 +68,8 @@ export default async function OpportunitiesPage({
         title="Opportunities"
         description={
           <>
-            Commercial rank combines flip and hold potential with acquisition costs, reachable buyers,
-            time to pilot and supporting research. All business models use the same scale.
-            Open a dossier to inspect the estimates, assumptions and sources.
+            Compare opportunities across business models and see how much cash it could take to reach the first 10 paying customers.
+            Open a dossier for the assumptions, cost ranges and sources.
           </>
         }
       />
@@ -87,7 +86,7 @@ export default async function OpportunitiesPage({
         <div className="mt-6">
           {all !== '1' && activeCount > views.length && (
             <p className="mono mb-3 text-[10.5px] text-ink-4">
-              showing the top {views.length} of {activeCount} by commercial rank ·{' '}
+              showing the top {views.length} of {activeCount} by business viability ·{' '}
               <Link
                 href={`${paths.opportunities}?all=1`}
                 className="underline decoration-grat-strong underline-offset-2 hover:text-ink-3"

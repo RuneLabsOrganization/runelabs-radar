@@ -1,5 +1,7 @@
 import { weightedChannelCac, type CommercialProfile } from './commercial';
 import type { OppKpis } from './engine';
+import { matchedUsComparable } from './comparable-product';
+import { soloValidationPilot } from './channel-cac';
 
 type BootstrapKpis = Pick<OppKpis, 'initialCostUsd' | 'monthlyCostUsd' | 'timeToMvpDays'>;
 const months = 3;
@@ -38,11 +40,14 @@ export function bootstrapAssessment(kpis: BootstrapKpis, profile: CommercialProf
     : 'The cash proxy includes no separate allowance for customer acquisition, partner launch costs or founder pay.';
   const timeNote = daysBasis === null ? 'Timing unknown; no time credit.' :
     daysBasis === 'MVP' ? `${days} days to MVP as a proxy; paid-pilot timing unknown.` : `${days} days to first paid pilot.`;
+  const product = matchedUsComparable(profile);
+  const soloPilot = product && soloValidationPilot(product, profile);
   return {
     points: Math.round((cashPoints + timePoints) * 100) / 100,
     initialCostUsd, monthlyCostUsd, days, daysBasis,
     ...(firstTenCashUsd && { firstTenCashUsd }),
     ...(launchCashUsd && { launchCashUsd }),
+    ...(soloPilot && { soloPilot }),
     assumptions: `${cashNote} Build excludes salaries. Monthly operations are modeled at a reference scale of 100 active payers. ` +
       `${acquisitionNote} ${timeNote} Cash and speed each contribute up to 5 points. $${budgetUsd} in modeled costs and ${timeAnchorDays} days each earn half their component.`,
   };

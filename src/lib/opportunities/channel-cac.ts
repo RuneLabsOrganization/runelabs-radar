@@ -1,4 +1,4 @@
-import type { CommercialProfile, CommercialSource } from './commercial';
+import { commercialUrl, type CommercialProfile, type CommercialSource } from './commercial';
 import { matchedUsComparable } from './comparable-product';
 
 type Channel = {
@@ -99,14 +99,17 @@ function referrals(product: Product, price: number): Channel {
 }
 
 const launchTargets = {
-  optmyzr: { guide: 'PPC account audit', prospect: 'PPC agency owners on public agency sites' },
-  elevar: { guide: 'Shopify event tracking', prospect: 'Shopify merchants via storefront business contacts' },
-  voluum: { guide: 'affiliate postback tracking', prospect: 'affiliate media buyers via public team sites' },
+  optmyzr: { guide: 'PPC account audit', prospect: 'PPC agency owners on public agency sites',
+    offer: 'a paid spreadsheet alert audit using the client’s PPC export' },
+  elevar: { guide: 'Shopify event tracking', prospect: 'Shopify merchants via storefront business contacts',
+    offer: 'a paid tracking checklist using the merchant’s event log' },
+  voluum: { guide: 'affiliate postback tracking', prospect: 'affiliate media buyers via public team sites',
+    offer: 'a paid click-to-sale diagnosis using the client’s click and sales exports' },
 };
 
 // Allocate launch work across expected distinct first payers. A small campaign can close zero.
 function cohortCost(cash: number, hours: number, payers: number) {
-  return { payers, cash: cents(cash / payers), allIn: cents((cash + hours * laborUsd) / payers) };
+  return { hours, payers, cash: cents(cash / payers), allIn: cents((cash + hours * laborUsd) / payers) };
 }
 
 function organicPilot(visitors: number, researchCash: number) {
@@ -114,9 +117,11 @@ function organicPilot(visitors: number, researchCash: number) {
   return cohortCost(researchCash, 2 * 8 + 3 + qualified * 0.5, qualified * (8 / 75) * 0.5);
 }
 
+const outreachAccounts = 300;
+
 function outboundPilot(verificationCash: number, replyToPaid: number) {
-  const replies = 300 * 0.0051;
-  const hours = 4 + 300 * 4 / 60 + replies * 0.5;
+  const replies = outreachAccounts * 0.0051;
+  const hours = 4 + outreachAccounts * 4 / 60 + replies * 0.5;
   return cohortCost(verificationCash, hours, replies * replyToPaid);
 }
 
@@ -154,6 +159,34 @@ function founderOutbound(product: Product): Channel {
     ...campaignRange(outbound),
     assumptions: `90 days: 300 US ${launchTargets[product].prospect}, one cold email per distinct payer account. Exclude warm introductions. Belkins US replies/send: 0.51%. Assume 20%/10%/5% of all replies qualify and pay by day 90. Founder time: 4h setup + 4 min/account for research and email + 0.5h/reply for follow-up and demos at $59.80/h. Cash: existing mailbox, $0/$15/$30 extra for manual vs paid address checks. Divide cohort costs by expected first payers; even the favorable batch may close none.`,
     sourceIds: ['C11', 'C2'],
+  };
+}
+
+/** Resolve the channel evidence after the dossier has assigned its own citation IDs. */
+export function soloValidationPilot(product: Product, profile: CommercialProfile) {
+  const sourceIds = new Set<string>();
+  for (const model of [organicInbound(product), founderOutbound(product)]) {
+    const matches = profile.cacChannels?.filter(c => c.channel === model.channel);
+    if (matches?.length !== 1) return;
+    const cited = profile.sources.filter(s => matches[0].sourceIds.includes(s.id));
+    for (const id of model.sourceIds) {
+      const url = evidence.find(s => s.id === id)?.url;
+      const source = cited.find(s => commercialUrl(s.url) === url);
+      if (!source) return;
+      sourceIds.add(source.id);
+    }
+  }
+  const volunteerRecruitmentHours = 2;
+  const extraMinutesPerCheck = 1;
+  const founderHours = organic.base.hours + outbound.base.hours + volunteerRecruitmentHours + outreachAccounts * extraMinutesPerCheck / 60;
+  const { guide, prospect, offer } = launchTargets[product];
+  return {
+    acquisitionCashUsd: 0 as const,
+    founderHours,
+    expectedPayers: organic.base.payers + outbound.base.payers,
+    days: 90 as const,
+    assumptions: `Before building, offer ${offer}, delivered manually. Publish 2 ${guide} guides on the existing site without ads. Manually email ${outreachAccounts} US ${prospect} from the existing inbox. Founder only: base acquisition hours plus ${volunteerRecruitmentHours}h recruiting for voluntary unpaid interviews and ${extraMinutesPerCheck} extra minute/address for manual verification. Assume free methods preserve base exposure and conversion across distinct payers. Sales may be zero. Excludes delivery time, revenue and cash for ten payers.`,
+    sourceIds: [...sourceIds],
   };
 }
 

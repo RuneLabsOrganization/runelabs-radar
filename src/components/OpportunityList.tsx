@@ -8,7 +8,7 @@ import { fmtUsd } from '@/lib/costs';
 import { gradeBand, gradeColor } from '@/lib/opportunities/axes';
 import { compareOpportunities, opportunityScore, type OpportunitySort } from '@/lib/opportunities/ranking';
 import { paths } from '@/lib/urls';
-import OppDossier, { LaunchChecks, ScoreBar, VerdictChip, type OppView } from './OppDossier';
+import OppDossier, { LaunchCashSummary, LaunchChecks, ScoreBar, VerdictChip, type OppView } from './OppDossier';
 import BriefSection from './BriefSection';
 import OpportunityMap from './OpportunityMap';
 import PortfolioScatter from './PortfolioScatter';
@@ -18,6 +18,7 @@ import { AudienceSummary } from './CommercialResearch';
 export type { OppView } from './OppDossier';
 
 const ANALYSIS_KEY = 'radar.oppanalysis';
+const sortLabels = { commercial: 'Business viability', flip: 'flip — build & sell', hold: 'hold — keep for mrr' };
 
 function Card({
   opp,
@@ -97,11 +98,12 @@ function Card({
             {(k?.commercial || k?.audience) && (
               <div className="mt-2"><AudienceSummary profile={k.commercial} audience={k.audience} /></div>
             )}
+            {k?.commercial && <LaunchCashSummary profile={k.commercial} showSoloPilot />}
             <div className="mono mt-2.5 flex flex-wrap gap-x-4 gap-y-1 text-[10.5px]" style={{ color: 'var(--ink-4)' }}>
               {k?.commercial ? (
                 <span>Research · {k.commercial.geography}</span>
               ) : <span>Commercial research unavailable</span>}
-              {k?.initialCostUsd != null && <span>cost {fmtUsd(k.initialCostUsd)}</span>}
+              {k?.initialCostUsd != null && <span>build {fmtUsd(k.initialCostUsd)}</span>}
               {k?.priceUsd != null && <span>{fmtUsd(k.priceUsd)} {k.priceBasis ? 'revenue/payer/mo' : 'stated price/mo'}</span>}
               {k?.timeToMvpDays != null && <span>mvp ~{Math.round(k.timeToMvpDays)}d</span>}
               {opp.window && <span>window {opp.window}</span>}
@@ -120,12 +122,12 @@ function Card({
               </div>
             )}
           </div>
-          <div className="flex shrink-0 flex-col gap-1.5 sm:w-[160px]">
-            <ScoreBar label="commercial" value={opp.commercialScore} emphasized={sortKey === 'commercial'} />
+          <div className="flex shrink-0 flex-col gap-1.5 sm:w-[196px]">
+            <ScoreBar label={sortLabels.commercial} value={opp.commercialScore} emphasized={sortKey === 'commercial'} />
             <ScoreBar label="flip" value={opp.flipScore} emphasized={sortKey === 'flip'} />
             <ScoreBar label="hold" value={opp.holdScore} emphasized={sortKey === 'hold'} />
             <span className="mono mt-0.5 flex items-baseline justify-between text-[11px]">
-              <span style={{ color: gradeColor(primary) }} title={`${sortKey} score ${primary}/100`}>
+              <span style={{ color: gradeColor(primary) }} title={`${sortLabels[sortKey]} score ${primary}/100`}>
                 {sortKey === 'commercial' && !k?.commercial ? 'provisional' : gradeBand(primary)}
               </span>
               <span style={{ color: 'var(--ink-4)' }}>{dossier ? '▾ dossier' : '▸ dossier'}</span>
@@ -209,18 +211,8 @@ export default function OpportunityList({ opps, canGenerate }: { opps: OppView[]
 
   return (
     <div>
-      <div className="mono mb-3 flex flex-wrap items-center gap-1.5 text-[10px] tracking-[0.06em]">
-        <button
-          type="button"
-          onClick={toggleAnalysis}
-          aria-pressed={analysis}
-          title="show the field charts — treemap, cost scatter, assessment matrix"
-          className={chipCls(analysis)}
-        >
-          ▦ field analysis
-        </button>
-        <span className="mx-2 h-[10px] w-px" style={{ background: 'var(--grat)' }} aria-hidden />
-        <span style={{ color: 'var(--ink-4)' }}>sort</span>
+      <div role="group" aria-label="Sort by" className="mono flex flex-wrap items-center gap-1.5 text-[10px] tracking-[0.06em]">
+        <span className="mr-1 text-ink-3">Sort by</span>
         {(['commercial', 'flip', 'hold'] as const).map((k) => (
           <button
             key={k}
@@ -229,11 +221,19 @@ export default function OpportunityList({ opps, canGenerate }: { opps: OppView[]
             aria-pressed={sortKey === k}
             className={chipCls(sortKey === k)}
           >
-            {{ commercial: 'commercial', flip: 'flip — build & sell', hold: 'hold — keep for mrr' }[k]}
+            {sortLabels[k]}
           </button>
         ))}
-        <span className="mx-2 h-[10px] w-px" style={{ background: 'var(--grat)' }} aria-hidden />
-        <span style={{ color: 'var(--ink-4)' }}>AI capability</span>
+      </div>
+      <p className="my-2 max-w-3xl text-[12px] leading-relaxed text-ink-2">
+        {sortKey === 'commercial'
+          ? 'Higher scores favor reachable buyers, stronger margins and lower launch costs. Ties favor lower base acquisition cash for the first 10 payers. Unknown cash estimates come last among ties.'
+          : sortKey === 'flip'
+            ? 'Higher flip scores come first. This view favors opportunities to build a product and sell the business.'
+            : 'Higher hold scores come first. This view favors opportunities to keep the business and earn recurring revenue.'}
+      </p>
+      <div role="group" aria-label="Filters" className="mono mb-3 flex flex-wrap items-center gap-1.5 text-[10px] tracking-[0.06em]">
+        <span className="mr-1 text-ink-3">Filter by AI capability</span>
         <button
           type="button"
           onClick={() => setSector(null)}
@@ -269,6 +269,15 @@ export default function OpportunityList({ opps, canGenerate }: { opps: OppView[]
         )}
       </div>
 
+      <button
+        type="button"
+        onClick={toggleAnalysis}
+        aria-pressed={analysis}
+        title="show the field charts — treemap, cost scatter, assessment matrix"
+        className={`mono mb-3 text-[10px] ${chipCls(analysis)}`}
+      >
+        ▦ field analysis
+      </button>
       {analysis && (
         <>
           <OpportunityMap opps={visible} sortKey={sortKey} onSelect={setSelectedId} />

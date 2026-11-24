@@ -24,6 +24,32 @@ const render = (profile: ComponentProps<typeof CommercialResearch>['profile']) =
   renderToStaticMarkup(createElement(CommercialResearch, { profile }));
 const text = (html: string) => html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
 
+it('places the sourced solo pilot before market research and keeps its budget distinct from launch costs', () => {
+  const soloPilot = { acquisitionCashUsd: 0 as const, founderHours: 52.265, expectedPayers: 0.31300000000000006, days: 90 as const,
+    assumptions: 'Offer a paid trial to studios using the existing mailing list.', sourceIds: ['S1'] };
+  const html = render({ ...channels, cac: modeled, channelMix: mix, bootstrap: { ...bootstrap, soloPilot,
+    firstTenCashUsd: { low: 125, base: 385, high: 687.5 } } });
+  const panel = html.match(/<section aria-label="Solo founder pilot"[^>]*>[\s\S]*?<\/section>/)?.[0] ?? '';
+  expect(panel).toBeTruthy();
+  expect(html.indexOf(panel)).toBeLessThan(html.indexOf('Reachable buyers'));
+  expect(html.indexOf(panel)).toBeLessThan(html.indexOf('<details'));
+  for (const expected of ['Acquisition spend $0', 'Founder time about 52 h', 'Expected paying customers 0.31 Pilot duration',
+    'Pilot duration 90 days', soloPilot.assumptions, 'existing tools', 'build and operate the product',
+    'The pilot may finish with zero paying customers.']) expect(text(panel)).toContain(expected);
+  expect(panel).toContain('href="https://example.org/studios"');
+  expect(panel).not.toContain('href="https://example.org/pricing"');
+  expect(text(html)).toContain('All-in CAC includes the modeled cost of acquisition work per new paying customer.');
+  expect(text(html)).toContain('Acquisition cash for the first 10 paying customers $385.00 base');
+  expect(text(html)).toContain('Business viability score and ranking');
+  expect(text(html)).toContain('When business viability scores tie, lower base acquisition cash for the first 10 paying customers');
+});
+
+it('omits the solo plan on older dossiers, including those with a bootstrap score', () => {
+  for (const profile of [undefined, commercialFixture, { ...commercialFixture, bootstrap }]) {
+    expect(render(profile)).not.toContain('Solo founder pilot');
+  }
+});
+
 it('shows the blended cost, every channel share, assumptions and the linked evidence together', () => {
   const html = render({ ...channels, cac: modeled, channelMix: mix });
   const table = text(html.match(/<table\b[^>]*>[\s\S]*?<\/table>/)?.[0] ?? '');

@@ -144,6 +144,39 @@ describe('oppViewFromRow — current shape', () => {
 });
 
 describe('oppViewFromRow — commercial profile', () => {
+  it('shows base cash on a collapsed card and in the dossier, with a separate validation-only pilot on the card', () => {
+    const view = oppViewFromRow(row({ kpis: JSON.stringify({ commercial: commercialFixture }) }));
+    view.kpis!.commercial = {
+      ...commercialFixture,
+      bootstrap: {
+        points: 6, initialCostUsd: 540, monthlyCostUsd: 160, days: 14, daysBasis: 'paid pilot',
+        firstTenCashUsd: { low: 800, base: 1234.56, high: 2300 },
+        launchCashUsd: { low: 1820, base: 2254.56, high: 3320 }, assumptions: 'First 10 payers.',
+        soloPilot: { acquisitionCashUsd: 0, founderHours: 51.765, expectedPayers: 0.2, days: 90,
+          assumptions: 'Use existing tools.', sourceIds: ['S1'] },
+      },
+    };
+    const card = renderToStaticMarkup(React.createElement(OpportunityList, { opps: [view], canGenerate: false }));
+    const dossier = renderToStaticMarkup(React.createElement(OppDossier, { opp: view, sortKey: 'commercial' }));
+    for (const html of [card, dossier]) {
+      expect(html).toContain('Acquisition cash for 10 payers');
+      expect(html).toContain('$1,234.56');
+      expect(html).toContain('Total launch cash');
+      expect(html).toContain('$2,254.56');
+      expect(html).toContain('acquisition + build + 3-month reserve');
+    }
+    for (const value of ['Solo pilot · validation only', '$0.00', 'Planned acquisition spend', 'founder time about 52 h']) {
+      expect(card).toContain(value);
+    }
+  });
+
+  it('marks missing research cash estimates as unknown instead of borrowing the per-payer CAC', () => {
+    const view = oppViewFromRow(row({ kpis: JSON.stringify({ commercial: commercialFixture }) }));
+    const html = renderToStaticMarkup(React.createElement(OpportunityList, { opps: [view], canGenerate: false }));
+    expect(html.match(/>Unknown</g)).toHaveLength(2);
+    expect(html).not.toContain('Solo pilot · validation only');
+  });
+
   it('shows proposal audience on the card and dossier without awarding research points', () => {
     const audience = { businessModel: 'B2B2C', industry: 'Music education', user: 'Piano pupils', payer: 'Music schools' };
     const view = oppViewFromRow(row({ kpis: JSON.stringify({ audience }) }));
