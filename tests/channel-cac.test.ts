@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { comparableChannels, founderPilotPayers } from '@/lib/opportunities/channel-cac';
-import { type CommercialProfile } from '@/lib/opportunities/commercial';
+import { bootstrapAssessment } from '@/lib/opportunities/bootstrap';
+import { parseCommercial, type CommercialProfile } from '@/lib/opportunities/commercial';
 
 const cohorts = {
   optmyzr: { name: 'Optmyzr', url: 'https://www.optmyzr.com/', payer: 'PPC agencies', industry: 'Paid search' },
@@ -18,6 +19,39 @@ function profile(product: keyof typeof cohorts): CommercialProfile {
 }
 
 describe('comparable US acquisition channels', () => {
+  it.each([
+    ['optmyzr', 'spreadsheet alert audit', 'PPC export'],
+    ['elevar', 'tracking checklist', 'event log'],
+    ['voluum', 'click-to-sale diagnosis', 'click and sales exports'],
+  ] as const)('attaches a zero-cash solo pilot only to the cited %s dossier', (product, offer, input) => {
+    const p = profile(product);
+    const { channels, sources } = comparableChannels(p, 100)!;
+    const localId = (id: string) => id.replace('C', 'S');
+    p.sources.push(...sources.map(s => ({ ...s, id: localId(s.id) })));
+    p.cacChannels = channels.map(c => ({ ...c, sourceIds: c.sourceIds.map(localId) }));
+    const costs = { initialCostUsd: 200, monthlyCostUsd: 50, timeToMvpDays: 30 };
+    const assess = (changes: Partial<CommercialProfile>) => bootstrapAssessment(costs, { ...p, ...changes });
+    const { soloPilot, points } = assess({});
+    expect(soloPilot).toMatchObject({ days: 90, acquisitionCashUsd: 0, sourceIds: ['S10', 'S2', 'S11'] });
+    const stored = parseCommercial({ ...p, cac: { ...p.cacChannels[0], kind: 'scenario' }, bootstrap: assess({}) });
+    expect(stored?.bootstrap?.soloPilot).toEqual(soloPilot);
+    const payers = founderPilotPayers();
+    expect(soloPilot!.expectedPayers).toBeCloseTo(payers.organic.base + payers.outbound.base, 14);
+    expect(soloPilot!.founderHours).toBeCloseTo(20.5 + 24.765 + 2 + 300 / 60, 12);
+    for (const phrase of [offer, input, 'Before building', 'delivered manually', '2 ', 'email 300', 'voluntary unpaid',
+      'extra minute/address', 'free methods preserve base exposure and conversion', 'Sales may be zero']) {
+      expect(soloPilot!.assumptions).toContain(phrase);
+    }
+    expect(soloPilot!.assumptions.length).toBeLessThanOrEqual(600);
+    for (const changes of [{ geography: 'Canada' }, { competition: [] }, { cacChannels: undefined },
+      { cacChannels: p.cacChannels.slice(0, -1) }, { sources: p.sources.filter(s => s.id !== 'S11') },
+      { cacChannels: p.cacChannels.map(c => ({ ...c, sourceIds: ['S2', 'V1'] })) }]) {
+      const result = assess(changes);
+      expect(result).not.toHaveProperty('soloPilot');
+      expect(result.points).toBe(points);
+    }
+  });
+
   it('exports the unrounded 90-day pilot denominators used for CAC', () => {
     const payers = founderPilotPayers();
     const [organic, outbound] = comparableChannels(profile('optmyzr'), null)!.channels.slice(-2);

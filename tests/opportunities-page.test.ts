@@ -102,6 +102,11 @@ describe('opportunities index payload bounding', () => {
       opps: [firstPage[1], firstPage[0]], canGenerate: false,
     }));
     expect(html.indexOf('id="opp-1"')).toBeLessThan(html.indexOf(`id="opp-${firstPage[1].id}"`));
+    expect(html).toContain('aria-label="Sort by"');
+    expect(html).toContain('aria-label="Filters"');
+    expect(html).toContain('Business viability');
+    expect(html).toContain('Ties favor lower base acquisition cash for the first 10 payers.');
+    expect(html).toContain('Unknown cash estimates come last among ties.');
     expect(html).toContain('flip — build &amp; sell');
     expect(html).toContain('hold — keep for mrr');
   });

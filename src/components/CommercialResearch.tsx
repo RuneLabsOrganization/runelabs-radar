@@ -7,7 +7,14 @@ const dollars = new Intl.NumberFormat('en-US', {
   style: 'currency', currency: 'USD', maximumSignificantDigits: 4,
 });
 const counts = new Intl.NumberFormat('en-US');
+const expectedCustomers = new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 });
 const cashDollars = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
+
+function formatPilotHours(hours: number) {
+  if (hours < 1) return '<1 h';
+  const rounded = Math.round(hours);
+  return `${hours === rounded ? '' : 'about '}${counts.format(rounded)} h`;
+}
 
 function Scenario({ label, range, format }: {
   label: string;
@@ -54,6 +61,7 @@ export default function CommercialResearch({ profile, audience }: ResearchProps)
   const ai = profile?.execution?.ai;
   const mix = profile?.channelMix;
   const bootstrap = profile?.bootstrap;
+  const soloPilot = bootstrap?.soloPilot;
   return (
     <section aria-label="Commercial research" className="mt-4 space-y-2 border-t border-[var(--grat-soft)] pt-3 text-[12px] leading-relaxed text-ink-2">
       <h3 className="readout">Commercial research</h3>
@@ -61,6 +69,21 @@ export default function CommercialResearch({ profile, audience }: ResearchProps)
       {profile ? (
         <>
           <p className="mono text-[11px]">Research geography · {profile.geography} · researched {profile.researchedAt.slice(0, 10)}</p>
+          {soloPilot && (
+            <section aria-label="Solo founder pilot" className="space-y-2 border-y border-[var(--grat-soft)] py-3">
+              <h4 className="font-semibold text-ink">Solo founder pilot</h4>
+              <p>Test willingness to pay using existing tools. Budget separately to build and operate the product.</p>
+              <dl className="grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-4">
+                <div><dt>Acquisition spend</dt><dd className="mono text-ink">{dollars.format(soloPilot.acquisitionCashUsd)}</dd></div>
+                <div><dt>Founder time</dt><dd className="mono text-ink">{formatPilotHours(soloPilot.founderHours)}</dd></div>
+                <div><dt>Expected paying customers</dt><dd className="mono text-ink">{soloPilot.expectedPayers > 0 && soloPilot.expectedPayers < 0.01
+                  ? '<0.01' : expectedCustomers.format(soloPilot.expectedPayers)}</dd></div>
+                <div><dt>Pilot duration</dt><dd className="mono text-ink">{soloPilot.days} days</dd></div>
+              </dl>
+              <p>{soloPilot.assumptions} {citations(soloPilot.sourceIds)}</p>
+              <p className="text-ink-3">The pilot may finish with zero paying customers.</p>
+            </section>
+          )}
           <p>Scenario estimates depend on the buyer, channel and usage assumptions below.</p>
           {profile.sectorSpending && (
             <p><strong>Observed sector spending</strong> · {dollars.format(profile.sectorSpending.usd)} · {profile.sectorSpending.category}
@@ -103,7 +126,8 @@ export default function CommercialResearch({ profile, audience }: ResearchProps)
           {mix && (
             <div className="space-y-1">
               <Scenario label="Blended CAC" range={mix.usd} format={dollars} />
-              <p>Payback uses the high blended CAC of {dollars.format(mix.usd.high)} per new paying customer.</p>
+              <p>All-in CAC includes the modeled cost of acquisition work per new paying customer.
+                Payback uses the high blended CAC of {dollars.format(mix.usd.high)} per new paying customer.</p>
               <div className="overflow-x-auto">
                 <table className="w-full text-right tabular-nums [&_td]:pl-2">
                   <caption className="pb-1 text-left text-ink-3">Channel shares · % of new paying customers acquired via modeled routes</caption>
@@ -158,7 +182,7 @@ export default function CommercialResearch({ profile, audience }: ResearchProps)
               {bootstrap.firstTenCashUsd ? (
                 <>
                   <Scenario label="Acquisition cash for the first 10 paying customers" range={bootstrap.firstTenCashUsd} format={cashDollars} />
-                  <p className="text-ink-3">This estimate assumes 10 new paying customers through the modeled routes. Actual customer counts and spending can vary.</p>
+                  <p className="text-ink-3">This counts cash paid out through the modeled routes to acquire 10 new paying customers. Actual customer counts and spending can vary.</p>
                   {bootstrap.launchCashUsd ? (
                     <>
                       <Scenario label="Total launch cash" range={bootstrap.launchCashUsd} format={cashDollars} />
@@ -203,9 +227,9 @@ export default function CommercialResearch({ profile, audience }: ResearchProps)
             </details>
           )}
         </>
-      ) : <p>Commercial research unavailable. This provisional score uses only the stored flip and hold assessments.</p>}
+      ) : <p>Commercial research unavailable. Business viability is a provisional score based on the stored flip and hold assessments.</p>}
       <details>
-        <summary className="cursor-pointer text-ink-3">How commercial rank is calculated</summary>
+        <summary className="cursor-pointer text-ink-3">Business viability score and ranking</summary>
         <p className="mt-1">Flip and hold contribute up to 25 points each. Estimated unit margin adds up to 5 points, accounting
           for monthly AI and operating costs. Acquisition payback adds up to 15 using {mix ? 'the high blended CAC'
             : profile?.cac?.kind === 'observed' ? 'the matched cohort’s observed CAC' : 'high CAC'} and that margin.
@@ -213,7 +237,8 @@ export default function CommercialResearch({ profile, audience }: ResearchProps)
           {' '}{bootstrap?.launchCashUsd ? 'Bootstrapping adds up to 5 points for base launch cash and up to 5 for time to a paid pilot or MVP.'
             : bootstrap ? 'Bootstrapping adds up to 10 points using initial cash, monthly costs and time to a paid pilot or MVP.'
             : 'Shorter pilots add up to 10 points.'} Cited evidence for market, acquisition, competition and AI pricing adds up to 10.
-          Missing inputs earn no points for that factor. Rejected openings rank last.</p>
+          Missing inputs earn no points for that factor. When business viability scores tie, lower base acquisition cash for the first 10 paying customers ranks first.
+          Known cash estimates precede missing estimates in a tie. Rejected openings rank last.</p>
       </details>
     </section>
   );

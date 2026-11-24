@@ -92,6 +92,10 @@ const commercial = z.object({
     assumptions: line, sourceIds: ids }).optional(),
   bootstrap: z.object({ points: finite.max(10), initialCostUsd: finite.nullable(), monthlyCostUsd: finite.nullable(),
     firstTenCashUsd: scenario(finite).optional(), launchCashUsd: scenario(finite).optional(),
+    soloPilot: z.object({
+      acquisitionCashUsd: z.literal(0), founderHours: finite.positive(), expectedPayers: finite,
+      days: z.literal(90), assumptions: line, sourceIds: ids,
+    }).optional(),
     days: finite.nullable(), daysBasis: z.enum(['paid pilot', 'MVP']).nullable(), assumptions: line,
   }).refine(b => (b.days === null) === (b.daysBasis === null)).optional(),
   execution: z.object({
@@ -142,7 +146,7 @@ export function parseCommercial(value: unknown): CommercialProfile | null {
   const p = parsed.data;
   const known = new Set(p.sources.map(s => s.id));
   if (known.size !== p.sources.length || new Set(p.sources.map(s => commercialUrl(s.url))).size !== known.size) return null;
-  const claims = [...(p.competition ?? []), p.marketReference, p.sectorSpending, p.market, ...(p.cacReferences ?? []), ...(p.cacChannels ?? []), p.channelMix, p.cac, p.execution?.ai].filter(c => c !== undefined);
+  const claims = [...(p.competition ?? []), p.marketReference, p.sectorSpending, p.market, ...(p.cacReferences ?? []), ...(p.cacChannels ?? []), p.channelMix, p.bootstrap?.soloPilot, p.cac, p.execution?.ai].filter(c => c !== undefined);
   if (!claims.length || claims.some(c => c.sourceIds.some(id => !known.has(id)))) return null;
   const cac = p.cac;
   const mix = p.channelMix;

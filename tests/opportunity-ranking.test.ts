@@ -54,6 +54,24 @@ describe('commercial ranking', () => {
       usd: { low: 100, base: 500, high: 1000 }, sourceIds: ['S1'] } } })).toBeLessThan(score);
   });
 
+  it('breaks viability ties on base acquisition cash for ten payers, including zero and missing values', () => {
+    const create = (id: number, cash?: number) => ({
+      id, verdict: 'watch', commercialScore: 53, flipScore: 50, holdScore: 50,
+      kpis: { ...kpis, commercial: { ...profile, bootstrap: { points: 4, initialCostUsd: 100, monthlyCostUsd: 10,
+        days: 30, daysBasis: 'paid pilot' as const, assumptions: 'Launch forecast.',
+        firstTenCashUsd: cash === undefined ? undefined : { low: 0, base: cash, high: 15000 - cash },
+        launchCashUsd: { low: 9000 - id, base: 10000 - id, high: 11000 - id },
+      } } },
+    });
+    const unknown = create(1), ppc = create(2, 5000), shop = create(4, 1000), free = create(5, 0), same = create(6, 1000);
+    const higher = { ...unknown, id: 7, commercialScore: 54 };
+    const rejects = { ...free, id: 8, verdict: 'reject' };
+    expect([unknown, ppc, same, higher, rejects, shop, free].sort(compareOpportunities))
+      .toEqual([higher, free, shop, same, ppc, unknown, rejects]);
+    expect(compareOpportunities(shop, ppc, 'flip')).toBeGreaterThan(0);
+    expect(compareOpportunities(shop, ppc, 'hold')).toBeGreaterThan(0);
+  });
+
   it('compares unit margins even while CAC is unknown', () => {
     const noCac = { ...profile, cac: undefined };
     const expensive = {

@@ -9,6 +9,7 @@ interface Rankable {
   flipScore: number;
   holdScore: number;
   commercialScore: number;
+  kpis?: OppKpis | null;
 }
 
 /** Points on a 100-point prioritization scale. Missing inputs earn no research credit. */
@@ -57,5 +58,12 @@ export function compareOpportunities(a: Rankable, b: Rankable, sort: Opportunity
   if (sort === 'commercial' && (a.verdict === 'reject') !== (b.verdict === 'reject')) {
     return a.verdict === 'reject' ? 1 : -1;
   }
-  return opportunityScore(b, sort) - opportunityScore(a, sort) || a.id - b.id;
+  const scoreOrder = opportunityScore(b, sort) - opportunityScore(a, sort);
+  if (scoreOrder) return scoreOrder;
+  if (sort === 'commercial') {
+    const aCash = a.kpis?.commercial?.bootstrap?.firstTenCashUsd?.base ?? Infinity;
+    const bCash = b.kpis?.commercial?.bootstrap?.firstTenCashUsd?.base ?? Infinity;
+    if (aCash !== bCash) return aCash < bCash ? -1 : 1;
+  }
+  return a.id - b.id;
 }

@@ -126,7 +126,7 @@ export function LaunchChecks({ sub }: { sub: SubScores }) {
 export function ScoreBar({ label, value, emphasized }: { label: string; value: number; emphasized: boolean }) {
   return (
     <span className="flex items-center gap-2" title={`${label} score ${value}/100`}>
-      <span className="mono w-[66px] shrink-0 text-[10px] tracking-[0.06em] uppercase" style={{ color: emphasized ? 'var(--phosphor)' : 'var(--ink-4)' }}>
+      <span className="mono w-[102px] shrink-0 text-[10px] tracking-[0.06em] uppercase" style={{ color: emphasized ? 'var(--phosphor)' : 'var(--ink-4)' }}>
         {label}
       </span>
       <span className="h-[4px] flex-1 rounded-[1px]" style={{ background: 'var(--grat-soft)' }}>
@@ -139,6 +139,42 @@ export function ScoreBar({ label, value, emphasized }: { label: string; value: n
         {value}
       </span>
     </span>
+  );
+}
+
+const cashFormat = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
+
+export function LaunchCashSummary({ profile, showSoloPilot = false }: {
+  profile: NonNullable<OppKpis['commercial']>;
+  showSoloPilot?: boolean;
+}) {
+  const budget = profile.bootstrap;
+  const pilot = showSoloPilot && budget?.soloPilot;
+  return (
+    <dl aria-label="Base cash estimates" className="mt-3 flex flex-wrap gap-x-7 gap-y-2 border-y border-[var(--grat-soft)] py-2.5">
+      {([
+        ['Acquisition cash for 10 payers', budget?.firstTenCashUsd?.base, 'Base estimate · out of pocket'],
+        ['Total launch cash', budget?.launchCashUsd?.base, 'Base · acquisition + build + 3-month reserve'],
+      ] as const).map(([label, amount, detail]) => (
+        <div key={label}>
+          <dt className="text-[11px] text-ink-3">{label}</dt>
+          <dd className="mono text-[14px] font-medium tabular-nums">
+            {amount == null ? <span className="text-[12px] text-ink-3">Unknown</span> : cashFormat.format(amount)}
+          </dd>
+          <dd className="text-[10.5px] text-ink-3">{detail}</dd>
+        </div>
+      ))}
+      {pilot && (
+        <div>
+          <dt className="text-[11px] text-ink-3">Solo pilot · validation only</dt>
+          <dd className="mono text-[14px] font-medium tabular-nums">{cashFormat.format(pilot.acquisitionCashUsd)}</dd>
+          <dd className="text-[10.5px] text-ink-3">
+            Planned acquisition spend · founder time {Number.isInteger(pilot.founderHours) ? '' : 'about '}
+            {Math.round(pilot.founderHours).toLocaleString('en-US')} h
+          </dd>
+        </div>
+      )}
+    </dl>
   );
 }
 
@@ -266,7 +302,7 @@ export default function OppDossier({ opp, sortKey }: { opp: OppView; sortKey: Op
           <SpiderChart sub={opp.sub} grade={opportunityScore(opp, sortKey)} />
         )}
         <div className="mt-1 flex flex-col gap-1.5">
-          <ScoreBar label="commercial" value={opp.commercialScore} emphasized={sortKey === 'commercial'} />
+          <ScoreBar label="Business viability" value={opp.commercialScore} emphasized={sortKey === 'commercial'} />
           <ScoreBar label="flip" value={opp.flipScore} emphasized={sortKey === 'flip'} />
           <ScoreBar label="hold" value={opp.holdScore} emphasized={sortKey === 'hold'} />
         </div>
@@ -277,6 +313,14 @@ export default function OppDossier({ opp, sortKey }: { opp: OppView; sortKey: Op
         <p className="text-[13.5px] leading-relaxed" style={{ color: 'var(--ink-2)' }}>
           {opp.thesis}
         </p>
+        {k?.commercial && (
+          <>
+            <LaunchCashSummary profile={k.commercial} />
+            <p className="mt-1 text-[12px] leading-relaxed text-ink-3">
+              Projected customer acquisition cost (CAC) can include founder time. Out-of-pocket acquisition cash excludes founder pay.
+            </p>
+          </>
+        )}
 
         {/* hard numbers */}
         <div className="mt-3.5 flex flex-wrap gap-x-7 gap-y-2.5 border-t border-[var(--grat-soft)] pt-3">
