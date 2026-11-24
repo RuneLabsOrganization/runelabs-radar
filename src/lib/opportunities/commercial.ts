@@ -47,6 +47,7 @@ const commercial = z.object({
   researchedAt: z.string().datetime(),
   sources: z.array(source).min(1).max(24),
   marketReference: z.object({ population: finite.int().positive(), unit: line, period: line, sourceIds: ids }).optional(),
+  sectorSpending: z.object({ usd: finite.positive(), category: line, period: line, sourceIds: ids }).optional(),
   competition: z.array(z.object({
     name: line, offering: line, sourceIds: ids,
     availability: z.enum(['confirmed', 'unconfirmed']).optional(), // absent on legacy profiles
@@ -108,7 +109,7 @@ export function parseCommercial(value: unknown): CommercialProfile | null {
   const p = parsed.data;
   const known = new Set(p.sources.map(s => s.id));
   if (known.size !== p.sources.length || new Set(p.sources.map(s => commercialUrl(s.url))).size !== known.size) return null;
-  const claims = [...(p.competition ?? []), p.marketReference, p.market, ...(p.cacReferences ?? []), p.cac, p.execution?.ai].filter(c => c !== undefined);
+  const claims = [...(p.competition ?? []), p.marketReference, p.sectorSpending, p.market, ...(p.cacReferences ?? []), p.cac, p.execution?.ai].filter(c => c !== undefined);
   if (!claims.length || claims.some(c => c.sourceIds.some(id => !known.has(id)))) return null;
   const cac = p.cac;
   if (cac?.kind === 'observed' && !p.cacReferences?.some(r => r.scope === 'matched' && r.unit === 'paying customer' &&

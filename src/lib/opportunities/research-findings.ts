@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { config } from '../config';
 import { estimateCostUsd, isMeteredModel } from '../llm/pricing';
 import { promptLine } from '../prompt-hygiene';
-import type { MarketSource } from './market-sources';
+import type { MarketSource, marketSpendingSource } from './market-sources';
 import { acquisitionReference, acquisitionGeoMatches } from './acquisition-sources';
 import { aiUsage, businessModels, commercialUrl, parseCommercial, type CommercialProfile, type CommercialSource } from './commercial';
 
@@ -256,12 +256,17 @@ function addAcquisition(p: CommercialProfile, sources: CommercialSource[], data:
 export function buildCommercial(
   raw: unknown, sources: CommercialSource[], geography: string, researchedAt: string,
   marketSources: MarketSource[] = [],
+  spending?: ReturnType<typeof marketSpendingSource>,
 ): CommercialProfile | null {
   const parsed = analysis.safeParse(raw);
   if (!parsed.success || sources.length === 0) return null;
   const { businessModel, user, payer, industry, market, execution } = parsed.data;
   const p: CommercialProfile = { geography, businessModel, user, payer, industry: industry ?? parsed.data.endUseIndustry, researchedAt, sources: [] };
   const cited = new Set<string>();
+  if (spending && sources.some(s => s.id === spending.source.id && s.url === spending.source.url)) {
+    p.sectorSpending = { usd: spending.usd, category: spending.category, period: spending.period, sourceIds: [spending.source.id] };
+    cited.add(spending.source.id);
+  }
   const reference = marketSources.find(s =>
     (s.id === parsed.data.marketReferenceId || s.id === market?.sourceId) &&
     sources.some(source => source.id === s.id && source.url === s.url)

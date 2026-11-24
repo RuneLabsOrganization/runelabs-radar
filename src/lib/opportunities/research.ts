@@ -7,7 +7,7 @@ import { minimaxSearch } from '../search/minimax';
 import { commercialUrl, type CommercialSource } from './commercial';
 import type { OppDraft } from './engine';
 import { buildCommercial, priceReference } from './research-findings';
-import { marketSources } from './market-sources';
+import { marketSources, marketSpendingSource } from './market-sources';
 import { competitorSources } from './competitor-sources';
 import { acquisitionSources, ACQUISITION_INSTRUCTIONS } from './acquisition-sources';
 
@@ -33,7 +33,7 @@ export interface ResearchStats {
   synthesisFailed: number;
   adapterFailures: number;
   coverage: {
-    referencePopulation: number; reachableMarket: number; competitors: number; acquisition: number; acquisitionBenchmark: number;
+    referencePopulation: number; sectorSpending: number; reachableMarket: number; competitors: number; acquisition: number; acquisitionBenchmark: number;
     observedCohortCac: number; scenarioCac: number; channelBenchmark: number; externalBenchmark: number;
   };
 }
@@ -91,6 +91,7 @@ const instructions = [
   'market: {buyer,sourceId,quote,population,eligibleShare:{low,base,high},assumptions}. Quote verbatim from a snippet (include the geography and count). Use a credible government, trade body or first-party survey count of relevant buyers, firms, people or households, never revenue, users of an unrelated service, transactions, or a count of the wrong unit.',
   'If a supplied M-series observation measures a relevant parent market, identify its ID in marketReferenceId. The server will retain its exact unit, count and reference period. An observed count can stand on its own. Omit market when no defensible eligibility shares or mapping to paying buyers exist. An establishment, store, website or occupation count alone cannot establish a paying-customer count.',
   'For an independently retrieved government statistic outside the supplied M-series, you may instead return observedMarket:{sourceId,quote,population,unit,year}. The quote must contain the geography, count, exact unit and reference year. Only use a count of the payer segment or a specifically relevant parent population.',
+  'A T-series source reports measured spending in the surrounding industry. Its dollars cannot be used as buyer counts, obtainable software revenue, or acquisition costs.',
   'Explain segment/unit fit and how the estimated eligible fractions (0 to 1, ascending) were chosen. Distinguish the paying buyer from end users and avoid double-counting marketplace sides.',
   ACQUISITION_INSTRUCTIONS,
   'execution: {pilotDays,assumptions,ai?:{task,inputTokens,outputTokens,attemptsPerTask,tasksPerCustomerMonth}}. Estimate calendar days to a first paid pilot, including recruitment, integration and external dependencies. Explain the usage assumptions. Tokens are per attempt, attempts include retries; volume is completed tasks per active payer/month, including all usage by its end users. Use the same payer as the proposal price basis.',
@@ -101,7 +102,7 @@ export async function researchFinalists(drafts: OppDraft[], geography: string): 
   const search = opportunitySearchProviders(true);
   const finalists = drafts.slice(0, 3);
   const coverage = {
-    referencePopulation: 0, reachableMarket: 0, competitors: 0, acquisition: 0, acquisitionBenchmark: 0,
+    referencePopulation: 0, sectorSpending: 0, reachableMarket: 0, competitors: 0, acquisition: 0, acquisitionBenchmark: 0,
     observedCohortCac: 0, scenarioCac: 0, channelBenchmark: 0, externalBenchmark: 0,
   };
   const stats: ResearchStats = {
@@ -119,10 +120,11 @@ export async function researchFinalists(drafts: OppDraft[], geography: string): 
         acquisitionSources(d, geography),
       ]);
       const marketData = market.status === 'fulfilled' ? market.value : [];
+      const spending = marketSpendingSource(d, geography);
       const results = web.status === 'fulfilled' ? web.value : { sources: [], answered: false };
       const byUrl = new Map<string, CommercialSource>();
       for (const source of [
-        ...marketData, ...(acquisition.status === 'fulfilled' ? acquisition.value : []),
+        ...marketData, ...(spending ? [spending.source] : []), ...(acquisition.status === 'fulfilled' ? acquisition.value : []),
         ...(competitors.status === 'fulfilled' ? competitors.value : []), ...results.sources,
       ]) {
         if (!byUrl.has(source.url)) byUrl.set(source.url, source);
@@ -138,11 +140,12 @@ export async function researchFinalists(drafts: OppDraft[], geography: string): 
         geography, title: d.title, thesis: d.thesis, target: d.researchTarget,
         sources, priceBasis: d.kpis.priceBasis, pilotTariff: priceReference(),
       }), { feature: 'opportunity-research', deadlineMs: 90_000 });
-      const profile = buildCommercial(raw, sources, geography, new Date().toISOString(), marketData);
+      const profile = buildCommercial(raw, sources, geography, new Date().toISOString(), marketData, spending);
       if (profile) {
         d.kpis.commercial = profile;
         stats.enriched++;
         if (profile.marketReference) coverage.referencePopulation++;
+        if (profile.sectorSpending) coverage.sectorSpending++;
         if (profile.market) coverage.reachableMarket++;
         if (profile.competition?.length) coverage.competitors++;
         if (profile.cac) coverage.acquisition++;

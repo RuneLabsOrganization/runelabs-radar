@@ -29,6 +29,7 @@ function commercialEvidence(draft: OppDraft): string {
   const lines = [
     `researched market: ${promptLine(geography, 80)} · model ${modelLabel(businessModel)} · payer ${promptLine(payer ?? 'unknown', 100)}`,
     profile.marketReference && `Reference population: ${profile.marketReference.population} ${promptLine(profile.marketReference.unit, 120)} (${profile.marketReference.period}); eligibility and adoption require separate evidence.`,
+    profile.sectorSpending && `Industry spending: USD ${profile.sectorSpending.usd} · ${profile.sectorSpending.category} (${profile.sectorSpending.period}). Addressable product revenue is unknown.`,
     market && `Reachable buyers, low/base/high: ${Object.values(market.buyerCounts).join('/')} · ${promptLine(market.assumptions, 240)}`,
     ...(profile.cacReferences ?? []).map(r => `External acquisition benchmark: USD ${r.usd} per ${r.unit} · ${promptLine(r.cohort, 80)} · ${promptLine(r.geography, 80)} · ${promptLine(r.period, 80)}`),
     cac && `${cac.kind === 'observed' ? 'Comparable cohort' : 'Scenario'} CAC USD, low/base/high: ${Object.values(cac.usd).join('/')} · ${promptLine(cac.channel, 80)} · ${promptLine(cac.assumptions, 200)}`,

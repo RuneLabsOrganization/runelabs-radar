@@ -17,7 +17,7 @@ vi.mock('@/lib/llm/minimax', () => ({ chatJSON: vi.fn(), drainLlmUsageStats: () 
 vi.mock('@/lib/search/exa', () => ({ exaSearch: vi.fn() }));
 vi.mock('@/lib/search/brave', () => ({ braveSearch: vi.fn() }));
 vi.mock('@/lib/search/minimax', () => ({ minimaxSearch: vi.fn() }));
-vi.mock('@/lib/opportunities/market-sources', () => ({ marketSources: vi.fn(async () => []) }));
+vi.mock('@/lib/opportunities/market-sources', () => ({ marketSources: vi.fn(async () => []), marketSpendingSource: () => undefined }));
 vi.mock('@/lib/opportunities/competitor-sources', () => ({ competitorSources: vi.fn(async () => []) }));
 vi.mock('@/lib/opportunities/acquisition-sources', async original => ({
   ...await original<typeof import('@/lib/opportunities/acquisition-sources')>(),
@@ -121,6 +121,16 @@ it('can retain an official survey count for a new industry outside the built-in 
     [source], 'Canada', '2026-11-24T00:00:00.000Z');
   expect(result('music schools')?.marketReference?.population).toBe(12000);
   expect(result('students')).toBeNull();
+});
+
+it('keeps industry spending separate from the addressable market and customer count', () => {
+  const source = {id: 'T1', url: 'https://example.org/industry-study', title: 'Industry expenditure',
+    snippet: 'Merchants spent USD 2 billion on advertising.', publishedAt: null};
+  const spending = {usd: 2e9, category: 'Merchant advertising spend', period: '2024', source};
+  const p = buildCommercial({businessModel: 'B2B'}, [source], 'United States', '2026-11-24T00:00:00.000Z', [], spending);
+  expect(p?.sectorSpending?.usd).toBe(2e9);
+  expect(p?.marketReference).toBeUndefined();
+  expect(p?.market).toBeUndefined();
 });
 
 it('ignores a malformed hit without losing usable results from the same response', async () => {

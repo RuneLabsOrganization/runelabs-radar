@@ -5,6 +5,9 @@ import type { OppDraft } from './engine';
 
 // These URLs nominate candidates. The cited description must come from the current page.
 const products = [
+  { name: 'Voluum', url: 'https://voluum.com/',
+    match: [/\baffiliates?\b/i, /\b(?:paid[ -]traffic|attribution|track(?:s|ed|ing|ers?)?|conversions?)\b/i],
+    feature: /\bad track(?:ing|er)\b|\bconversion attribution\b/i },
   { name: 'Elevar', url: 'https://apps.shopify.com/gtm-datalayer-by-elevar',
     match: [/\bshopify\b/i, /conversion|attribution|data[ -]?layer|tracking pixel|GA4/i], feature: /conversion|server.side tracking/i },
   { name: 'DebugBear', url: 'https://www.debugbear.com/',

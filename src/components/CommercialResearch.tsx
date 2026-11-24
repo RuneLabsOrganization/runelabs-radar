@@ -59,6 +59,10 @@ export default function CommercialResearch({ profile, audience }: ResearchProps)
         <>
           <p className="mono text-[11px]">Research geography · {profile.geography} · researched {profile.researchedAt.slice(0, 10)}</p>
           <p>Scenario estimates depend on the buyer, channel and usage assumptions below.</p>
+          {profile.sectorSpending && (
+            <p><strong>Observed sector spending</strong> · {dollars.format(profile.sectorSpending.usd)} · {profile.sectorSpending.category}
+              {' · '}{profile.sectorSpending.period} {citations(profile.sectorSpending.sourceIds)}. Revenue available to this product is unknown.</p>
+          )}
           {profile.marketReference && (
             <p><strong>Observed reference population</strong> · {counts.format(profile.marketReference.population)}{' '}
               {profile.marketReference.unit} · {profile.marketReference.period} {citations(profile.marketReference.sourceIds)}</p>
