@@ -59,15 +59,31 @@ export default function CommercialResearch({ profile, audience }: ResearchProps)
         <>
           <p className="mono text-[11px]">Research geography · {profile.geography} · researched {profile.researchedAt.slice(0, 10)}</p>
           <p>Scenario estimates depend on the buyer, channel and usage assumptions below.</p>
+          {profile.marketReference && (
+            <p><strong>Observed reference population</strong> · {counts.format(profile.marketReference.population)}{' '}
+              {profile.marketReference.unit} · {profile.marketReference.period} {citations(profile.marketReference.sourceIds)}</p>
+          )}
           {profile.market ? (
             <div>
               <Scenario label="Reachable buyers" range={profile.market.buyerCounts} format={counts} />
               <p>{profile.market.buyer} · {profile.market.assumptions} {citations(profile.market.sourceIds)}</p>
             </div>
           ) : <p className="text-ink-3">Reachable buyer count unknown.</p>}
-          {profile.cac ? (
+          {profile.cacReferences?.map(ref => (
+            <div key={ref.sourceIds.join('-')}>
+              <p><strong>{ref.unit === 'paying customer' ? 'External paying-customer CAC benchmark' : 'Paid-channel benchmark'}</strong>
+                {' · '}{dollars.format(ref.usd)} per {ref.unit} {citations(ref.sourceIds)}</p>
+              <p>{ref.publisher} · {ref.cohort} · {ref.geography} · {ref.period}</p>
+              <p>{ref.channel} · {ref.methodology}</p>
+              {ref.scope === 'external' && <p className="text-ink-3">Excluded from payback for {profile.geography}.</p>}
+            </div>
+          ))}
+          {profile.cac?.kind === 'observed' ? (
+            <p><strong>Observed CAC for the matched cohort</strong> · {dollars.format(profile.cac.usd.base)} per paying customer.
+              {' '}{profile.cac.assumptions} {citations(profile.cac.sourceIds)} The opportunity’s own CAC is unknown.</p>
+          ) : profile.cac ? (
             <div>
-              <Scenario label="Customer acquisition cost (CAC)" range={profile.cac.usd} format={dollars} />
+              <Scenario label="Customer acquisition cost (CAC) scenario" range={profile.cac.usd} format={dollars} />
               <p>{profile.cac.channel} · {profile.cac.assumptions} {citations(profile.cac.sourceIds)}</p>
             </div>
           ) : <p className="text-ink-3">Customer acquisition cost unknown.</p>}
@@ -84,7 +100,10 @@ export default function CommercialResearch({ profile, audience }: ResearchProps)
             </div>
           )}
           {profile.competition?.map((entry) => (
-            <p key={entry.name}><strong>Competitor</strong> · {entry.name} · {entry.offering} {citations(entry.sourceIds)}</p>
+            <p key={entry.name}><strong>Competitor</strong> · {entry.name} · {entry.offering} {citations(entry.sourceIds)}
+              <span className="ml-2 text-ink-3">{entry.availability === 'confirmed'
+                ? `Available in ${profile.geography}` : `Local availability unconfirmed (${profile.geography})`}</span>
+            </p>
           ))}
           {profile.sources.length > 0 && (
             <details>

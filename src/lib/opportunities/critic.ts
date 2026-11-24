@@ -28,8 +28,10 @@ function commercialEvidence(draft: OppDraft): string {
   const ref = (id: string) => `C-${draft.slug}-${id}`;
   const lines = [
     `researched market: ${promptLine(geography, 80)} · model ${modelLabel(businessModel)} · payer ${promptLine(payer ?? 'unknown', 100)}`,
+    profile.marketReference && `Reference population: ${profile.marketReference.population} ${promptLine(profile.marketReference.unit, 120)} (${profile.marketReference.period}); eligibility and adoption require separate evidence.`,
     market && `Reachable buyers, low/base/high: ${Object.values(market.buyerCounts).join('/')} · ${promptLine(market.assumptions, 240)}`,
-    cac && `Scenario CAC USD, low/base/high: ${Object.values(cac.usd).join('/')} · ${promptLine(cac.channel, 80)} · ${promptLine(cac.assumptions, 200)}`,
+    ...(profile.cacReferences ?? []).map(r => `External acquisition benchmark: USD ${r.usd} per ${r.unit} · ${promptLine(r.cohort, 80)} · ${promptLine(r.geography, 80)} · ${promptLine(r.period, 80)}`),
+    cac && `${cac.kind === 'observed' ? 'Comparable cohort' : 'Scenario'} CAC USD, low/base/high: ${Object.values(cac.usd).join('/')} · ${promptLine(cac.channel, 80)} · ${promptLine(cac.assumptions, 200)}`,
     execution && `Estimated paid pilot: ${execution.pilotDays} days · ${promptLine(execution.assumptions, 200)}`,
     execution?.ai && `Estimated inference USD per completed task: ${execution.ai.costPerTaskUsd} · tasks per payer/month: ${execution.ai.tasksPerCustomerMonth}`,
     ...(competition ?? []).map(c => `Competitor: ${promptLine(c.name, 80)} · ${promptLine(c.offering, 200)}`),

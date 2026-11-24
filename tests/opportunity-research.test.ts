@@ -10,12 +10,19 @@ import { proposeOpportunities, runOpportunities, sanitizeKpis, sanitizeOpportuni
 import { opportunities, painPoints } from '@/lib/db/schema';
 import { MIN_SIGNALS } from '@/lib/opportunities/signals';
 import { buildCommercial } from '@/lib/opportunities/research-findings';
+import { marketSources } from '@/lib/opportunities/market-sources';
 import { useTestDb } from './helpers/db';
 
 vi.mock('@/lib/llm/minimax', () => ({ chatJSON: vi.fn(), drainLlmUsageStats: () => ({}) }));
 vi.mock('@/lib/search/exa', () => ({ exaSearch: vi.fn() }));
 vi.mock('@/lib/search/brave', () => ({ braveSearch: vi.fn() }));
 vi.mock('@/lib/search/minimax', () => ({ minimaxSearch: vi.fn() }));
+vi.mock('@/lib/opportunities/market-sources', () => ({ marketSources: vi.fn(async () => []) }));
+vi.mock('@/lib/opportunities/competitor-sources', () => ({ competitorSources: vi.fn(async () => []) }));
+vi.mock('@/lib/opportunities/acquisition-sources', async original => ({
+  ...await original<typeof import('@/lib/opportunities/acquisition-sources')>(),
+  acquisitionSources: vi.fn(async () => []),
+}));
 vi.mock('@/lib/opportunities/critic', () => ({ runCritique: vi.fn(async () => new Map()), runDebate: vi.fn() }));
 
 const geography = 'Canada';
@@ -89,6 +96,31 @@ it('requires in-geography numerical evidence and an identifiable competitor from
   expect(d.kpis.commercial?.market).toBeUndefined();
   expect(d.kpis.commercial?.cac).toBeUndefined();
   expect(d.kpis.commercial?.competition).toBeUndefined();
+});
+
+it('retains the published reference count through a search outage with no assumed buyer conversion', async () => {
+  vi.mocked(marketSources).mockResolvedValueOnce([{
+    id: 'M1', url: census.url, title: census.title, snippet: census.description, publishedAt: null,
+    population: 20000, unit: 'professional photographers', period: '2025',
+  }]);
+  synth.mockResolvedValue({ businessModel: 'prosumer', marketReferenceId: 'M1' });
+  const d = draft();
+  const stats = await researchFinalists([d], geography);
+  expect(stats.coverage).toMatchObject({referencePopulation: 1, reachableMarket: 0, acquisition: 0});
+  expect(d.kpis.commercial?.marketReference).toEqual({
+    population: 20000, unit: 'professional photographers', period: '2025', sourceIds: ['M1'],
+  });
+  expect(d.kpis.commercial?.market).toBeUndefined();
+});
+
+it('can retain an official survey count for a new industry outside the built-in sources', () => {
+  const quote = 'In 2023 Canada recorded 12,000 music schools.';
+  const source = {id: 'S1', url: 'https://www.statcan.gc.ca/survey', title: 'School survey', snippet: quote, publishedAt: null};
+  const observedMarket = {sourceId: 'S1', quote, population: 12000, unit: 'music schools', year: 2023};
+  const result = (unit: string) => buildCommercial({businessModel: 'B2B', observedMarket: {...observedMarket, unit}},
+    [source], 'Canada', '2026-11-24T00:00:00.000Z');
+  expect(result('music schools')?.marketReference?.population).toBe(12000);
+  expect(result('students')).toBeNull();
 });
 
 it('ignores a malformed hit without losing usable results from the same response', async () => {

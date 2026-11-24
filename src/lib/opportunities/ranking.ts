@@ -38,8 +38,8 @@ export function commercialScore(flip: number, hold: number, kpis: OppKpis | null
     : 0;
   const pilot = execution ? 10 / (1 + execution.pilotDays / 30) : 0;
   const coverage = [
-    market?.sourceIds.length,
-    cac?.sourceIds.length,
+    market?.sourceIds.length || profile.marketReference?.sourceIds.length,
+    cac?.sourceIds.length || profile.cacReferences?.some(ref => ref.scope === 'matched'),
     competition?.some((entry) => entry.sourceIds.length > 0),
     ai?.sourceIds.length,
   ].filter(Boolean).length * 2.5;
