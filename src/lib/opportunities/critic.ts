@@ -33,6 +33,8 @@ function commercialEvidence(draft: OppDraft): string {
     market && `Reachable buyers, low/base/high: ${Object.values(market.buyerCounts).join('/')} · ${promptLine(market.assumptions, 240)}`,
     ...(profile.cacReferences ?? []).map(r => `External acquisition benchmark: USD ${r.usd} per ${r.unit} · ${promptLine(r.cohort, 80)} · ${promptLine(r.geography, 80)} · ${promptLine(r.period, 80)}`),
     cac && `${cac.kind === 'observed' ? 'Comparable cohort' : 'Scenario'} CAC USD, low/base/high: ${Object.values(cac.usd).join('/')} · ${promptLine(cac.channel, 80)} · ${promptLine(cac.assumptions, 200)}`,
+    profile.channelMix && `Ranking uses modeled blended CAC USD ${Object.values(profile.channelMix.usd).join('/')}. Base paying-customer shares: ${profile.channelMix.weights.map(w => w.channel + ' ' + w.base + '%').join(', ')}`,
+    profile.bootstrap && `Bootstrapping ${profile.bootstrap.points}/10: ${promptLine(profile.bootstrap.assumptions, 350)}`,
     execution && `Estimated paid pilot: ${execution.pilotDays} days · ${promptLine(execution.assumptions, 200)}`,
     execution?.ai && `Estimated inference USD per completed task: ${execution.ai.costPerTaskUsd} · tasks per payer/month: ${execution.ai.tasksPerCustomerMonth}`,
     ...(competition ?? []).map(c => `Competitor: ${promptLine(c.name, 80)} · ${promptLine(c.offering, 200)}`),

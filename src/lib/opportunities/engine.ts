@@ -20,6 +20,7 @@ import { normalizeSlug } from './slug';
 import { publicOnly } from './scope';
 import { businessModels, parseAudience, parseCommercial, parsePriceBasis, type CommercialProfile, type OpportunityAudience, type PriceBasis } from './commercial';
 import { opportunityGeography, researchFinalists, type ResearchStats } from './research';
+import { applyComparableEconomics } from './comparable-economics';
 import { addDemandSignals } from './demand-signals';
 
 export { normalizeSlug };
@@ -546,7 +547,10 @@ export async function runOpportunities(): Promise<{
         prior.thesis === d.thesis && prior.kpis) {
       try {
         const saved = parseCommercial(JSON.parse(prior.kpis)?.commercial);
-        if (saved?.geography === geography) d.kpis.commercial = saved;
+        if (saved?.geography === geography) {
+          d.kpis.commercial = saved.channelMix || saved.bootstrap
+            ? applyComparableEconomics(saved, d.kpis.priceUsd, d.kpis) : saved;
+        }
       } catch { /* malformed legacy KPI JSON */ }
     }
     // hysteresis against yesterday's score on plain refreshes; a resurrected

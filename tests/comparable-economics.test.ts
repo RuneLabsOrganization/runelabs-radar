@@ -5,11 +5,13 @@ import CommercialResearch from '@/components/CommercialResearch';
 import { applyComparableEconomics } from '@/lib/opportunities/comparable-economics';
 import { comparableBuyers } from '@/lib/opportunities/comparable-buyers';
 import { comparableChannels } from '@/lib/opportunities/channel-cac';
+import { comparableMix } from '@/lib/opportunities/channel-mix';
 import { parseCommercial } from '@/lib/opportunities/commercial';
 import { commercialFixture } from './fixtures/opportunity-commercial';
 
 vi.mock('@/lib/opportunities/comparable-buyers', () => ({ comparableBuyers: vi.fn() }));
 vi.mock('@/lib/opportunities/channel-cac', () => ({ comparableChannels: vi.fn() }));
+vi.mock('@/lib/opportunities/channel-mix', () => ({ comparableMix: vi.fn() }));
 afterEach(() => vi.resetAllMocks());
 
 const profile = { ...commercialFixture, geography: 'United States' };
@@ -44,6 +46,25 @@ it('keeps a matched observed CAC in payback when adding channel scenarios', () =
   }, 49);
   expect(p.cac?.kind).toBe('observed');
   expect(p.cacChannels).toHaveLength(2);
+});
+
+it('weights paying customers in each scenario, validates citations and rejects inconsistent totals', () => {
+  scenarios();
+  const weights = [
+    { channel: 'Publisher referrals', favorable: 80, base: 50, adverse: 25 },
+    { channel: 'Paid search', favorable: 20, base: 50, adverse: 75 },
+  ];
+  vi.mocked(comparableMix).mockReturnValue({ weights, assumptions: 'Shares among paying customers.',
+    sources: [{ ...profile.sources[1], id: 'W1' }] });
+  const p = applyComparableEconomics(profile, 49);
+  expect(p.channelMix?.usd).toEqual({ low: 64, base: 137.5, high: 293.75 });
+  expect(p.cac).toMatchObject({ channel: 'Blended CAC', usd: p.channelMix?.usd, sourceIds: ['S2', 'S1'] });
+  expect(applyComparableEconomics(p, 49)).toEqual(p);
+  for (const mix of [{ ...p.channelMix, usd: paid.usd }, { ...p.channelMix, sourceIds: ['S2'] },
+    { ...p.channelMix, weights: [weights[0], weights[0]] },
+    { ...p.channelMix, weights: [weights[0], { ...weights[1], adverse: 74 }] }]) {
+    expect(parseCommercial({ ...p, channelMix: mix })).toBeNull();
+  }
 });
 
 it('retains both excerpts when another measurement comes from an existing report', () => {

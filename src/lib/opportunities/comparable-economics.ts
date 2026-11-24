@@ -1,12 +1,17 @@
 import { comparableBuyers } from './comparable-buyers';
 import { comparableChannels } from './channel-cac';
-import { commercialUrl, parseCommercial, type CommercialProfile, type CommercialSource } from './commercial';
+import { blendedChannel, commercialUrl, parseCommercial, weightedChannelCac, type CommercialProfile, type CommercialSource } from './commercial';
+import { comparableMix } from './channel-mix';
+import { bootstrapAssessment } from './bootstrap';
 
 /** Recalculate only the commercial inputs supported by matched product data. */
-export function applyComparableEconomics(profile: CommercialProfile, priceUsd: number | null): CommercialProfile {
+export function applyComparableEconomics(profile: CommercialProfile, priceUsd: number | null,
+  bootstrapInputs?: Parameters<typeof bootstrapAssessment>[0]): CommercialProfile {
   const market = comparableBuyers(profile);
   const acquisition = comparableChannels(profile, priceUsd);
-  if (!market && !acquisition) return profile;
+  const hasBootstrapInputs = bootstrapInputs && (profile.bootstrap || [bootstrapInputs.initialCostUsd, bootstrapInputs.monthlyCostUsd,
+    bootstrapInputs.timeToMvpDays].some(n => n !== null && n !== undefined));
+  if (!market && !acquisition && !hasBootstrapInputs) return profile;
 
   const sources = [...profile.sources];
   // Citation IDs are dossier-local. A prior search may already cite the same report
@@ -39,10 +44,21 @@ export function applyComparableEconomics(profile: CommercialProfile, priceUsd: n
   if (market) next.market = { ...market.market, scope: 'comparable-cohort', sourceIds: attach(market.market.sourceIds, market.sources) };
   if (acquisition?.channels.length) {
     next.cacChannels = acquisition.channels.map(c => ({ ...c, sourceIds: attach(c.sourceIds, acquisition.sources) }));
-    // Use the high end of a designated route to market for payback. An observed
-    // local, matched CAC already stored in a dossier takes precedence.
-    if (profile.cac?.kind !== 'observed') next.cac = { ...next.cacChannels[0], kind: 'scenario' };
+    const mix = comparableMix(next);
+    delete next.channelMix;
+    if (mix) {
+      const usd = weightedChannelCac(next.cacChannels, mix.weights);
+      if (!usd) throw new Error('Invalid comparable channel weights');
+      const sourceIds = [...new Set([...attach(mix.sources.map(s => s.id), mix.sources), ...next.cacChannels.flatMap(c => c.sourceIds)])];
+      next.channelMix = { weights: mix.weights, assumptions: mix.assumptions, usd, sourceIds };
+    }
+    if (profile.cac?.kind !== 'observed') {
+      const primary = next.channelMix ? { channel: blendedChannel, usd: next.channelMix.usd,
+        assumptions: next.channelMix.assumptions, sourceIds: next.channelMix.sourceIds } : next.cacChannels[0];
+      next.cac = { ...primary, kind: 'scenario' };
+    }
   }
+  if (hasBootstrapInputs) next.bootstrap = bootstrapAssessment(bootstrapInputs, next);
   const valid = parseCommercial(next);
   if (!valid) throw new Error('Invalid comparable economics dossier');
   return valid;

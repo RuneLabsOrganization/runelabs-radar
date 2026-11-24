@@ -27,7 +27,8 @@ export function commercialScore(flip: number, hold: number, kpis: OppKpis | null
   const margin = price != null && cost !== null ? price - cost : 0;
   const unitEconomics = price && margin > 0 ? 5 * margin / price : 0;
   // Six-month payback earns half the available acquisition points.
-  const acquisition = cac && margin > 0 ? 15 / (1 + cac.usd.high / margin / 6) : 0;
+  const adverseCac = profile.channelMix?.usd.high ?? cac?.usd.high;
+  const acquisition = adverseCac !== undefined && margin > 0 ? 15 / (1 + adverseCac / margin / 6) : 0;
 
   // Compare reachable buyers to this opening's customer target, across business models.
   // At 10% penetration of the low market scenario, award half the market points.
@@ -36,14 +37,14 @@ export function commercialScore(flip: number, hold: number, kpis: OppKpis | null
   const marketFit = customers != null && customers > 0 && buyers > 0
     ? 10 / (1 + 10 * customers / buyers)
     : 0;
-  const pilot = execution ? 10 / (1 + execution.pilotDays / 30) : 0;
+  const executionPoints = profile.bootstrap?.points ?? (execution ? 10 / (1 + execution.pilotDays / 30) : 0);
   const coverage = [
     market?.sourceIds.length || profile.marketReference?.sourceIds.length,
     cac?.sourceIds.length || profile.cacReferences?.some(ref => ref.scope === 'matched'),
     competition?.some((entry) => entry.sourceIds.length > 0),
     ai?.sourceIds.length,
   ].filter(Boolean).length * 2.5;
-  return Math.round(baseline + unitEconomics + acquisition + marketFit + pilot + coverage);
+  return Math.round(baseline + unitEconomics + acquisition + marketFit + executionPoints + coverage);
 }
 
 export function opportunityScore(o: Rankable, sort: OpportunitySort): number {
