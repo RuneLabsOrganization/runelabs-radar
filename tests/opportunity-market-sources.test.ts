@@ -1,6 +1,6 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import type { OppDraft } from '@/lib/opportunities/engine';
-import { marketSources } from '@/lib/opportunities/market-sources';
+import { marketSources, marketSpendingSource } from '@/lib/opportunities/market-sources';
 import { fetchWithTimeout } from '@/lib/ingest/adapters/shared';
 
 vi.mock('@/lib/ingest/adapters/shared', () => ({ fetchWithTimeout: vi.fn() }));
@@ -52,6 +52,32 @@ function withPopulation(payer: string, signer: string, population: string, indus
   d.kpis.priceBasis = {kind: 'direct', usdPerEvent: 10, eventsPerPayerMonth: 1, payer: signer, assumptions: 'Monthly billing.'};
   return d;
 }
+
+it.each(['PPC or local-services agency', 'Digital advertising agency', 'Pay-per-click agency', 'Paid search agencies'])(
+  'uses the broader advertising parent for %s', async signer => {
+    const d = withPopulation('Agency owner', signer, 'Home service providers', 'Digital advertising agencies');
+    const sources = await marketSources(d, 'US');
+    expect(sources).toHaveLength(1);
+    expect(sources[0]).toMatchObject({population: 38_864, title: 'Census County Business Patterns · NAICS 5418'});
+  });
+
+it('requires advertising context for the ambiguous local-services alias and protects the paying side', async () => {
+  expect(await marketSources(withPopulation('Agency owner', 'PPC or local-services agency', '', 'Home care'), 'US')).toEqual([]);
+  const d = withPopulation('Agency owner', 'HVAC contractor', '', 'Digital advertising agencies');
+  expect((await marketSources(d, 'US'))[0].population).toBe(111_207);
+});
+
+it('returns PMA merchant spending independently of the number of affiliate software buyers', async () => {
+  const d = withPopulation('Affiliate marketer', 'Affiliate marketer or small media-buying team', 'Shopify merchants', 'Affiliate marketing');
+  expect(marketSpendingSource(d, 'U.S.')).toMatchObject({
+    usd: 13_630_000_000, category: 'Merchant spending on affiliate marketing', period: '2024',
+    source: {id: 'T1', publishedAt: null, snippet: expect.stringContaining('United States')},
+  });
+  expect(await marketSources(d, 'US')).toEqual([]);
+  expect(marketSpendingSource(d, 'Canada')).toBeUndefined();
+  expect(marketSpendingSource(draft('Media-buying team', 'Digital advertising'), 'US')).toBeUndefined();
+  expect(marketSpendingSource(draft('Accountants serving affiliate marketers', 'Affiliate marketing'), 'US')).toBeUndefined();
+});
 
 it('uses a countable segment when the price basis describes the signer', async () => {
   const d = withPopulation('Owners of small agencies', 'The managing partner approves the monthly subscription',

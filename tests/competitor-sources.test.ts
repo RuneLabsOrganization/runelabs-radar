@@ -19,6 +19,7 @@ afterEach(() => vi.unstubAllGlobals());
 const draft = (title: string) => ({ title });
 
 it.each([
+  ['Affiliate click-to-conversion forensics', 'Voluum', 'https://voluum.com/', 'Track affiliate conversions with ad tracking software.'],
   ['Shopify conversion diagnostics', 'Elevar', 'https://apps.shopify.com/gtm-datalayer-by-elevar', 'Capture conversion events with server-side tracking.'],
   ['Core Web Vitals performance monitoring', 'DebugBear', 'https://www.debugbear.com/', 'Monitor page speed and real user performance.'],
   ['Agency call tracking for lead gen', 'CallRail', 'https://www.callrail.com/call-tracking', 'Attribute phone calls to marketing campaigns.'],
@@ -33,6 +34,20 @@ it.each([
   expect(fetch).toHaveBeenCalledWith(url, expect.objectContaining({ redirect: 'error', signal: expect.any(AbortSignal) }));
   expect(collected[0]).toEqual({ id: 'V1', url, title: name, snippet: description, publishedAt: null });
   expect(assess(collected[0], description, name)?.competition?.[0].availability).toBe('unconfirmed');
+});
+
+it('requires both affiliate context and a measurement task before fetching Voluum', async () => {
+  const fetch = vi.fn(async () => new Response('<title>Voluum</title><meta name="description" content="Contact our team.">'));
+  vi.stubGlobal('fetch', fetch);
+  for (const topic of ['Affiliate partner agreements', 'Paid traffic tracking and conversion attribution']) {
+    await competitorSources(draft(topic), 'United States');
+  }
+  expect(fetch).not.toHaveBeenCalled();
+
+  for (const topic of ['Affiliate paid traffic', 'Affiliate attribution', 'Tracking for affiliates']) {
+    expect(await competitorSources(draft(topic), 'United States')).toEqual([]);
+  }
+  expect(fetch).toHaveBeenCalledTimes(3);
 });
 
 it('skips unrelated proposals and drops inaccessible or repurposed catalog pages', async () => {

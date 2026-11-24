@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import CommercialResearch from '@/components/CommercialResearch';
 import { acquisitionSources } from '@/lib/opportunities/acquisition-sources';
 import { parseCommercial, type CommercialSource } from '@/lib/opportunities/commercial';
-import { sanitizeOpportunities, SUB_KEYS, type OppDraft } from '@/lib/opportunities/engine';
+import { sanitizeKpis, sanitizeOpportunities, SUB_KEYS, type OppDraft } from '@/lib/opportunities/engine';
 import { buildCommercial } from '@/lib/opportunities/research-findings';
 
 const now = '2026-11-24T12:00:00.000Z';
@@ -21,6 +21,50 @@ const compute = (sources: CommercialSource[], claims = {}, geo = 'United States'
 const conversion = { low: 0.01, base: 0.025, high: 0.05 };
 const scenario = { kind: 'scenario', sourceId: 'A1', conversion, assumptions: 'Pilot sensitivity to clicks that become paying contracts.' };
 const observed = { kind: 'observed', sourceId: 'A1', assumptions: 'Comparable seller, buyer and channel.' };
+
+const merchantAudience = { businessModel: 'B2B', payer: 'Shopify merchant', user: 'Shopify store owner or freelance media buyer',
+  industry: 'E-commerce advertising and analytics' } as const;
+const monitoringBasis = { kind: 'direct', usdPerEvent: 39, eventsPerPayerMonth: 0.8, payer: 'Shopify merchant',
+  assumptions: '$39/month monitoring plan; some customers churn after the one-time fix, so a blended average is assumed.' };
+const merchantOpportunity = {
+  title: 'Shopify Google Gateway and conversion-tracking setup doctor with a fix-it checklist',
+  thesis: 'Simplifying Google Gateway setup and conversion tracking for Shopify stores shows up 5x as a pain, so merchants and freelancers are stuck on it. A scanner can check tags, consent mode, enhanced conversions and event deduplication, then generate store-specific fix steps. Model cost is negligible, and the sale can be a one-off audit or a monitoring subscription.',
+  kpis: sanitizeKpis({ audience: merchantAudience, priceBasis: monitoringBasis }),
+};
+
+describe('SaaS comparators from stored opportunities', () => {
+  it('recovers only the external paid SaaS cohort from a merchant diagnostic and recurring monitoring plan', async () => {
+    for (const opportunity of [merchantOpportunity, { ...merchantOpportunity,
+      researchTarget: { ...merchantAudience, task: 'Diagnose tracking', sellerCategory: 'Conversion tracking' } }]) {
+      const sources = await acquisitionSources(opportunity, 'United States');
+      expect(sources).toHaveLength(1);
+      const profile = compute(sources, { ...merchantAudience, cac: observed });
+      expect(profile?.cacReferences).toMatchObject([{publisher:'First Page Sage', unit:'paying customer', usd:357, scope:'external'}]);
+      expect(profile?.cac).toBeUndefined();
+    }
+  });
+
+  it('uses a software product described in the thesis when its purchasers are agencies', async () => {
+    const sources = await acquisitionSources({ title: 'Campaign reconciliation', thesis: 'A self-serve web app for media agencies.',
+      kpis: sanitizeKpis({ audience: { ...merchantAudience, payer: 'Media agencies' },
+        priceBasis: { ...monitoringBasis, payer: 'Media agencies', assumptions: 'Agencies buy an annual subscription.' } }) }, 'Canada');
+    expect(sources.map(s => s.title)).toEqual([expect.stringContaining('B2B SaaS')]);
+  });
+
+  it('does not infer SaaS from recurring services, dependency on software, or billing frequency alone', async () => {
+    const manual = { ...merchantOpportunity, title: 'Managed conversion tracking service', thesis: 'Our agency uses a web app to audit each account.' };
+    const noProduct = { ...merchantOpportunity, title: 'Merchant reporting checklist', thesis: 'A checklist for store owners.' };
+    const noSubscription = sanitizeKpis({ audience: merchantAudience, priceBasis: { ...monitoringBasis,
+      assumptions: 'One setup fee per customer, averaged over a month.' } });
+    const manualAudit = { ...merchantOpportunity, title: 'Monthly tracking review for merchants',
+      thesis: 'An analyst uses a scanner to prepare a manual report for each customer.' };
+    for (const opportunity of [manual, manualAudit, noProduct, { ...merchantOpportunity, kpis: noSubscription },
+      { ...merchantOpportunity, kpis: sanitizeKpis({ audience: merchantAudience, priceUsd:39 }) },
+      { ...merchantOpportunity, researchTarget: { ...merchantAudience, task:'Review accounts', sellerCategory:'Marketing agency services' } }]) {
+      expect((await acquisitionSources(opportunity, 'US')).some(s => s.title.includes('First Page Sage'))).toBe(false);
+    }
+  });
+});
 
 describe('verified acquisition benchmarks', () => {
   it('preserves dated industry CPC and provider CAC with separate denominators and geography', async () => {

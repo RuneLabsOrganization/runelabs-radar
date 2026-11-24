@@ -5,6 +5,8 @@ import type { OppDraft } from './engine';
 /** Observed denominators only. Eligibility, customer conversion and revenue are separate estimates. */
 export type MarketSource = CommercialSource & { population: number; unit: string; period: string };
 type Observation = Omit<MarketSource, 'id'>;
+type MarketDraft = Pick<OppDraft, 'title' | 'researchTarget' | 'kpis'>;
+const usGeography = /^(?:united states(?: of america)?|u\.?s\.?(?:a\.?)?)$/i;
 
 function observation(
   title: string, url: string, population: number, unit: string, period: string, released: string, scope: string,
@@ -22,11 +24,14 @@ function observation(
 // summing it with subindustries or legal-form rows would double-count locations.
 const cbpUrl = 'https://www.census.gov/data/datasets/2023/econ/cbp/2023-cbp.html';
 type Industry = [payer: RegExp, naics: string, population: number, industry: string];
+const digitalAgency = /\b(?:digital (?:advertising|marketing)|ppc|pay per click|paid search) agenc(?:y|ies)\b/;
+const advertisingParent: Industry = [digitalAgency, '5418', 38_864, 'advertising, public relations, and related services'];
 const industries: Industry[] = [
+  advertisingParent,
   [/\b(?:advertising|ad|performance marketing) agenc(?:y|ies)\b/, '541810', 15_512, 'advertising agencies'],
   [/\b(?:paid media|media buying) agenc(?:y|ies)\b/, '541830', 767, 'media buying agencies'],
   [/\b(?:public relations|pr) (?:firms?|agenc(?:y|ies))\b/, '541820', 8_646, 'public relations agencies'],
-  [/\b(?:digital marketing|marketing) agenc(?:y|ies)\b/, '5418', 38_864, 'advertising, public relations, and related services'],
+  [/\bmarketing agenc(?:y|ies)\b/, '5418', 38_864, 'advertising, public relations, and related services'],
   [/\bmarketing consult(?:ant|ancy|ancies|ing)\b|\bmarketing consultants\b/, '541613', 52_258, 'marketing consulting services'],
   [/\bgraphic design (?:studios?|firms?|agencies|shops?)\b/, '541430', 15_828, 'graphic design services'],
   [/\b(?:web|website|custom software) development (?:firms?|companies|shops?|agenc(?:y|ies))\b/, '541511', 68_051, 'custom computer programming services'],
@@ -104,9 +109,10 @@ async function platformReport(platform: typeof platforms[number]): Promise<Obser
     'active ' + name + ' stores', period, period, 'Tracker counts live storefronts. One merchant can operate multiple stores.');
 }
 
-/** Match the economic payer before consulting industry or platform context. */
-export async function marketSources(d: OppDraft, geography: string): Promise<MarketSource[]> {
-  if (!/^(?:united states(?: of america)?|u\.?s\.?(?:a\.?)?)$/i.test(geography.trim())) return [];
+const head = (s: string) => s.toLowerCase().replace(/[-–—]/g, ' ')
+  .split(/\b(?:serving|targeting|managing (?!partner)|advising|selling to|on behalf of|working with|whose|who|for)\b/)[0].trim();
+
+function economicPayer(d: MarketDraft): string {
   const audience = d.researchTarget ?? d.kpis.audience;
   const pricePayer = d.kpis.priceBasis?.payer?.trim() ?? '';
   // "The managing partner approves the monthly subscription" describes a
@@ -115,10 +121,31 @@ export async function marketSources(d: OppDraft, geography: string): Promise<Mar
   const billingRole = /^(?:the |an? )?(?:budget owner|owner|founder|cofounder|managing partner|finance director|cfo|procurement manager)(?:\s+(?:pays|approves|authorizes|signs)(?:\s+(?:the|a|an|monthly|annual|subscription|fee|contract|purchase|invoice|bill|plan|payment))*[.!]?)?$/i;
   const rawPayer = pricePayer && !/^unspecified$/i.test(pricePayer) && !billingRole.test(pricePayer)
     ? pricePayer : audience?.payer;
-  if (!rawPayer?.trim() || /^unspecified$/i.test(rawPayer.trim())) return [];
-  const head = (s: string) => s.toLowerCase().replace(/[-–—]/g, ' ')
-    .split(/\b(?:serving|targeting|managing (?!partner)|advising|selling to|on behalf of|working with|whose|who|for)\b/)[0].trim();
-  const payer = head(rawPayer);
+  return head(rawPayer ?? '');
+}
+
+export function marketSpendingSource(d: MarketDraft, geo: string):
+  { usd: number; category: string; period: string; source: CommercialSource } | undefined {
+  const audience = d.researchTarget ?? d.kpis.audience;
+  if (!usGeography.test(geo.trim()) || !/\baffiliate marketing\b/i.test(audience?.industry ?? '')) return;
+  if (!/\b(?:affiliate (?:marketers?|publishers?)|media buying teams?)\b/.test(economicPayer(d))) return;
+  return {
+    usd: 13_630_000_000, category: 'Merchant spending on affiliate marketing', period: '2024',
+    source: {
+      id: 'T1', title: 'PMA 2025 study · 2024 US merchant spending on affiliate marketing',
+      url: 'https://thepma.org/wp-content/uploads/edd/2025/06/PMA-Industry-Study-2025.pdf',
+      snippet: 'The PMA estimates merchants spent $13.63 billion on affiliate marketing in the United States in 2024. This sector total includes commissions, ad placements and technology fees.',
+      publishedAt: null,
+    },
+  };
+}
+
+/** Match the economic payer before consulting industry or platform context. */
+export async function marketSources(d: OppDraft, geography: string): Promise<MarketSource[]> {
+  if (!usGeography.test(geography.trim())) return [];
+  const audience = d.researchTarget ?? d.kpis.audience;
+  const payer = economicPayer(d);
+  if (!payer || payer === 'unspecified') return [];
   const segment = head(d.researchTarget?.population ?? '');
   // A retailer's technology may qualify its storefronts. Naming Shopify in a
   // thesis, acquisition channel, client list or competitor is insufficient.
@@ -138,6 +165,10 @@ export async function marketSources(d: OppDraft, geography: string): Promise<Mar
   }
   if (!references.length) {
     let industry = industries.find(([pattern]) => pattern.test(payer));
+    if (!industry && /^(?:ppc or )?local services? agenc(?:y|ies)$|^agency owner$/.test(payer) &&
+        digitalAgency.test(head(audience?.industry ?? '')) && /\bagenc(?:y|ies)\b/.test(head(audience?.payer ?? ''))) {
+      industry = advertisingParent;
+    }
     if (!industry && segment) {
       const candidate = industries.find(([pattern]) => pattern.test(segment));
       if (candidate) {

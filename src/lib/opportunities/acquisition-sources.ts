@@ -78,12 +78,47 @@ export function acquisitionGeoMatches(reference: Reference, geo: string) {
   return us(geo) && reference.geography === 'United States';
 }
 
-export async function acquisitionSources(d: OppDraft, geo: string): Promise<CommercialSource[]> {
-  const target = d.researchTarget;
+type AcquisitionOpportunity = Pick<OppDraft, 'title' | 'thesis' | 'kpis' | 'researchTarget'>;
+
+function sellsSubscriptionSoftware(d: AcquisitionOpportunity, seller: string) {
+  const category = seller.replace(/\bsoftware as a service\b/g, 'saas');
+  if (/\b(?:development|implementation|consulting|reseller|hardware|services?)\b/.test(category)) return false;
+  if (/\b(?:saas|software|subscription app)\b/.test(category)) return true;
+  if (/\b(?:agency|consultancy|coaching|retainer|training)\b/.test(category)) return false;
+
+  // Monthly normalized revenue can also come from one-off purchases. Require
+  // explicit recurring product billing and independent evidence of the offer.
+  const basis = d.kpis.priceBasis;
+  if (basis?.kind !== 'direct') return false;
+  const billing = basis.assumptions.toLowerCase();
+  const recurring = /\bsubscriptions?\b|\/(?:mo(?:nth)?|yr|year)\b|\d\s*(?:usd\s+)?per (?:month|year)\b|\bbilled (?:monthly|annually)\b|\b(?:monthly|annual|yearly) (?:\w+ )?(?:plan|fee|licen[cs]e)\b/.test(billing);
+  if (!recurring || /\b(?:non[- ]|(?:no|without) (?:a |recurring )?)subscriptions?\b/.test(billing)) return false;
+
+  const title = d.title.toLowerCase();
+  const thesis = d.thesis.toLowerCase();
+  const offer = title + '. ' + thesis;
+  if (/\b(?:managed services?|done[- ]for[- ]you|retainer|consulting engagement|our agency|agency[- ](?:led|run))\b/.test(offer + ' ' + billing) ||
+      /\b(?:consulting|consultation) (?:for|on|package)\b/.test(title) ||
+      /\b(?:agency|consultancy|service) (?:for|that|to)\b|\b(?:agency|consultancy|service)$/.test(title)) return false;
+  // Look at the product the proposal offers. A tool mentioned in a buyer's
+  // existing workflow or used internally by a service provider is insufficient.
+  const productNames = [title, ...Array.from(thesis.matchAll(
+    /(?:^|[.!?]\s+)(?:a|an|our|this|we (?:offer|sell|build) (?:a|an)) ((?:(?:self[- ]serv(?:e|ice)|web|mobile|automated|online|hosted) )*(?:software|saas|app|plug-?in|browser extension|scanner|checker|validator|diagnostic tool|monitor))\b/g
+  ), match => match[1])].join(' ');
+  if (/\b(?:software|saas|app|plug-?in|browser extension)\b/.test(productNames)) return true;
+
+  // A diagnostic can be sold as an audit. Only use the SaaS comparator if
+  // the same offer also sells ongoing monitoring.
+  const diagnostic = /\b(?:scanner|checker|validator|diagnostic tool|automated monitor)\b/.test(productNames);
+  return diagnostic && /\bmonitoring (?:plan|subscription)\b/.test(offer + ' ' + billing);
+}
+
+export async function acquisitionSources(d: AcquisitionOpportunity, geo: string): Promise<CommercialSource[]> {
+  const target = d.researchTarget ?? d.kpis.audience;
   if (!target || !geo.trim()) return [];
   // The end-use industry can describe the buyer. Only match the category of
   // product sold; e.g. restaurant accounting software isn't a restaurant ad.
-  const seller = (target.sellerCategory ?? '').toLowerCase().replace(/[-‐‑–]/g, ' ').trim();
+  const seller = (d.researchTarget?.sellerCategory ?? '').toLowerCase().replace(/[-‐‑–]/g, ' ').trim();
   const payer = target.payer.toLowerCase();
   const business = ['B2B', 'B2B2C', 'marketplace', 'prosumer', 'other'].includes(target.businessModel) &&
     /\b(?:agenc(?:y|ies)|business(?:es)?|teams?|companies|firms?|smbs?|marketers?|operators?|advertisers?|merchants?|professionals?|consultants?|employers?|owners?|departments?)\b/.test(payer);
@@ -108,11 +143,8 @@ export async function acquisitionSources(d: OppDraft, geo: string): Promise<Comm
     if (/^(?:restaurant|takeout|catering)(?: meals?| services?| food)?$/.test(seller) &&
         /\b(?:diners?|households?|consumers?|families)\b/.test(payer)) selected.push(restaurants);
   }
-  const product = seller.replace(/\bsoftware as a service\b/g, 'saas');
-  const software = /\b(?:saas|software|subscription app)\b/.test(product) &&
-    !/\b(?:development|implementation|consulting|reseller|hardware|services?)\b/.test(product);
   const consumerPayer = /\b(?:consumers?|households?|families|students?|parents?|individuals?|home users?|hobbyists?|creators?|learners?)\b/.test(payer);
-  if (software && payer && !/\b(?:unspecified|unknown|tbd)\b/.test(payer)) {
+  if (sellsSubscriptionSoftware(d, seller) && payer && !/\b(?:unspecified|unknown|tbd)\b/.test(payer)) {
     if (business || (target.businessModel === 'B2B' && !consumerPayer)) selected.push(b2bSaas);
     else if ((target.businessModel === 'B2C' && !/\b(?:companies|agencies|businesses|employers)\b/.test(payer)) ||
              (consumer && consumerPayer)) selected.push(b2cSaas);
