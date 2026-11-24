@@ -5,6 +5,7 @@ import { braveSearch } from '../search/brave';
 import { exaSearch, type ExaHit } from '../search/exa';
 import { minimaxSearch } from '../search/minimax';
 import { commercialUrl, type CommercialSource } from './commercial';
+import { applyComparableEconomics } from './comparable-economics';
 import type { OppDraft } from './engine';
 import { buildCommercial, priceReference } from './research-findings';
 import { marketSources, marketSpendingSource } from './market-sources';
@@ -35,6 +36,7 @@ export interface ResearchStats {
   coverage: {
     referencePopulation: number; sectorSpending: number; reachableMarket: number; competitors: number; acquisition: number; acquisitionBenchmark: number;
     observedCohortCac: number; scenarioCac: number; channelBenchmark: number; externalBenchmark: number;
+    comparableBuyerPools: number; modeledChannels: number;
   };
 }
 
@@ -104,6 +106,7 @@ export async function researchFinalists(drafts: OppDraft[], geography: string): 
   const coverage = {
     referencePopulation: 0, sectorSpending: 0, reachableMarket: 0, competitors: 0, acquisition: 0, acquisitionBenchmark: 0,
     observedCohortCac: 0, scenarioCac: 0, channelBenchmark: 0, externalBenchmark: 0,
+    comparableBuyerPools: 0, modeledChannels: 0,
   };
   const stats: ResearchStats = {
     finalists: finalists.length, finalistSlugs: finalists.map(d => d.slug), enriched: 0,
@@ -140,13 +143,16 @@ export async function researchFinalists(drafts: OppDraft[], geography: string): 
         geography, title: d.title, thesis: d.thesis, target: d.researchTarget,
         sources, priceBasis: d.kpis.priceBasis, pilotTariff: priceReference(),
       }), { feature: 'opportunity-research', deadlineMs: 90_000 });
-      const profile = buildCommercial(raw, sources, geography, new Date().toISOString(), marketData, spending);
-      if (profile) {
+      const findings = buildCommercial(raw, sources, geography, new Date().toISOString(), marketData, spending);
+      if (findings) {
+        const profile = applyComparableEconomics(findings, d.kpis.priceUsd);
         d.kpis.commercial = profile;
         stats.enriched++;
         if (profile.marketReference) coverage.referencePopulation++;
         if (profile.sectorSpending) coverage.sectorSpending++;
         if (profile.market) coverage.reachableMarket++;
+        if (profile.market?.scope === 'comparable-cohort') coverage.comparableBuyerPools++;
+        coverage.modeledChannels += profile.cacChannels?.length ?? 0;
         if (profile.competition?.length) coverage.competitors++;
         if (profile.cac) coverage.acquisition++;
         if (profile.cacReferences?.length) coverage.acquisitionBenchmark++;

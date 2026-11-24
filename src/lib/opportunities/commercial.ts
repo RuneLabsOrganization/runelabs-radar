@@ -28,6 +28,7 @@ const source = z.object({
   title: line,
   snippet: line,
   publishedAt: z.string().datetime().nullable(),
+  comparableEvidence: z.object({ snippet: line, publishedAt: z.string().datetime().nullable() }).optional(),
 });
 
 export const aiUsage = z.object({
@@ -38,6 +39,10 @@ export const aiUsage = z.object({
   tasksPerCustomerMonth: finite.positive().max(10_000_000),
 });
 
+const channelScenario = z.object({
+  channel: line, usd: scenario(finite.positive()), assumptions: line, sourceIds: ids,
+});
+
 const commercial = z.object({
   geography: line,
   businessModel: z.enum(businessModels),
@@ -45,14 +50,17 @@ const commercial = z.object({
   payer: line.optional(),
   industry: line.optional(),
   researchedAt: z.string().datetime(),
-  sources: z.array(source).min(1).max(24),
+  sources: z.array(source).min(1).max(40),
   marketReference: z.object({ population: finite.int().positive(), unit: line, period: line, sourceIds: ids }).optional(),
   sectorSpending: z.object({ usd: finite.positive(), category: line, period: line, sourceIds: ids }).optional(),
   competition: z.array(z.object({
     name: line, offering: line, sourceIds: ids,
     availability: z.enum(['confirmed', 'unconfirmed']).optional(), // absent on legacy profiles
   })).min(1).max(5).optional(),
-  market: z.object({ buyer: line, buyerCounts: scenario(finite.int()), assumptions: line, sourceIds: ids }).optional(),
+  market: z.object({
+    buyer: line, buyerCounts: scenario(finite.int()), assumptions: line, sourceIds: ids,
+    scope: z.literal('comparable-cohort').optional(),
+  }).optional(),
   cacReferences: z.array(z.object({
     publisher: line, geography: line, scope: z.enum(['matched', 'external']), cohort: line, period: line, channel: line, methodology: line,
     unit: z.enum(['click', 'lead', 'paying customer']), usd: finite.positive(), sourceIds: ids,
@@ -61,6 +69,7 @@ const commercial = z.object({
     kind: z.enum(['observed', 'scenario']).optional(), // Older estimates lacked a discriminator.
     channel: line, usd: scenario(finite), assumptions: line, sourceIds: ids,
   }).optional(),
+  cacChannels: z.array(channelScenario).min(1).max(6).optional(),
   execution: z.object({
     pilotDays: finite.int().min(1).max(365),
     assumptions: line,
@@ -109,9 +118,16 @@ export function parseCommercial(value: unknown): CommercialProfile | null {
   const p = parsed.data;
   const known = new Set(p.sources.map(s => s.id));
   if (known.size !== p.sources.length || new Set(p.sources.map(s => commercialUrl(s.url))).size !== known.size) return null;
-  const claims = [...(p.competition ?? []), p.marketReference, p.sectorSpending, p.market, ...(p.cacReferences ?? []), p.cac, p.execution?.ai].filter(c => c !== undefined);
+  const claims = [...(p.competition ?? []), p.marketReference, p.sectorSpending, p.market, ...(p.cacReferences ?? []), ...(p.cacChannels ?? []), p.cac, p.execution?.ai].filter(c => c !== undefined);
   if (!claims.length || claims.some(c => c.sourceIds.some(id => !known.has(id)))) return null;
   const cac = p.cac;
+  if (p.cacChannels) {
+    if (!cac || new Set(p.cacChannels.map(c => c.channel.toLowerCase())).size !== p.cacChannels.length) return null;
+    const primary = p.cacChannels[0];
+    if (cac.kind !== 'observed' && (cac.kind !== 'scenario' || cac.channel !== primary.channel ||
+        cac.usd.low !== primary.usd.low || cac.usd.base !== primary.usd.base || cac.usd.high !== primary.usd.high ||
+        cac.sourceIds.join(',') !== primary.sourceIds.join(','))) return null;
+  }
   if (cac?.kind === 'observed' && !p.cacReferences?.some(r => r.scope === 'matched' && r.unit === 'paying customer' &&
       r.sourceIds.some(id => cac.sourceIds.includes(id)) && r.usd === cac.usd.low &&
       r.usd === cac.usd.base && r.usd === cac.usd.high)) return null;
