@@ -69,8 +69,10 @@ export default function CommercialResearch({ profile, audience }: ResearchProps)
           )}
           {profile.market ? (
             <div>
-              <Scenario label="Reachable buyers" range={profile.market.buyerCounts} format={counts} />
+              <Scenario label={profile.market.scope === 'comparable-cohort' ? 'Reachable prospects in comparable cohort' : 'Reachable buyers'}
+                range={profile.market.buyerCounts} format={counts} />
               <p>{profile.market.buyer} · {profile.market.assumptions} {citations(profile.market.sourceIds)}</p>
+              {profile.market.scope === 'comparable-cohort' && <p className="text-ink-3">Ranking uses the low estimate from this identifiable pool. Buyers reached through other products or channels are outside its scope.</p>}
             </div>
           ) : <p className="text-ink-3">Reachable buyer count unknown.</p>}
           {profile.cacReferences?.map(ref => (
@@ -85,12 +87,26 @@ export default function CommercialResearch({ profile, audience }: ResearchProps)
           {profile.cac?.kind === 'observed' ? (
             <p><strong>Observed CAC for the matched cohort</strong> · {dollars.format(profile.cac.usd.base)} per paying customer.
               {' '}{profile.cac.assumptions} {citations(profile.cac.sourceIds)} The opportunity’s own CAC is unknown.</p>
-          ) : profile.cac ? (
+          ) : profile.cac && !profile.cacChannels ? (
             <div>
               <Scenario label="Customer acquisition cost (CAC) scenario" range={profile.cac.usd} format={dollars} />
               <p>{profile.cac.channel} · {profile.cac.assumptions} {citations(profile.cac.sourceIds)}</p>
             </div>
-          ) : <p className="text-ink-3">Customer acquisition cost unknown.</p>}
+          ) : !profile.cac && <p className="text-ink-3">Customer acquisition cost unknown.</p>}
+          {profile.cacChannels && (
+            <div className="space-y-2">
+              <strong>Estimated CAC by channel · {profile.geography}</strong>
+              {profile.cacChannels.map((c, index) => (
+                <div key={c.channel}>
+                  <Scenario label={c.channel} range={c.usd} format={dollars} />
+                  <p>{c.assumptions} {citations(c.sourceIds)}</p>
+                  {index === 0 && profile.cac?.kind === 'scenario' && (
+                    <p className="text-ink-3">Primary channel for ranking. Payback uses {dollars.format(c.usd.high)} per new paying customer.</p>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
           {profile.execution && (
             <p><strong>Estimated pilot</strong> · {profile.execution.pilotDays} days · {profile.execution.assumptions}</p>
           )}
@@ -118,6 +134,7 @@ export default function CommercialResearch({ profile, audience }: ResearchProps)
                     <a className="underline" href={safeHttpUrl(s.url) ?? undefined}>[{s.id}] {s.title}</a>
                     <span className="ml-2 text-ink-3">{new URL(s.url).hostname} · {s.publishedAt ? `published ${s.publishedAt.slice(0, 10)}` : 'publication date unknown'}</span>
                     <p>{s.snippet}</p>
+                    {s.comparableEvidence && <p>{s.comparableEvidence.snippet}</p>}
                   </li>
                 ))}
               </ul>

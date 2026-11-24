@@ -98,6 +98,21 @@ it('requires in-geography numerical evidence and an identifiable competitor from
   expect(d.kpis.commercial?.competition).toBeUndefined();
 });
 
+it('adds the comparable estimates to a newly researched US agency finalist', async () => {
+  vi.stubEnv('EXA_API_KEY', 'offline');
+  const offering = 'Monitor multiple Google Ads accounts and optimize PPC campaigns.';
+  search.mockResolvedValue([hit('Optmyzr PPC management', 'https://www.optmyzr.com/', offering)]);
+  synth.mockResolvedValue({ businessModel: 'B2B', industry: 'Digital advertising agencies', payer: 'Agency owner',
+    competition: [{ name: 'Optmyzr', offering, sourceIds: ['S1'] }] });
+  const d = draft();
+  d.kpis.priceUsd = 149;
+  const stats = await researchFinalists([d], 'United States');
+  expect(stats.coverage).toMatchObject({ comparableBuyerPools: 1, modeledChannels: 2, scenarioCac: 1 });
+  expect(d.kpis.commercial?.market?.scope).toBe('comparable-cohort');
+  expect(d.kpis.commercial?.cac?.channel).toBe(d.kpis.commercial?.cacChannels?.[0].channel);
+  expect(parseCommercial(d.kpis.commercial)).toEqual(d.kpis.commercial);
+});
+
 it('retains the published reference count through a search outage with no assumed buyer conversion', async () => {
   vi.mocked(marketSources).mockResolvedValueOnce([{
     id: 'M1', url: census.url, title: census.title, snippet: census.description, publishedAt: null,
