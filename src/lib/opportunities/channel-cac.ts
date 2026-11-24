@@ -43,14 +43,14 @@ const evidence: CommercialSource[] = [
 const laborUsd = 59.80;
 const cents = (n: number) => Math.round(n * 100) / 100;
 
-function paidSearch(product: Product): Channel {
+function paidSearch(): Channel {
   const cpc = 5.87;
   const basePayingShare = 0.045 * 0.08;
   const cost = (payingShare: number) => cents(cpc / payingShare + 1.5 * laborUsd);
   return {
     channel: 'US paid search',
     usd: { low: cost(2 * basePayingShare), base: cost(basePayingShare), high: cost(basePayingShare / 2) },
-    assumptions: (product === 'optmyzr' ? 'Primary for PPC agencies seeking tools before a referral base exists. ' : '') +
+    assumptions:
       'Assume one US paid click yields one landing visit. Survey funnel: 4.5% of visitors start a trial × 8% pay within six months of signup = 0.36%. Cross-channel proxy; geography unknown, US paid-search conversion unmeasured. Low/base/high CAC = $5.87 US Business Services CPC ÷ 0.72%/0.36%/0.18% (double/base/half conversion) + 1.5h × $59.80 per new payer for campaign work, sales and onboarding in every case. Excludes fixed tooling and ongoing support.',
     sourceIds: ['C1', 'C2', 'C9'],
   };
@@ -61,7 +61,7 @@ function shopifyAds(): Channel {
   return {
     channel: 'US Shopify App Store search ads',
     usd: { low: cost(3.58, 0.10, 0.5), base: cost(9.98, 0.05, 1), high: cost(19.96, 0.02, 2) },
-    assumptions: 'Primary for an approved public app reaching US merchants at install intent. Per new paying store within 30 days: $3.58/$9.98/$19.96 per ad install ÷ assumed 10%/5%/2% install-to-first-payment + 0.5/1/2 hours × $59.80 for ads, sales and onboarding per payer. First two install costs are from one Oct 2026 case with unknown geography; high stresses 2× $9.98. CPI already includes clicks. Excludes listing development, billing fees and ongoing support.',
+    assumptions: 'Assumes an approved public app reaching US merchants at install intent. Per new paying store within 30 days: $3.58/$9.98/$19.96 per ad install ÷ assumed 10%/5%/2% install-to-first-payment + 0.5/1/2 hours × $59.80 for ads, sales and onboarding per payer. First two install costs are from one Oct 2026 case with unknown geography; high stresses 2× $9.98. CPI already includes clicks. Excludes listing development, billing fees and ongoing support.',
     sourceIds: ['C6', 'C7', 'C2'],
   };
 }
@@ -73,7 +73,7 @@ function referrals(product: Product, price: number): Channel {
     elevar: { channel: 'Shopify implementation agency referrals', sourceIds: ['C8', 'C2'],
       basis: 'Use Analyzify’s entry-tier 10% recurring agency commission as a proxy for a new Shopify tracking app. Elevar terms unknown.' },
     voluum: { channel: 'Affiliate publisher referrals', sourceIds: ['C4', 'C5', 'C2'],
-      basis: 'Primary for publishers who already refer tools to media buyers. Use Voluum’s advertised ceiling of 10%, capped at $105/month on monthly plans.' },
+      basis: 'Assumes publishers already refer tools to media buyers. Use Voluum’s advertised ceiling of 10%, capped at $105/month on monthly plans.' },
   };
   const plan = plans[product];
   const fee = product === 'voluum' ? Math.min(price * 0.10, 105) : price * 0.10;
@@ -88,7 +88,7 @@ function referrals(product: Product, price: number): Channel {
   };
 }
 
-/** Standalone routes to one first payment. The caller uses the first as primary; never sum channels. */
+/** Standalone costs per first payment. Preserve legacy channel order for profiles without a mix. */
 export function comparableChannels(profile: CommercialProfile, priceUsd: number | null):
   { channels: Channel[]; sources: CommercialSource[] } | undefined {
   const product = matchedUsComparable(profile);
@@ -99,7 +99,7 @@ export function comparableChannels(profile: CommercialProfile, priceUsd: number 
   if (product === 'elevar') channels.push(shopifyAds());
   const canPrice = priceUsd !== null && Number.isFinite(priceUsd) && priceUsd > 0 && priceUsd <= Number.MAX_SAFE_INTEGER / 1000;
   if (product === 'voluum' && canPrice) channels.push(referrals(product, priceUsd));
-  channels.push(paidSearch(product));
+  channels.push(paidSearch());
   if (product !== 'voluum' && canPrice) channels.push(referrals(product, priceUsd));
   const used = new Set(channels.flatMap(c => c.sourceIds));
   return { channels, sources: evidence.filter(s => used.has(s.id)).map(s => ({ ...s })) };

@@ -42,6 +42,18 @@ describe('commercial ranking', () => {
     expect(compareOpportunities(a, b, 'hold')).toBeLessThan(0);
   });
 
+  it('uses the adverse blended CAC even with cohort evidence, and counts the bootstrap term once', () => {
+    const bootstrap = { points: 5, initialCostUsd: 500, monthlyCostUsd: 100, days: 30,
+      daysBasis: 'paid pilot' as const, assumptions: 'Cash and elapsed time.' };
+    const commercial = { ...profile, execution: { ...profile.execution!, pilotDays: 30 },
+      cac: { ...profile.cac!, kind: 'observed' as const } };
+    const score = rank({ ...kpis, commercial });
+    expect(rank({ ...kpis, commercial: { ...commercial, bootstrap } })).toBe(score);
+    expect(rank({ ...kpis, commercial: { ...commercial, bootstrap: { ...bootstrap, points: 9 } } })).toBe(score + 4);
+    expect(rank({ ...kpis, commercial: { ...commercial, channelMix: { weights: [], assumptions: 'Projected.',
+      usd: { low: 100, base: 500, high: 1000 }, sourceIds: ['S1'] } } })).toBeLessThan(score);
+  });
+
   it('compares unit margins even while CAC is unknown', () => {
     const noCac = { ...profile, cac: undefined };
     const expensive = {

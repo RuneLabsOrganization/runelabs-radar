@@ -42,6 +42,23 @@ export const aiUsage = z.object({
 const channelScenario = z.object({
   channel: line, usd: scenario(finite.positive()), assumptions: line, sourceIds: ids,
 });
+const percent = z.number().int().min(0).max(100);
+const mixWeight = z.object({ channel: line, favorable: percent, base: percent, adverse: percent });
+export const blendedChannel = 'Blended CAC';
+
+/** Weights count mutually exclusive first paying customers, not dollars spent. */
+export function weightedChannelCac(channels: z.infer<typeof channelScenario>[], weights: z.infer<typeof mixWeight>[]) {
+  if (weights.length < 2 || weights.length !== channels.length) return null;
+  const byChannel = new Map(channels.map(c => [c.channel, c.usd]));
+  if (new Set(weights.map(w => w.channel)).size !== weights.length || weights.some(w => !byChannel.has(w.channel))) return null;
+  const usd = { low: 0, base: 0, high: 0 };
+  for (const [cost, share] of [['low', 'favorable'], ['base', 'base'], ['high', 'adverse']] as const) {
+    if (weights.reduce((sum, w) => sum + w[share], 0) !== 100) return null;
+    const total = weights.reduce((sum, w) => sum + Math.round(byChannel.get(w.channel)![cost] * 100) * w[share], 0);
+    usd[cost] = Math.round(total / 100) / 100;
+  }
+  return usd.low <= usd.base && usd.base <= usd.high ? usd : null;
+}
 
 const commercial = z.object({
   geography: line,
@@ -70,6 +87,11 @@ const commercial = z.object({
     channel: line, usd: scenario(finite), assumptions: line, sourceIds: ids,
   }).optional(),
   cacChannels: z.array(channelScenario).min(1).max(6).optional(),
+  channelMix: z.object({ weights: z.array(mixWeight).min(2).max(6), usd: scenario(finite.positive()),
+    assumptions: line, sourceIds: ids }).optional(),
+  bootstrap: z.object({ points: finite.max(10), initialCostUsd: finite.nullable(), monthlyCostUsd: finite.nullable(),
+    days: finite.nullable(), daysBasis: z.enum(['paid pilot', 'MVP']).nullable(), assumptions: line,
+  }).refine(b => (b.days === null) === (b.daysBasis === null)).optional(),
   execution: z.object({
     pilotDays: finite.int().min(1).max(365),
     assumptions: line,
@@ -118,12 +140,18 @@ export function parseCommercial(value: unknown): CommercialProfile | null {
   const p = parsed.data;
   const known = new Set(p.sources.map(s => s.id));
   if (known.size !== p.sources.length || new Set(p.sources.map(s => commercialUrl(s.url))).size !== known.size) return null;
-  const claims = [...(p.competition ?? []), p.marketReference, p.sectorSpending, p.market, ...(p.cacReferences ?? []), ...(p.cacChannels ?? []), p.cac, p.execution?.ai].filter(c => c !== undefined);
+  const claims = [...(p.competition ?? []), p.marketReference, p.sectorSpending, p.market, ...(p.cacReferences ?? []), ...(p.cacChannels ?? []), p.channelMix, p.cac, p.execution?.ai].filter(c => c !== undefined);
   if (!claims.length || claims.some(c => c.sourceIds.some(id => !known.has(id)))) return null;
   const cac = p.cac;
+  const mix = p.channelMix;
+  if (mix) {
+    const usd = weightedChannelCac(p.cacChannels ?? [], mix.weights);
+    if (!usd || usd.low !== mix.usd.low || usd.base !== mix.usd.base || usd.high !== mix.usd.high ||
+        p.cacChannels?.some(c => c.sourceIds.some(id => !mix.sourceIds.includes(id)))) return null;
+  }
   if (p.cacChannels) {
     if (!cac || new Set(p.cacChannels.map(c => c.channel.toLowerCase())).size !== p.cacChannels.length) return null;
-    const primary = p.cacChannels[0];
+    const primary = mix ? { ...mix, channel: blendedChannel } : p.cacChannels[0];
     if (cac.kind !== 'observed' && (cac.kind !== 'scenario' || cac.channel !== primary.channel ||
         cac.usd.low !== primary.usd.low || cac.usd.base !== primary.usd.base || cac.usd.high !== primary.usd.high ||
         cac.sourceIds.join(',') !== primary.sourceIds.join(','))) return null;

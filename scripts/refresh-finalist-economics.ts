@@ -87,6 +87,7 @@ function summary(r: Ranking) {
     rank: r.rank, commercialScore: r.commercialScore, flipScore: r.flipScore, holdScore: r.holdScore,
     priceUsd: r.kpis?.priceUsd ?? null,
     market: p?.market ?? null, cac: p?.cac ?? null, cacChannels: p?.cacChannels ?? [],
+    channelMix: p?.channelMix ?? null, bootstrap: p?.bootstrap ?? null,
     coverage: {
       referencePopulation: !!p?.marketReference, sectorSpending: !!p?.sectorSpending,
       reachableMarket: !!p?.market, competitors: p?.competition?.length ?? 0, sources: p?.sources.length ?? 0,
@@ -113,7 +114,7 @@ export function planRefresh(db: Database.Database, ids: number[]) {
     try {
       if (!profile || !row.kpis) throw new Error('Missing or invalid stored commercial profile.');
       const input = structuredClone(profile);
-      const next = applyComparableEconomics(input, before.kpis?.priceUsd ?? null);
+      const next = applyComparableEconomics(input, before.kpis?.priceUsd ?? null, before.kpis ?? undefined);
       if (next === input) note = 'No comparable economics proposal matched the stored profile.';
       if (!equal(profile, next)) {
         const raw = JSON.parse(row.kpis);
